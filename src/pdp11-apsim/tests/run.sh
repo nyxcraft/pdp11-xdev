@@ -136,6 +136,16 @@ if [ -x "$R/bin/echo" ] && [ -x "$R/bin/cat" ]; then
 	else
 		skip 211-csh 'csh not present'
 	fi
+	# Sockets: socketpair(AF_UNIX) end to end -- socket()/send/recv on real
+	# host sockets, exercising the guest fd = host fd model and the 2.11
+	# stack-arg convention.  Self-contained (no network config).
+	if "$AS" -o "$tmp/sockpair" "$here/sockpair.s"; then
+		out=$(APSIM_ROOT=/ timeout 10 "$APSIM" -u bsd211 "$tmp/sockpair" 2>&1)
+		[ "$out" = "hi!" ] && ok 211-socket 'socketpair send/recv over real host sockets' \
+		                   || bad 211-socket "output: [$out]"
+	else
+		bad 211-socket 'sockpair.s did not assemble'
+	fi
 else
 	skip bsd211 '~/bsd/2.11/root not present'
 fi

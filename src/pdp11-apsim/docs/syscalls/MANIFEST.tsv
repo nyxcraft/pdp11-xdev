@@ -1,0 +1,8 @@
+universe	label	format	count	sha256_16	source
+v5	Fifth Edition	sysent	64	33a312a0513d4ef3	~/unix/v5/usr/sys/ken/sysent.c
+v6	Sixth Edition	sysent	63	3e0124a03b570941	~/unix/v6/usr/sys/ken/sysent.c
+v7	Seventh Edition	sysent	57	cd7144d01fcf6549	~/unix/v7/usr/sys/sys/sysent.c
+bsd28	2.8BSD	equ	56	521a6c9108abcd86	~/pdp11-xdev/src/pdp11-libc/bsd28/libc/include/sys.s
+bsd29	2.9BSD	equ	60	aeb0525932bd5db1	~/pdp11-xdev/src/pdp11-libc/bsd29/libc/include/sys.s
+bsd210	2.10BSD	sysent	137	96fcc4f7b10f84f1	~/bsd/2.10/root/usr/src/sys/sys/init_sysent.c
+bsd211	2.11BSD	sysent	138	5da7911e54d6d4c3	~/bsd/2.11/root/usr/sys/sys/init_sysent.c

@@ -29,6 +29,9 @@
 #include <time.h>
 #include <dirent.h>
 #include <stdint.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <netinet/in.h>
 #include "universe.h"
 
 /* ---- universes / kernel personalities --------------------------------
@@ -91,8 +94,37 @@ static int errno_h2g(int e){
 	case EDQUOT:       return modern ? 69 : ENOSPC;
 	case ESTALE:       return modern ? 70 : EIO;
 	case ENOSYS:       return modern ? 78 : EINVAL;
+	/* the BSD socket errno block sits at 35..68, where Linux renumbered
+	 * it to 88..115; map so a guest perror() decodes network errors.
+	 * (EWOULDBLOCK==EAGAIN and EOPNOTSUPP==ENOTSUP on Linux, handled
+	 * by EAGAIN above / EOPNOTSUPP below.) */
+	case EINPROGRESS:  return modern ? 36 : EINTR;
+	case EALREADY:     return modern ? 37 : EBUSY;
+	case ENOTSOCK:     return modern ? 38 : EINVAL;
+	case EDESTADDRREQ: return modern ? 39 : EINVAL;
+	case EMSGSIZE:     return modern ? 40 : EINVAL;
+	case EPROTOTYPE:   return modern ? 41 : EINVAL;
+	case ENOPROTOOPT:  return modern ? 42 : EINVAL;
+	case EPROTONOSUPPORT: return modern ? 43 : EINVAL;
+	case ESOCKTNOSUPPORT: return modern ? 44 : EINVAL;
+	case EOPNOTSUPP:   return modern ? 45 : EINVAL;
+	case EPFNOSUPPORT: return modern ? 46 : EINVAL;
+	case EAFNOSUPPORT: return modern ? 47 : EINVAL;
+	case EADDRINUSE:   return modern ? 48 : EEXIST;
+	case EADDRNOTAVAIL:return modern ? 49 : EINVAL;
+	case ENETDOWN:     return modern ? 50 : EIO;
+	case ENETUNREACH:  return modern ? 51 : EIO;
+	case ENETRESET:    return modern ? 52 : EIO;
+	case ECONNABORTED: return modern ? 53 : EIO;
+	case ECONNRESET:   return modern ? 54 : EIO;
+	case ENOBUFS:      return modern ? 55 : ENOMEM;
+	case EISCONN:      return modern ? 56 : EBUSY;
+	case ENOTCONN:     return modern ? 57 : EINVAL;
+	case ESHUTDOWN:    return modern ? 58 : EINVAL;
 	case ETIMEDOUT:    return modern ? 60 : EINTR;
 	case ECONNREFUSED: return modern ? 61 : EIO;
+	case EHOSTDOWN:    return modern ? 64 : EIO;
+	case EHOSTUNREACH: return modern ? 65 : EIO;
 	default:           return (e>=1 && e<=34) ? e : EIO;
 	}
 }
@@ -668,8 +700,92 @@ enum {
 	C_GETPPID, C_GETEUID, C_GETEGID, C_SIGVEC, C_GETGROUPS,
 	C_GETRLIMIT, C_KILLPG, C_FCHDIR, C_GETLOGIN, C_UNAME, C_ULIMIT,
 	C_NAP, C_FCHMOD, C_FSYNC, C_SYSCTL, C_SETPGRP, C_SIGBLOCK,
-	C_SIGSETMASK, C_SIGSUSPEND, C_SIGRETURN, C_OK, C_NOSYS
+	C_SIGSETMASK, C_SIGSUSPEND, C_SIGRETURN,
+	C_SOCKET, C_BIND, C_CONNECT, C_LISTEN, C_ACCEPT, C_SEND, C_RECV,
+	C_SENDTO, C_RECVFROM, C_GETSOCKNAME, C_GETPEERNAME, C_SETSOCKOPT,
+	C_GETSOCKOPT, C_SHUTDOWN, C_SOCKETPAIR, C_SENDMSG, C_RECVMSG,
+	C_OK, C_NOSYS
 };
+
+/* ---- BSD sockets on real host sockets --------------------------------
+ * Guest fds are host fds, so socket()/accept() hand the host fd straight
+ * back.  2.11's AF_/SOCK_ constants already match the host's (AF_UNIX 1,
+ * AF_INET 2, SOCK_STREAM 1, SOCK_DGRAM 2) and its sockaddr_in is
+ * byte-compatible -- 16-bit family, then sin_port and sin_addr in
+ * network byte order, which copy verbatim.  The option level/name and
+ * AF_UNIX paths are the only things that need translating. */
+#define G_SOL_SOCKET   0xffff
+#define G_SO_REUSEADDR 0x0004
+#define G_SO_KEEPALIVE 0x0008
+#define G_SO_BROADCAST 0x0020
+static char *mappath_s(const char *gp);
+static const char *guestify(const char *hp);
+/* guest sockaddr at gaddr (glen bytes) -> host sockaddr; returns host len */
+static socklen_t sockaddr_g2h(int gaddr, int glen, struct sockaddr_storage *hs){
+	int fam = ld2(gaddr&0xffff);
+	memset(hs,0,sizeof *hs);
+	if(fam==AF_INET){
+		struct sockaddr_in *si=(struct sockaddr_in*)hs;
+		si->sin_family=AF_INET;
+		memcpy(&si->sin_port, M+((gaddr+2)&0xffff), 2);	/* net order, raw */
+		memcpy(&si->sin_addr, M+((gaddr+4)&0xffff), 4);	/* net order, raw */
+		return sizeof *si;
+	}
+	if(fam==AF_UNIX){
+		struct sockaddr_un *su=(struct sockaddr_un*)hs;
+		su->sun_family=AF_UNIX;
+		strncpy(su->sun_path, mappath_s((char*)(M+((gaddr+2)&0xffff))), sizeof su->sun_path-1);
+		return offsetof(struct sockaddr_un,sun_path)+strlen(su->sun_path)+1;
+	}
+	(void)glen;
+	return 0;			/* unsupported family */
+}
+/* host sockaddr -> guest sockaddr at gaddr; write the 16-bit guest length
+ * at glenaddr if nonzero */
+static void sockaddr_h2g(struct sockaddr *ha, int gaddr, int glenaddr){
+	int glen=16, k;
+	if(gaddr==0){ if(glenaddr) st2(glenaddr,0); return; }
+	if(ha->sa_family==AF_INET){
+		struct sockaddr_in *si=(struct sockaddr_in*)ha;
+		for(k=0;k<16;k++) st1((gaddr+k)&0xffff,0);
+		st2(gaddr, AF_INET);
+		memcpy(M+((gaddr+2)&0xffff), &si->sin_port, 2);
+		memcpy(M+((gaddr+4)&0xffff), &si->sin_addr, 4);
+		glen=16;
+	} else if(ha->sa_family==AF_UNIX){
+		struct sockaddr_un *su=(struct sockaddr_un*)ha;
+		const char *p=guestify(su->sun_path); int n=strlen(p);
+		st2(gaddr, AF_UNIX);
+		for(k=0;k<n && k<108;k++) st1((gaddr+2+k)&0xffff,p[k]);
+		st1((gaddr+2+k)&0xffff,0);
+		glen=2+n+1;
+	} else {
+		st2(gaddr, ha->sa_family);
+		glen=2;
+	}
+	if(glenaddr) st2(glenaddr, glen);
+}
+static int sockopt_g2h_level(int lv){ return lv==G_SOL_SOCKET ? SOL_SOCKET : lv; }
+/* SOL_SOCKET option names -- the classic BSD SO_* bit values, identical in
+ * 2.11BSD.  Returns the host SO_*, or -1 for an option the host lacks
+ * (the caller then succeeds silently / zero-fills, as 4.3BSD tolerated). */
+static int sockopt_g2h_name(int nm){
+	switch(nm){
+	case 0x0001: return SO_DEBUG;
+	case 0x0004: return SO_REUSEADDR;
+	case 0x0008: return SO_KEEPALIVE;
+	case 0x0010: return SO_DONTROUTE;
+	case 0x0020: return SO_BROADCAST;
+	case 0x0080: return SO_LINGER;
+	case 0x0100: return SO_OOBINLINE;
+	case 0x1001: return SO_SNDBUF;
+	case 0x1002: return SO_RCVBUF;
+	case 0x1007: return SO_ERROR;
+	case 0x1008: return SO_TYPE;
+	default: return -1;
+	}
+}
+
 /* 2.10BSD: the 4.3BSD numbering; low numbers are 4.3's compat "old" set
  * and pass through with V7 shapes. */
 static const struct sremap Bsd210Remap[] = {
@@ -686,6 +802,18 @@ static const struct sremap Bsd210Remap[] = {
 	{128,C_RENAME,0}, {129,C_TRUNCATE,0}, {130,C_FTRUNCATE,0},
 	{131,C_OK,0}, {136,C_MKDIR,0}, {137,C_RMDIR,0}, {138,C_UTIMES,0},
 	{144,C_GETRLIMIT,0}, {145,C_OK,0}, {146,C_KILLPG,0},
+	{66,2,0} /* vfork -> fork (2.11 has this; 2.10 needs it too) */,
+	{76,C_OK,0} /* vhangup: no controlling tty to revoke */,
+	{91,C_NOSYS,0}, {94,C_NOSYS,0} /* get/setdopt */,
+	/* networking (no protocol stack) + privileged calls: deliberate ENOSYS */
+	{97,C_SOCKET,0}, {98,C_CONNECT,0}, {99,C_ACCEPT,0}, {101,C_SEND,0},
+	{102,C_RECV,0}, {104,C_BIND,0}, {105,C_SETSOCKOPT,0}, {106,C_LISTEN,0},
+	{113,C_RECVMSG,0}, {114,C_SENDMSG,0}, {118,C_GETSOCKOPT,0}, {125,C_RECVFROM,0},
+	{126,C_NOSYS,0}, {127,C_NOSYS,0} /* setre[ug]id */,
+	{133,C_SENDTO,0}, {134,C_SHUTDOWN,0}, {135,C_SOCKETPAIR,0}, {140,C_NOSYS,0},
+	{141,C_GETPEERNAME,0}, {142,C_OK,0}, {143,C_NOSYS,0} /* get/sethostid */,
+	{148,C_NOSYS,0}, {149,C_NOSYS,0}, {150,C_GETSOCKNAME,0}, {151,C_NOSYS,0},
+	{152,C_OK,0}, {153,C_NOSYS,0}, {154,C_NOSYS,0}, {155,C_OK,0}, {156,C_OK,0},
 	{ 0, 0, 0 }
 };
 /* 2.11BSD pl431: the 4.4-style renumbered table (wait4=7, sigaction=31,
@@ -714,6 +842,17 @@ static const struct sremap Bsd211Remap[] = {
 	{129,C_TRUNCATE,0}, {130,C_FTRUNCATE,0}, {131,C_OK,0},
 	{136,C_MKDIR,0}, {137,C_RMDIR,0}, {138,C_UTIMES,0},
 	{144,C_GETRLIMIT,0}, {145,C_OK,0}, {146,C_KILLPG,0}, {148,C_OK,0},
+	/* networking: apsim has no protocol stack, so the whole socket
+	 * family is a deliberate ENOSYS (a documented scope boundary, not
+	 * a silent gap) -- and adjtime/qquota/fetchi/ucall are privileged
+	 * or kernel-poke calls a user-mode sim cannot honor. */
+	{97,C_SOCKET,0}, {98,C_CONNECT,0}, {99,C_ACCEPT,0}, {101,C_SEND,0},
+	{102,C_RECV,0}, {104,C_BIND,0}, {105,C_SETSOCKOPT,0}, {106,C_LISTEN,0},
+	{113,C_RECVMSG,0}, {114,C_SENDMSG,0}, {118,C_GETSOCKOPT,0}, {125,C_RECVFROM,0},
+	{133,C_SENDTO,0}, {134,C_SHUTDOWN,0}, {135,C_SOCKETPAIR,0}, {140,C_NOSYS,0},
+	{141,C_GETPEERNAME,0}, {149,C_NOSYS,0}, {150,C_GETSOCKNAME,0}, {153,C_NOSYS,0},
+	{154,C_NOSYS,0}, {152,C_OK,0} /* nostk: no segment to release */,
+	{155,C_OK,0} /* fperr: no pending FP fault to report */,
 	{ 0, 0, 0 }
 };
 /* System III / Ultrix-11: V7 base + the SysIII additions DEC carried
@@ -771,6 +910,10 @@ static void do_syscall(int num, int argaddr)
 		case 3: case 4: case 6: case 19: case 28: case 41: case 54:
 		case C_DUP2: case C_FCNTL: case C_READV: case C_WRITEV:
 		case C_FTRUNCATE: case C_FCHMOD: case C_FSYNC: case C_FCHDIR:
+		case C_BIND: case C_CONNECT: case C_LISTEN: case C_ACCEPT:
+		case C_SEND: case C_RECV: case C_SENDTO: case C_RECVFROM:
+		case C_GETSOCKNAME: case C_GETPEERNAME: case C_SHUTDOWN:
+		case C_SETSOCKOPT: case C_GETSOCKOPT: case C_SENDMSG: case C_RECVMSG:
 			/* first arg is an fd (V7 took it in r0) */
 			fd0=s1; a1=s2; a2=s3; a3=s4; break;
 		default:
@@ -1414,6 +1557,127 @@ static void do_syscall(int num, int argaddr)
 			if(oldlenp) st2(oldlenp, 2);
 			r=0;
 		} else { errno=ENOSYS; r=-1; }
+		break;
+	}
+	/* ---- sockets (all args on the stack, 2.10/2.11) ----------------
+	 * Under stackargs a1..a3 come from SP+2/4/6; the 4th/5th/6th args
+	 * (sendto, setsockopt) are read from SP+8/10/12 directly. */
+	case C_SOCKET:			/* socket(domain, type, protocol) */
+		r = socket(a1, a2, a3); break;
+	case C_BIND: case C_CONNECT: {	/* (fd0=fd, a1=*addr, a2=addrlen) */
+		struct sockaddr_storage ss; socklen_t hl;
+		hl = sockaddr_g2h(a1, a2, &ss);
+		if(hl==0){ errno=EAFNOSUPPORT; r=-1; break; }
+		r = (num==C_BIND) ? bind(fd0,(struct sockaddr*)&ss,hl)
+		                  : connect(fd0,(struct sockaddr*)&ss,hl);
+		break;
+	}
+	case C_LISTEN:			/* listen(fd0, a1=backlog) */
+		r = listen(fd0, a1); break;
+	case C_ACCEPT: {		/* accept(fd0, a1=*addr, a2=*addrlen) -> newfd */
+		struct sockaddr_storage ss; socklen_t hl=sizeof ss;
+		r = accept(fd0, (struct sockaddr*)&ss, &hl);
+		if(r>=0 && a1) sockaddr_h2g((struct sockaddr*)&ss, a1&0xffff, a2&0xffff);
+		break;
+	}
+	case C_SEND:			/* send(fd0, a1=buf, a2=len, a3=flags) */
+		r = send(fd0, M+(a1&0xffff), a2&0xffff, 0); break;
+	case C_RECV:			/* recv(fd0, a1=buf, a2=len, a3=flags) */
+		r = recv(fd0, M+(a1&0xffff), a2&0xffff, 0); break;
+	case C_SENDTO: {		/* sendto(fd0, buf, len, flags, *to, tolen) */
+		struct sockaddr_storage ss; socklen_t hl;
+		int toaddr=(stackargs?ld2((SP+10)&0xffff):ld2(argaddr+8))&0xffff;
+		int tolen=stackargs?ld2((SP+12)&0xffff):ld2(argaddr+10);
+		if(toaddr){ hl=sockaddr_g2h(toaddr, tolen, &ss);
+			r = sendto(fd0, M+(a1&0xffff), a2&0xffff, 0, (struct sockaddr*)&ss, hl); }
+		else	r = send(fd0, M+(a1&0xffff), a2&0xffff, 0);
+		break;
+	}
+	case C_RECVFROM: {		/* recvfrom(fd0, buf, len, flags, *from, *fromlen) */
+		struct sockaddr_storage ss; socklen_t hl=sizeof ss;
+		int fr=(stackargs?ld2((SP+10)&0xffff):ld2(argaddr+8))&0xffff;
+		int frl=(stackargs?ld2((SP+12)&0xffff):ld2(argaddr+10))&0xffff;
+		r = recvfrom(fd0, M+(a1&0xffff), a2&0xffff, 0, (struct sockaddr*)&ss, &hl);
+		if(r>=0 && fr) sockaddr_h2g((struct sockaddr*)&ss, fr, frl);
+		break;
+	}
+	case C_GETSOCKNAME: case C_GETPEERNAME: {	/* (fd0, a1=*addr, a2=*addrlen) */
+		struct sockaddr_storage ss; socklen_t hl=sizeof ss;
+		r = (num==C_GETSOCKNAME) ? getsockname(fd0,(struct sockaddr*)&ss,&hl)
+		                         : getpeername(fd0,(struct sockaddr*)&ss,&hl);
+		if(r>=0) sockaddr_h2g((struct sockaddr*)&ss, a1&0xffff, a2&0xffff);
+		break;
+	}
+	case C_SETSOCKOPT: {		/* setsockopt(fd0, a1=level, a2=name, val, len).
+					 * Most options are an int flag; read the
+					 * guest 16-bit value and pass a host int. */
+		int hlv=sockopt_g2h_level(a1), hnm=sockopt_g2h_name(a2);
+		int vptr=(stackargs?ld2((SP+8)&0xffff):ld2(argaddr+6))&0xffff;
+		int vlen=stackargs?ld2((SP+10)&0xffff):ld2(argaddr+8);
+		int hostval = (vptr && vlen>=2) ? (short)ld2(vptr) : 0;
+		if(hnm<0){ r=0; break; }		/* option the host lacks: succeed */
+		r = setsockopt(fd0, hlv, hnm, &hostval, sizeof hostval);
+		break;
+	}
+	case C_GETSOCKOPT: {		/* getsockopt(fd0, a1=level, a2=name, val, *len) */
+		int hostval=0; socklen_t hl=sizeof hostval;
+		int hlv=sockopt_g2h_level(a1), hnm=sockopt_g2h_name(a2);
+		int vptr=(stackargs?ld2((SP+8)&0xffff):ld2(argaddr+6))&0xffff;
+		int lptr=(stackargs?ld2((SP+10)&0xffff):ld2(argaddr+8))&0xffff;
+		if(hnm<0){ if(vptr) st2(vptr,0); if(lptr) st2(lptr,2); r=0; break; }
+		r = getsockopt(fd0, hlv, hnm, &hostval, &hl);
+		if(r>=0 && vptr) st2(vptr, hostval&0xffff);	/* int-sized options */
+		if(r>=0 && lptr) st2(lptr, 2);
+		break;
+	}
+	case C_SHUTDOWN:		/* shutdown(fd0, a1=how) */
+		r = shutdown(fd0, a1); break;
+	case C_SOCKETPAIR: {		/* socketpair(a1=dom, a2=type, a3=proto, sv[2]) */
+		int sv[2], svp=stackargs?ld2((SP+8)&0xffff):ld2(argaddr+6);
+		r = socketpair(a1, a2, a3, sv);
+		if(r>=0){ st2(svp, sv[0]); st2((svp+2)&0xffff, sv[1]); }
+		break;
+	}
+	case C_SENDMSG: case C_RECVMSG: {	/* (fd0=fd, a1=*msghdr, a2=flags).
+					 * The 12-byte 2.11 msghdr is {name, namelen,
+					 * iov, iovlen, accrights, accrightslen}; iovec
+					 * stride is 4 (base,len).  Gather/scatter the
+					 * iov through one host buffer and translate
+					 * msg_name.  (Ancillary fd-passing -- accrights
+					 * -- is not modeled; accrightslen is left 0.) */
+		int mp=a1&0xffff;
+		int name=ld2(mp), namelen=ld2(mp+2);
+		int iov=ld2(mp+4)&0xffff, iovn=ld2(mp+6);
+		struct sockaddr_storage ss; socklen_t sl; struct msghdr mh;
+		struct iovec hv; static unsigned char mbuf[65536];
+		long tot=0; int k;
+		if(iovn>1024) iovn=1024;
+		for(k=0;k<iovn;k++){ int l=ld2((iov+4*k+2)&0xffff); tot+=l; }
+		if(tot>(long)sizeof mbuf) tot=sizeof mbuf;
+		memset(&mh,0,sizeof mh);
+		hv.iov_base=mbuf; hv.iov_len=tot; mh.msg_iov=&hv; mh.msg_iovlen=1;
+		if(name){ sl=sockaddr_g2h(name,namelen,&ss); mh.msg_name=&ss; mh.msg_namelen=sl; }
+		if(num==C_SENDMSG){		/* gather guest iov -> mbuf */
+			long off=0;
+			for(k=0;k<iovn && off<tot;k++){
+				int b=ld2((iov+4*k)&0xffff), l=ld2((iov+4*k+2)&0xffff);
+				if(off+l>tot) l=tot-off;
+				memcpy(mbuf+off, M+(b&0xffff), l); off+=l;
+			}
+			r = sendmsg(fd0, &mh, 0);
+		} else {			/* recvmsg: scatter mbuf -> guest iov */
+			r = recvmsg(fd0, &mh, 0);
+			if(r>=0){
+				long off=0, left=r;
+				for(k=0;k<iovn && left>0;k++){
+					int b=ld2((iov+4*k)&0xffff), l=ld2((iov+4*k+2)&0xffff);
+					if(l>left) l=left;
+					memcpy(M+(b&0xffff), mbuf+off, l); off+=l; left-=l;
+				}
+				if(name) sockaddr_h2g((struct sockaddr*)&ss, name, mp+2);
+				st2(mp+10, 0);	/* msg_accrightslen = 0 */
+			}
+		}
 		break;
 	}
 	case C_OK:			/* benign per-era no-ops (setpgrp, itimers,
