@@ -1,0 +1,22 @@
+# The universe table -- one row per supported runtime era.  This file is the
+# single source of truth for universe names; mkuniverse.py generates
+# universe.h from it (make -C src/common), and cc/cpp/ld/apsim all resolve
+# names against that header.  Canonical names are short and period-free.
+#
+# Columns (tab-separated):
+#   name    canonical universe name (what PDP11_UNIVERSE / --universe take)
+#   id      small integer id, stable once assigned
+#   status  full = headers+libc+tests present; sim = simulator personality
+#           only; planned = reserved, not yet usable
+#   desc    one-line human description
+#
+# name	id	status	desc
+v1	1	sim	First Edition UNIX (1971-72); apsim personality for 0405 binaries
+v5	5	planned	Fifth Edition UNIX (1974); sources in ~/unix/v5
+v6	6	planned	Sixth Edition UNIX (1975); sources in ~/unix/v6
+v7	7	sim	Seventh Edition UNIX (1979); apsim's syscall layer is the V7 set
+bsd28	28	full	2.8BSD (1981), Ritchie cc era; FP11 D-format floating point
+bsd29	29	full	2.9BSD (1983), overlays and split I&D; the default universe
+bsd210	210	planned	2.10BSD (1987); sources in ~/bsd/2.10, das/apsim know its stat renumbering
+bsd211	211	planned	2.11BSD pl431 (2000), string-table a.out; porting base for new tools, sources in ~/bsd/2.11
+sys3	103	planned	UNIX System III (1980), PDP-11 line; sources in ~/unix/sys3
