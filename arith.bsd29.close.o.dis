@@ -1,0 +1,15 @@
+; close.o  --  pdp11-bsd29-das disassembly
+; magic 0407  text 22  data 0  bss 0  (806 symbols)
+
+.text
+_close:
+	003010:  010546                 mov	r5,-(sp)
+	003012:  010605                 mov	sp,r5
+	003014:  016500 000004          mov	4(r5),r0
+	003020:  104406                 sys	6 / close
+	003022:  103002                 bcc	.L3030
+	003024:  000167 001366          jmp	cerror
+.L3030:
+	003030:  005000                 clr	r0
+	003032:  012605                 mov	(sp)+,r5
+	003034:  000207                 rts	pc

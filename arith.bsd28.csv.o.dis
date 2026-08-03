@@ -1,0 +1,19 @@
+; csv.o  --  pdp11-bsd29-das disassembly
+; magic 0407  text 26  data 0  bss 0  (642 symbols)
+
+.text
+csv:
+	004016:  010500                 mov	r5,r0
+	004020:  010605                 mov	sp,r5
+	004022:  010446                 mov	r4,-(sp)
+	004024:  010346                 mov	r3,-(sp)
+	004026:  010246                 mov	r2,-(sp)
+	004030:  004710                 jsr	pc,(r0)
+cret:
+	004032:  010502                 mov	r5,r2
+	004034:  014204                 mov	-(r2),r4
+	004036:  014203                 mov	-(r2),r3
+	004040:  014202                 mov	-(r2),r2
+	004042:  010506                 mov	r5,sp
+	004044:  012605                 mov	(sp)+,r5
+	004046:  000207                 rts	pc

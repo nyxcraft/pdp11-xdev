@@ -1,0 +1,10 @@
+; ffltpr.o  --  pdp11-bsd29-das disassembly
+; magic 0407  text 10  data 0  bss 0  (642 symbols)
+
+.text
+pfloat:
+pscien:
+pgen:
+	001420:  062704 000010          add	$10,r4
+	001424:  112723 000077          movb	$77,(r3)+
+	001430:  000207                 rts	pc

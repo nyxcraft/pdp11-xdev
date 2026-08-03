@@ -14,6 +14,13 @@ Scripts assume the merged layout: tools in `../bin/pdp11-*`, era libraries in
 pdp11-bsd29-toolchain tree at import time (see NOTES.md); re-run after any
 as/ld/ar/das change.
 
+- `cross-universe.sh` — the tool x universe matrix: the whole compiler
+  pipeline + binutils built and run in both full universes (bsd28, bsd29),
+  `das` disassembling native binaries from every era (First Edition
+  through 2.11BSD), `apsim` running each era's real `/bin` binaries, and
+  `as`'s historical `--isa`/`--aout` axes.  Wired into `make check`; the
+  era-binary tiers skip cleanly when a distribution tree is absent.
+
 Cross-checks our ported tools against the **original PDP-11 tool binaries** run
 under `apsim`. The native binaries are ground truth: a mismatch means our port
 diverged from the tool that actually built the system.

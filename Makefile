@@ -34,6 +34,7 @@ check: libc
 	@for t in $(TOOLS); do $(MAKE) -C src/$$t check || exit 1; done
 	@$(MAKE) -C src/pdp11-libc check
 	@sh tests/run.sh
+	@sh oracle/cross-universe.sh
 
 clean:
 	@for t in $(TOOLS); do $(MAKE) -C src/$$t clean; done
