@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }} | {{ site_name }}</title>
+  <meta name="description" content="{{ page_summary }}">
+  <link rel="stylesheet" href="{{ assets_href }}">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="{{ home_href }}">
+        <img class="brand__icon" src="{{ logo_href }}" alt="" aria-hidden="true">
+        <span class="brand__name">{{ site_name }}</span>{{ status_badge }}
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+{{ top_nav }}
+        <a href="{{ github_href }}">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="{{ home_href }}">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">{{ page_title }}</span>
+    </nav>
+
+    <!-- Simple full-width page (no left rail, no section viewer) -- used for the docs index. -->
+    <main id="main-content" class="page-main" tabindex="-1">
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>{{ page_title }}</h1>
+          <p class="docs-article__summary">{{ page_summary }}</p>
+        </header>
+        <div class="prose">
+{{ content }}
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© {{ year }} {{ copyright }} · <a href="{{ home_href }}">{{ site_name }}</a> · <a href="{{ license_href }}">License</a></p>
+      {{ attribution }}
+    </footer>
+  </div>
+</body>
+</html>

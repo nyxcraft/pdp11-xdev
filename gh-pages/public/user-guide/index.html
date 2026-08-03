@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>User guide | pdp11-xdev</title>
+  <meta name="description" content="Build the toolchain, pick a universe, compile and run PDP-11 programs, and drive the pipeline by hand.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">User guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-build">1. Build</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-quick-start">2. Quick start</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-the-pipeline-by-hand">3. The pipeline by hand</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-overlays">4. Overlays</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-the-assembler-s-historical-axes">5. The assembler&#x27;s historical axes</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-running-vintage-binaries">6. Running vintage binaries</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-disk-images">7. Disk images</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#8-verifying-against-the-originals">8. Verifying against the originals</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>User guide</h1>
+          <p class="docs-article__summary">Build the toolchain, pick a universe, compile and run PDP-11 programs, and drive the pipeline by hand.</p>
+          <p class="docs-article__source">pdp11-xdev — user guide</p>
+        </header>
+        <div class="prose">
+<p>Build the toolchain, pick a universe, compile and run PDP-11 programs.
+For how it is put together, see <a href="../design/index.html">design.md</a>.</p>
+<hr />
+<h2 id="1-build">1. Build</h2>
+<pre><code>make            # every host tool -&gt; ./bin/pdp11-*
+make libc       # era headers -&gt; ./include/&lt;u&gt;/, target libs -&gt; ./lib/&lt;u&gt;/
+make check      # full gate: per-tool suites + end-to-end pipeline suite
+</code></pre>
+<p>Prerequisites: a host C compiler, <code>make</code>, <code>yacc</code> (byacc/bison), <code>python3</code>.
+Everything is vendored; no network, no external trees.</p>
+<h2 id="2-quick-start">2. Quick start</h2>
+<pre><code>echo 'int main(){ printf(&quot;hello, pdp-11!\n&quot;); return 0; }' &gt; hi.c
+bin/pdp11-cc hi.c -o hi          # default universe: bsd29
+bin/pdp11-apsim ./hi
+</code></pre>
+<p>Choose the era per invocation or per shell:</p>
+<pre><code>bin/pdp11-cc --universe=bsd28 hi.c -o hi     # flag form (also: -u bsd28)
+PDP11_UNIVERSE=bsd28 bin/pdp11-cc hi.c -o hi # environment form
+export PDP11_UNIVERSE=bsd28                  # ...or for the whole session
+</code></pre>
+<p>An unknown or not-yet-buildable universe is rejected with the valid list.
+The universe selects <code>include/&lt;u&gt;/</code> for cpp, <code>lib/&lt;u&gt;/{crt0.o,libc.a,...}</code>
+for cc/ld, so the same command line targets either era.</p>
+<h2 id="3-the-pipeline-by-hand">3. The pipeline by hand</h2>
+<pre><code>B=$PWD/bin
+$B/pdp11-cc  -S prog.c            # stop after codegen -&gt; prog.s
+$B/pdp11-cc  -c prog.c            # compile -&gt; prog.o
+$B/pdp11-cc  -O prog.c -o prog    # with the c2 peephole optimizer
+$B/pdp11-as  -o prog.o prog.s     # assemble 2BSD syntax
+$B/pdp11-ld  -X lib/bsd29/crt0.o prog.o -lc -o prog
+$B/pdp11-nm    prog               # symbols
+$B/pdp11-size  prog               # text/data/bss
+$B/pdp11-das   prog               # disassemble (any era, V1..2.11BSD)
+$B/pdp11-apsim prog               # run it
+</code></pre>
+<p><code>cc</code> accepts K&amp;R / pre-1977 C — the dialect the 2BSD system itself is
+written in (old-style definitions, implicit int).  Compiler passes honor
+<code>$TMPDIR</code> for scratch files.</p>
+<h2 id="4-overlays">4. Overlays</h2>
+<p>For programs past 64 KB of text, the MENLO auto-overlay scheme works end
+to end:</p>
+<pre><code>bin/pdp11-cc -V -c big1.c big2.c ...        # ovas-mode objects
+bin/pdp11-ld -X crt0.o -Z ov1.o ... -Z ov2.o ... -L base.o ... -lovc -o prog
+</code></pre>
+<p>produces a 0430 executable that <code>apsim</code> loads and switches automatically
+(<code>-lovc</code> is built for bsd29).  <code>size</code>/<code>das</code> understand the overlay header;
+the oracle suite links the 2.9 GENERIC kernel this way byte-identically.</p>
+<h2 id="5-the-assembler-s-historical-axes">5. The assembler's historical axes</h2>
+<p>Independent of the universe, <code>as</code> can speak every era's dialect:</p>
+<pre><code>--isa=v1|v4|bsd211|extended      instruction set (1972 .. full DEC line)
+--sys=none|v1|v6                 syscall keyword tables
+--aout=v1|v2|v2+                 object format: 12-byte V1 header with
+                                 bit-stream relocation / 16-byte 0407 /
+                                 2.11 string-table symbols
+--std=v1,...,v7,bsd,newbsd,extended   composable presets
+</code></pre>
+<p>See <a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-as/docs/std.md">../src/pdp11-as/docs/std.md</a>.  <code>-j</code>
+enables the late-hardware mnemonics (MFPT/CIS/FIS...) that the apsim test
+probe uses.</p>
+<h2 id="6-running-vintage-binaries">6. Running vintage binaries</h2>
+<p><code>apsim</code> runs originals, not just our output: 0407/0410/0411/0430 2BSD
+a.outs, and First Edition (0405) images with the 1971 trap conventions
+(the surviving V1 <code>ar</code>, <code>mv</code>, <code>chown</code> run correctly).  Useful knobs:</p>
+<pre><code>APSIM_ROOT=path   guest filesystem root for absolute paths
+-s / -t           syscall / instruction trace
+-p N, APSIM_PID   pin getpid (rogue seeds), APSIM_TIME pins time(2)
+-2                2.9/2.10 stack-argument syscall convention
+</code></pre>
+<p><code>src/pdp11-apsim/root/</code> is a minimal guest root skeleton; <code>mkroot.sh</code>
+populates <code>/tmp</code> and can install rogue.</p>
+<h2 id="7-disk-images">7. Disk images</h2>
+<p><code>bin/pdp11-s5fs</code> manipulates V7/2.8/2.9/2.10 s5fs disk images without
+mounting: <code>mkfs</code>, <code>mktree</code>, <code>tar</code>, <code>restore</code>, <code>dump</code>, <code>fsck</code>, <code>ls/cat/ get/put/shell</code>, <code>manifest</code>, <code>verify</code>, and VHD wrapping for SIMH.  See
+<code>src/pdp11-s5fs/README.md</code>.</p>
+<h2 id="8-verifying-against-the-originals">8. Verifying against the originals</h2>
+<p>The opt-in oracle suites compare the toolchain to the native 1981/1983
+binaries executed under apsim — see <a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/oracle/README.md">../oracle/README.md</a>
+for fixture setup and the full battery (compiler corpus, tree-wide as
+sweeps, ar/ranlib byte-matching, ld/kernel links, das round-trips,
+self-hosting).</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

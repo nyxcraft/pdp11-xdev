@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-ar | pdp11-xdev</title>
+  <meta name="description" content="The archiver — authentic 2BSD ar, producing archives byte-identical in layout to what the native tool wrote.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-ar</span>
+    </nav>
+
+    <!-- Simple full-width page (no left rail, no section viewer) -- used for the docs index. -->
+    <main id="main-content" class="page-main" tabindex="-1">
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-ar</h1>
+          <p class="docs-article__summary">The archiver — authentic 2BSD ar, producing archives byte-identical in layout to what the native tool wrote.</p>
+        </header>
+        <div class="prose">
+<p>The archiver — authentic 2BSD <code>ar</code>, producing archives byte-identical in
+layout to what the native tool wrote.</p>
+<pre><code>pdp11-ar key [posname] afile name ...
+   keys: d r q t p m x  + v c u a b i l
+</code></pre>
+<ul>
+<li><strong>The on-disk format is the point.</strong>  The V7 26-byte member header and
+0177545 magic assume 16-bit ints; here they are pinned to packed fixed
+widths, and <code>ar_date</code>/<code>ar_size</code> go through the <code>PDPL()</code> middle-endian
+swap — PDP-11 longs are stored high-word-first.</li>
+<li><strong>Oracle-proven:</strong> rebuilding every archive in the 2.9BSD tree matches
+the native <code>ar</code> (run under apsim) 39/39, zero diffs.</li>
+<li><strong>Member order is honoured, not normalised</strong> — <code>ld</code> lays out pulled
+members in archive order, so order is load-bearing for byte-identical
+linked output (see the libc Makefiles).</li>
+</ul>
+<h2 id="documentation">Documentation</h2>
+<ul>
+<li><a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-ar/docs/porting.md">docs/porting.md</a> — the header-layout porting guide.</li>
+</ul>
+<h2 id="build-and-test">Build and test</h2>
+<pre><code>make          # builds ../../bin/pdp11-ar
+make check    # covered by tests/ld/ranlib.sh at the repo root and
+              # the lib-sweep oracle
+</code></pre>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+</body>
+</html>

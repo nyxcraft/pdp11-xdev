@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-ranlib | pdp11-xdev</title>
+  <meta name="description" content="Builds the __.SYMDEF table of contents in an archive, so ld resolves members regardless of order — the canonical V7/2.9 ranlib paired with our ar.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-ranlib</span>
+    </nav>
+
+    <!-- Simple full-width page (no left rail, no section viewer) -- used for the docs index. -->
+    <main id="main-content" class="page-main" tabindex="-1">
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-ranlib</h1>
+          <p class="docs-article__summary">Builds the __.SYMDEF table of contents in an archive, so ld resolves members regardless of order — the canonical V7/2.9 ranlib paired with our ar.</p>
+        </header>
+        <div class="prose">
+<p>Builds the <code>__.SYMDEF</code> table of contents in an archive, so <code>ld</code> resolves
+members regardless of order — the canonical V7/2.9 ranlib paired with our
+<code>ar</code>.</p>
+<pre><code>pdp11-ranlib archive ...
+</code></pre>
+<ul>
+<li><strong><code>__.SYMDEF</code> content matches the native ranlib</strong> (run end-to-end under
+apsim) on all 26 ranlib'd libraries of the 2.9 tree — only the
+embedded timestamp is nondeterministic.</li>
+<li><strong>Middle-endian offsets:</strong> the symbol-definition file's member offsets
+are PDP-11 longs, written through the same <code>PDPL()</code> swap <code>ar</code> and <code>ld</code>
+use.</li>
+</ul>
+<h2 id="documentation">Documentation</h2>
+<ul>
+<li><a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-ranlib/docs/porting.md">docs/porting.md</a> — porting notes.</li>
+</ul>
+<h2 id="build-and-test">Build and test</h2>
+<pre><code>make          # builds ../../bin/pdp11-ranlib
+make check    # covered by tests/ld/ranlib.sh and the lib-sweep oracle
+</code></pre>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+</body>
+</html>

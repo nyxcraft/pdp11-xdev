@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-dcc | pdp11-xdev</title>
+  <meta name="description" content="The decompile driver: disassembles a compiled object (or whole archive / executable) back to per-object assembler files and recompiles them — the round-trip harness behind the das corpus results.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-dcc</span>
+    </nav>
+
+    <!-- Simple full-width page (no left rail, no section viewer) -- used for the docs index. -->
+    <main id="main-content" class="page-main" tabindex="-1">
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-dcc</h1>
+          <p class="docs-article__summary">The decompile driver: disassembles a compiled object (or whole archive / executable) back to per-object assembler files and recompiles them — the round-trip harness behind the das corpus results.</p>
+        </header>
+        <div class="prose">
+<p>The decompile driver: disassembles a compiled object (or whole archive /
+executable) back to per-object assembler files and recompiles them —
+the round-trip harness behind the das corpus results.</p>
+<pre><code>pdp11-dcc file.{o,s,a} | a.out
+</code></pre>
+<ul>
+<li><strong>Splits multi-object inputs</strong> into one <code>.s</code> per member, handles
+stripped binaries, and keeps an incremental symbol map across runs.</li>
+<li><strong>Finds its tools like cc does:</strong> runs the sibling <code>pdp11-das</code> from
+its own directory, falling back to <code>$PATH</code>.</li>
+</ul>
+<h2 id="build-and-test">Build and test</h2>
+<pre><code>make          # builds ../../bin/pdp11-dcc
+make check    # exercised by the das/dcc oracle sweeps
+</code></pre>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+</body>
+</html>

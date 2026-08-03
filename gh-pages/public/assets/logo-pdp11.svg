@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="pdp11-xdev">
+  <title>pdp11-xdev</title>
+  <rect x="2" y="6" width="44" height="36" rx="4" fill="#150e05" stroke="#3a2c1a" stroke-width="2"/>
+  <!-- front-panel address lights: the PDP-11 console row -->
+  <g fill="#ffb64d">
+    <circle cx="9"  cy="14" r="1.6"/>
+    <circle cx="15" cy="14" r="1.6" fill="#ffcc80"/>
+    <circle cx="21" cy="14" r="1.6"/>
+    <circle cx="27" cy="14" r="1.6" fill="#241a0b" stroke="#ffb64d" stroke-width="0.8"/>
+    <circle cx="33" cy="14" r="1.6" fill="#ffcc80"/>
+    <circle cx="39" cy="14" r="1.6" fill="#241a0b" stroke="#ffb64d" stroke-width="0.8"/>
+  </g>
+  <!-- data bus feeding the two passes: assemble, execute -->
+  <path d="M8 26h10l4-4h18" fill="none" stroke="#ffb64d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M8 34h10l4 4h18" fill="none" stroke="#ffcc80" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="8" cy="30" r="3" fill="#7dd3ff"/>
+</svg>

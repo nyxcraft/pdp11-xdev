@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Porting nm, size, strip | pdp11-xdev</title>
+  <meta name="description" content="The three single-file binary utilities — the easiest ports, and the pattern the rest follow.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">Porting nm, size, strip</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#build">Build</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#porting-fixes">Porting fixes</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#a-note-on-nm-and-the-gnu-oracle">A note on `nm` and the GNU oracle</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#verification">Verification</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#deferred">Deferred</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>Porting nm, size, strip</h1>
+          <p class="docs-article__summary">The three single-file binary utilities — the easiest ports, and the pattern the rest follow.</p>
+          <p class="docs-article__source">Porting guide: nm, size, strip</p>
+        </header>
+        <div class="prose">
+<p>The three single-file binary utilities. These are the easiest ports — each
+is one self-contained C file that reads (and, for <code>strip</code>, rewrites) a
+PDP-11 a.out using the <a href="../cross-headers/index.html"><code>cross/</code> headers</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Source</th>
+<th>Function</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nm</code></td>
+<td><code>nm/nm.c</code></td>
+<td>list the symbol table</td>
+</tr>
+<tr>
+<td><code>size</code></td>
+<td><code>size/size.c</code></td>
+<td>report text/data/bss sizes</td>
+</tr>
+<tr>
+<td><code>strip</code></td>
+<td><code>strip/strip.c</code></td>
+<td>remove the symbol table and relocation</td>
+</tr>
+</tbody>
+</table>
+<h2 id="build">Build</h2>
+<pre><code class="language-make">${HOSTCC} ${O} ${COMPAT} -Icross -o ${BIN}/${PREFIX}-nm    nm/nm.c
+${HOSTCC} ${O} ${COMPAT} -Icross -o ${BIN}/${PREFIX}-size  size/size.c
+${HOSTCC} ${O} ${COMPAT} -Icross -o ${BIN}/${PREFIX}-strip strip/strip.c
+</code></pre>
+<p><code>-Icross</code> makes them use the fixed-width on-disk structs; the K&amp;R warning
+suppressions in <code>COMPAT</code> handle the 1981 source style.</p>
+<h2 id="porting-fixes">Porting fixes</h2>
+<p>These tools are recent enough (not the pre-1977 compiler) that the only
+real change is one portability bug in <code>strip</code>:</p>
+<ul>
+<li>
+<p><strong><code>mktemp</code> on a string literal.</strong> <code>strip</code> called
+<code>mktemp(&quot;/tmp/sXXXXX&quot;)</code>, and <code>mktemp</code> rewrites its argument in place.
+On the PDP-11, program text was writable, so this worked. On Linux a
+string literal lives in read-only <code>.rodata</code> and the write segfaults.
+Fix: give it a writable buffer. Modern <code>mktemp</code> also requires <strong>six</strong>
+trailing <code>X</code>s (the original used five):</p>
+<pre><code class="language-c">char tnamebuf[] = &quot;/tmp/sXXXXXX&quot;;   /* writable, 6 X's */
+...
+tname = mktemp(tnamebuf);
+</code></pre>
+</li>
+</ul>
+<p><code>nm</code> and <code>size</code> needed no source changes beyond the <code>cross/</code> headers.</p>
+<h2 id="a-note-on-nm-and-the-gnu-oracle">A note on <code>nm</code> and the GNU oracle</h2>
+<p><code>nm</code> decodes 2.8BSD-format symbol tables that the modern GNU <code>pdp11-aout</code>
+binutils cannot read (it reports &quot;no symbols&quot; on some old objects). That is
+expected: our <code>nm</code> is the authentic 2.8BSD tool, so where the two disagree
+on an old object, ours is the reference. They do agree on objects GNU can
+read, and <code>size</code> matches the GNU oracle exactly.</p>
+<h2 id="verification">Verification</h2>
+<p><code>tests/binutils/size_nm_strip.sh</code> runs all three against a committed real
+2.8BSD kernel object, <code>tests/fixtures/dkleave.o</code>:</p>
+<ul>
+<li><code>size</code> reports the exact segment sizes (cross-checked against
+<code>pdp11-aout-size</code>).</li>
+<li><code>nm</code> decodes the 16-entry symbol table and prints values in 6-digit
+octal.</li>
+<li><code>strip</code> round-trips: the symbol table is gone and the no-relocation flag
+is set afterward.</li>
+</ul>
+<h2 id="deferred">Deferred</h2>
+<p><code>ar</code> (the archive manager) and <code>ld</code> (the link editor) are <strong>not</strong> simple
+ports and are documented/handled separately:</p>
+<ul>
+<li><code>ar</code> is the archaic V7 binary-archive format (inline struct, raw inode
+<code>stbuf</code>); it is only needed to build <code>libc.a</code> and is folded into the libc
+stage.</li>
+<li><code>ld</code> is a major port: its whole I/O model treats <code>int</code> arrays as buffers
+of 16-bit PDP-11 words, so every machine-word <code>int</code> needs converting. It
+is sequenced after the assembler so it can be verified end to end.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

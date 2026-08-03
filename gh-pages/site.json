@@ -1,0 +1,114 @@
+{
+  "site_name": "pdp11-xdev",
+  "site_tagline": "A host-side, multi-universe PDP-11 cross-development toolchain.",
+  "site_description": "Build PDP-11 programs on a modern host — preprocess, compile, optimize, assemble, link — into real 2BSD a.out binaries, and run them unmodified under a user-mode PDP-11 UNIX simulator, faithfully across every era from the First Edition and Sixth and Seventh Editions through 2.11BSD, from one set of tools.",
+  "github_href": "https://github.com/nyxcraft/pdp11-xdev",
+  "branch": "main",
+  "copyright": "Nicholas J. Kisseberth",
+  "status": "alpha",
+  "attribution": [
+    "Software Architecture, Design & Engineering by Nicholas J. Kisseberth."
+  ],
+
+  "groups": [
+    { "id": "compiler-chain", "name": "Compiler chain" },
+    { "id": "c-library",      "name": "C library" },
+    { "id": "object-tools",   "name": "Object inspection" },
+    { "id": "object-editing", "name": "Object editing" },
+    { "id": "archives",       "name": "Archives" },
+    { "id": "media",          "name": "Filesystem images" },
+    { "id": "execution",      "name": "Execution" }
+  ],
+
+  "tools": [
+    { "id": "cc",  "group": "compiler-chain", "name": "pdp11-cc",
+      "tagline": "The compiler driver",
+      "blurb": "Runs cpp → c0 → c1 [→ c2 with -O] → as → ld in order and propagates the chosen universe to each pass. Ritchie's own cc, made cross and universe-aware." },
+    { "id": "cpp", "group": "compiler-chain", "name": "pdp11-cpp",
+      "tagline": "The C preprocessor",
+      "blurb": "The pristine 2.9BSD cpp (Reiser lineage) — the one the PDP-11 cc was built against, and where an era's #ifdefs are dated." },
+    { "id": "c0",  "group": "compiler-chain", "name": "pdp11-c0",
+      "tagline": "cc pass 1 — the parser",
+      "blurb": "Ritchie cc's front end: reads preprocessed C and writes the intermediate form the code generator consumes." },
+    { "id": "c1",  "group": "compiler-chain", "name": "pdp11-c1",
+      "tagline": "cc pass 2 — code generator",
+      "blurb": "Ritchie cc's PDP-11 code generator: turns c0's intermediate form into assembly." },
+    { "id": "c2",  "group": "compiler-chain", "name": "pdp11-c2",
+      "tagline": "The peephole optimizer",
+      "blurb": "Ritchie cc's object-code improver, run over c1's assembly under -O." },
+    { "id": "as",  "group": "compiler-chain", "name": "pdp11-as",
+      "tagline": "The assembler",
+      "blurb": "A C reimplementation of the 2BSD as, with historical --isa and --aout axes. It owns the operand tables das and apsim read, so all three agree about the machine." },
+    { "id": "ld",  "group": "compiler-chain", "name": "pdp11-ld",
+      "tagline": "The link editor",
+      "blurb": "The authentic 2.9BSD ld on an LP64 host: resolves, lays out and relocates into the era's native a.out — including the 0430/0431 auto-overlay formats." },
+    { "id": "xstr", "group": "compiler-chain", "name": "pdp11-xstr",
+      "tagline": "Extract string literals",
+      "blurb": "Bill Joy's 1978 xstr: pulls a C program's string literals into one shared strings file and hashes them." },
+
+    { "id": "libc", "group": "c-library", "name": "pdp11-libc",
+      "tagline": "Per-universe C libraries",
+      "blurb": "The target C library, crt0, curses and termlib — built per universe with the cross tools themselves, so each era links against its own libc." },
+
+    { "id": "nm",   "group": "object-tools", "name": "pdp11-nm",
+      "tagline": "List symbols",
+      "blurb": "The symbol table of a.out objects, executables and archives." },
+    { "id": "size", "group": "object-tools", "name": "pdp11-size",
+      "tagline": "Segment sizes",
+      "blurb": "Text, data and bss sizes, and their sum, of a.out files." },
+    { "id": "das",  "group": "object-tools", "name": "pdp11-das",
+      "tagline": "The disassembler",
+      "blurb": "The inverse of as, covering every era the assembler does; it splits a symboled a.out into per-object listings and goes linear on a stripped one." },
+    { "id": "dcc",  "group": "object-tools", "name": "pdp11-dcc",
+      "tagline": "The decompile driver",
+      "blurb": "Disassembles a compiled object — or a whole archive or executable — back toward source: das paired with the compiler's own knowledge." },
+
+    { "id": "strip", "group": "object-editing", "name": "pdp11-strip",
+      "tagline": "Remove symbols",
+      "blurb": "Removes the symbol table and relocation from an a.out — the 2.9BSD strip." },
+
+    { "id": "ar",     "group": "archives", "name": "pdp11-ar",
+      "tagline": "The archiver",
+      "blurb": "Authentic 2BSD ar, producing archives byte-identical to the originals." },
+    { "id": "ranlib", "group": "archives", "name": "pdp11-ranlib",
+      "tagline": "The archive index",
+      "blurb": "Builds the __.SYMDEF table of contents in an archive, so ld resolves it in one pass." },
+
+    { "id": "s5fs", "group": "media", "name": "pdp11-s5fs",
+      "tagline": "Disk-image tools",
+      "blurb": "A single host multi-tool for building and inspecting the traditional PDP-11 (2.9BSD-family) filesystem images." },
+
+    { "id": "apsim", "group": "execution", "name": "pdp11-apsim",
+      "tagline": "The PDP-11 UNIX simulator",
+      "blurb": "Interprets PDP-11 instructions and translates the guest's sys traps into host ones, in one process. Runs unmodified binaries across the whole lineage — First Edition through 2.11BSD — with auto-overlays, job control, sockets, a bit-exact FP11 softfloat and a real adb debug channel." }
+  ],
+
+  "docs": [
+    { "slug": "overview", "title": "Overview", "source": "README.md", "template": "page",
+      "featured": true,
+      "summary": "What the toolchain is, the one-idea universe model, the tools by role, and how to build and run." },
+    { "slug": "design", "title": "Design", "source": "docs/design.md", "template": "doc",
+      "featured": true,
+      "summary": "How the merged toolchain is put together: the universe mechanism, the shared a.out object model, the pipeline, and faithfulness as the correctness standard." },
+    { "slug": "user-guide", "title": "User guide", "source": "docs/user-guide.md", "template": "doc",
+      "featured": true,
+      "summary": "Build the toolchain, pick a universe, compile and run PDP-11 programs, and drive the pipeline by hand." },
+    { "slug": "provenance", "title": "Provenance", "source": "NOTES.md", "template": "page",
+      "featured": true,
+      "summary": "The merge of three sibling projects into one: where each tool came from, which version was chosen as the best standalone one, and why." },
+
+    { "slug": "apsim-parity", "title": "apsim: syscall parity", "source": "src/pdp11-apsim/docs/syscalls/parity.md",
+      "template": "page", "featured": true,
+      "summary": "A category-by-category comparison of pdp11-apsim's system-call coverage against the reference vax11-apsim, and the calls both deliberately refuse." },
+    { "slug": "apsim-syscalls", "title": "apsim: syscall numbers", "source": "src/pdp11-apsim/docs/syscalls/README.md",
+      "template": "page",
+      "summary": "How apsim stands in for the kernel at the sys trap boundary, and the per-era syscall-number tables it serves." },
+
+    { "slug": "binutils-porting", "title": "Porting nm, size, strip", "source": "docs/binutils-porting.md",
+      "summary": "The three single-file binary utilities — the easiest ports, and the pattern the rest follow." },
+    { "slug": "cross-headers", "title": "The cross/ headers", "source": "docs/cross-headers.md",
+      "summary": "The headers that let the host tools read and write PDP-11 a.out objects and archives byte for byte on an LP64 machine." },
+    { "slug": "bin-bytematch", "title": "Byte-matching the shipped /bin", "source": "docs/bin-bytematch.md",
+      "summary": "Whether the toolchain reproduces the standard 2.9BSD command binaries (nm, strip, ar) bit-for-bit, and what it takes to." }
+  ]
+}

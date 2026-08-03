@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-c0 | pdp11-xdev</title>
+  <meta name="description" content="Ritchie cc pass 1: the parser / front end. Reads preprocessed C, writes the intermediate expression-tree stream that c1 turns into PDP-11 code.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-c0</span>
+    </nav>
+
+    <!-- Simple full-width page (no left rail, no section viewer) -- used for the docs index. -->
+    <main id="main-content" class="page-main" tabindex="-1">
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-c0</h1>
+          <p class="docs-article__summary">Ritchie cc pass 1: the parser / front end. Reads preprocessed C, writes the intermediate expression-tree stream that c1 turns into PDP-11 code.</p>
+        </header>
+        <div class="prose">
+<p>Ritchie cc pass 1: the parser / front end.  Reads preprocessed C, writes
+the intermediate expression-tree stream that c1 turns into PDP-11 code.</p>
+<pre><code>pdp11-c0 source.i tmp1 tmp2 [-P] [-V]
+</code></pre>
+<ul>
+<li><strong>This is the genuine 2.9BSD <code>c0</code></strong> (near byte-identical upstream to
+2.8's), carrying the LP64 fixes the 2.8 port lacked: <code>cmst[]</code> moved out
+of <code>tree()</code>'s dead stack frame (the 2.8 port segfaults on the first
+large function), a <code>filename[]</code> overflow guard for long host paths, and
+correct subsp/strp carry on SEQNC nodes.</li>
+<li><strong>-P</strong> emits profiling counters (<code>cc -p</code>); <strong>-V</strong> compiles for text
+overlays (<code>cc -V</code>).</li>
+<li><strong>16-bit target semantics on a 64-bit host:</strong> the target's <code>int</code> stays
+2 bytes; only the compiler's own word assumptions were widened.</li>
+</ul>
+<h2 id="documentation">Documentation</h2>
+<ul>
+<li><a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-c0/docs/porting.md">docs/porting.md</a> — the porting guide: the anonymous-
+union tree nodes, pointer-in-int, and the stack-frame story.</li>
+</ul>
+<h2 id="build-and-test">Build and test</h2>
+<pre><code>make          # builds ../../bin/pdp11-c0
+make check    # covered by tests/c0/ and the cc end-to-end suite at
+              # the repo root, plus the native-compiler oracle
+              # (oracle/run.sh) against the 1981 passes
+</code></pre>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ site_name }} | PDP-11 cross-development tools</title>
+  <meta name="description" content="{{ site_description }}">
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body class="site-home">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header">
+      <a class="brand" href="index.html">
+        <img class="brand__icon" src="{{ logo_href }}" alt="" aria-hidden="true">
+        <span class="brand__name">{{ site_name }}</span>{{ status_badge }}
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+{{ top_nav }}
+        <a href="{{ github_href }}">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="main-content" tabindex="-1">
+      <section class="hero">
+        <div class="hero__copy">
+          <h1>Build for every PDP-11 UNIX era, and run what you build.</h1>
+          {{ attribution_hero }}
+          <p class="hero__lede">{{ site_description }}</p>
+          <div class="hero__actions">
+            <a class="button button--primary" href="{{ primary_href }}">Start here</a>
+            <a class="button" href="{{ secondary_href }}">How it works</a>
+          </div>
+        </div>
+        <div class="hero__visual" role="img" aria-label="Source runs through the preprocessor, compiler, optimizer, assembler and linker into a PDP-11 a.out executable in the target era's native format, which the simulator runs. Choosing a universe steers the whole pipeline.">
+          <div class="flow">
+            <div class="flow__node flow__node--hub"><span>choose a universe</span><strong>V6 · V7 · 2.11BSD · …</strong></div>
+            <div class="flow__arrow" aria-hidden="true">↓</div>
+            <div class="flow__fan">
+              <span>cpp</span><span>c0</span><span>c1</span><span>c2</span><span>as</span><span>ld</span>
+            </div>
+            <div class="flow__arrow" aria-hidden="true">↓</div>
+            <div class="flow__node"><span>native a.out (0407–0431)</span><strong>run under pdp11-apsim</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="feature-strip" aria-label="Core ideas">
+        <article>
+          <h2>One toolchain, every era</h2>
+          <p>The same tools build for the First Edition through 2.11BSD. A universe — chosen with <code>--universe</code> or <code>PDP11_UNIVERSE</code> — selects that era's headers, C library and system-call personality; the objects and archives stay one a.out family, so everything links together and the simulator runs the result.</p>
+        </article>
+        <article>
+          <h2>One source of truth for the ISA</h2>
+          <p>The assembler's own operand tables define every instruction's operand count, access class and data type. The disassembler and the simulator read the same tables, so all three agree about the machine by construction rather than by care.</p>
+        </article>
+        <article>
+          <h2>No host floating point</h2>
+          <p>The PDP-11 FP11 (and the FIS instructions) are evaluated bit-exactly in software. Results do not depend on the host FPU, so the same program produces the same bits on every machine that can build the tools.</p>
+        </article>
+      </section>
+
+      <section class="docs-panel">
+        <div class="section-heading">
+          <p class="eyebrow">The tools</p>
+          <h2>A full pipeline, plus the pieces around it.</h2>
+        </div>
+        <div class="tool-catalog">
+{{ tool_groups }}
+        </div>
+      </section>
+
+      <section class="docs-panel">
+        <div class="section-heading">
+          <p class="eyebrow">Documentation</p>
+          <h2>Start here.</h2>
+        </div>
+        <div class="doc-grid">
+{{ docs_cards }}
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>© {{ year }} {{ copyright }} · <a href="{{ home_href }}">{{ site_name }}</a> · <a href="{{ license_href }}">License</a></p>
+      {{ attribution }}
+    </footer>
+  </div>
+</body>
+</html>

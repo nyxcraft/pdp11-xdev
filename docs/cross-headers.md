@@ -73,11 +73,11 @@ PDP-11 layout.
 Built into the binutils tests. `size` on a real 2.8BSD object matches the
 GNU `pdp11-aout-size` oracle exactly, which only works if the `exec` header
 is read at the right widths; `nm` decoding a 16-entry symbol table confirms
-`nlist` is 12 bytes. See [binutils.md](binutils.md).
+`nlist` is 12 bytes. See [binutils-porting.md](binutils-porting.md).
 
 ## Relationship to the VAX project
 
 The sibling `vax-bsd42-toolchain` uses the same `cross/` technique, but for
 ILP32 VAX (`long`→`int32_t`). The PDP-11 gulf is wider (16-bit target), so
 the fixed-width treatment is needed more pervasively — not just in `cross/`
-but throughout the compiler passes (see [c1.md](c1.md)).
+but throughout the compiler passes (see [the c1 code generator](../src/pdp11-c1/README.md)).

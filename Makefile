@@ -36,10 +36,16 @@ check: libc
 	@sh tests/run.sh
 	@sh oracle/cross-universe.sh
 
+# Rebuild the static documentation site into gh-pages/public/ (committed) and
+# fail on any broken internal link.  Needs markdown-it-py: pip install markdown-it-py
+docs:
+	@python3 gh-pages/build_site.py
+	@python3 gh-pages/check_links.py
+
 clean:
 	@for t in $(TOOLS); do $(MAKE) -C src/$$t clean; done
 	@$(MAKE) -C src/pdp11-libc clean
 	@$(MAKE) -C src/common clean
 	rm -rf bin include lib
 
-.PHONY: all libc headers check clean $(TOOLS)
+.PHONY: all libc headers check docs clean $(TOOLS)

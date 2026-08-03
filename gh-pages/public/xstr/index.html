@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-xstr | pdp11-xdev</title>
+  <meta name="description" content="Bill Joy&#x27;s 1978 xstr: extracts and hashes the string literals of a C program into a shared strings file, replacing them with indexes — the classic text-space saver for big BSD programs.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-xstr</span>
+    </nav>
+
+    <!-- Simple full-width page (no left rail, no section viewer) -- used for the docs index. -->
+    <main id="main-content" class="page-main" tabindex="-1">
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-xstr</h1>
+          <p class="docs-article__summary">Bill Joy&#x27;s 1978 xstr: extracts and hashes the string literals of a C program into a shared strings file, replacing them with indexes — the classic text-space saver for big BSD programs.</p>
+        </header>
+        <div class="prose">
+<p>Bill Joy's 1978 <code>xstr</code>: extracts and hashes the string literals of a C
+program into a shared <code>strings</code> file, replacing them with indexes — the
+classic text-space saver for big BSD programs.</p>
+<pre><code>pdp11-xstr [ -v ] [ -c ] [ - ] [ name ... ]
+</code></pre>
+<ul>
+<li><strong>Needed for byte-fidelity:</strong> 2.9's <code>/usr/70/rogue</code> was built through
+xstr, so reproducing it exactly requires reproducing the string pool
+exactly — which this port does (see the rogue byte-identity result in
+NOTES.md).</li>
+<li><code>-c</code> extracts without the shared-pool merge step, <code>-</code> reads standard
+input, <code>-v</code> narrates; output goes to <code>x.c</code> and the accumulated
+<code>strings</code> file, as the original did.</li>
+</ul>
+<h2 id="build-and-test">Build and test</h2>
+<pre><code>make          # builds ../../bin/pdp11-xstr
+make check    # exercised via the rogue overlay reproduction
+</code></pre>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+</body>
+</html>

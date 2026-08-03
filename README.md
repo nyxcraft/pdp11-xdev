@@ -1,9 +1,12 @@
 # pdp11-xdev
 
 [![license: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg?style=flat-square)](LICENSE)
+[![docs](https://img.shields.io/badge/docs-nyxcraft.github.io-ffb64d.svg?style=flat-square)](https://nyxcraft.github.io/pdp11-xdev/)
 [![host: LP64 Linux](https://img.shields.io/badge/host-LP64%20Linux-informational.svg?style=flat-square)](#)
 [![target: PDP-11 a.out](https://img.shields.io/badge/target-PDP--11%20a.out-orange.svg?style=flat-square)](#)
 [![universes: 1e → 2.11BSD](https://img.shields.io/badge/universes-First%20Edition%20%E2%86%92%202.11BSD-8a2be2.svg?style=flat-square)](#the-one-idea-universes)
+
+📖 **Documentation site: <https://nyxcraft.github.io/pdp11-xdev/>**
 
 A host-side, **multi-universe PDP-11 cross-development toolchain**.  On a
 modern LP64 Linux host it builds PDP-11 programs — preprocess, compile,

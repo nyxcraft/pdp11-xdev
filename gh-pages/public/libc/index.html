@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-libc | pdp11-xdev</title>
+  <meta name="description" content="The per-universe target C libraries — not a host tool. Each &quot;full&quot; universe carries its era&#x27;s authentic sources and build recipe, compiled and assembled with the cross tools themselves:">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-libc</span>
+    </nav>
+
+    <!-- Simple full-width page (no left rail, no section viewer) -- used for the docs index. -->
+    <main id="main-content" class="page-main" tabindex="-1">
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-libc</h1>
+          <p class="docs-article__summary">The per-universe target C libraries — not a host tool. Each &quot;full&quot; universe carries its era&#x27;s authentic sources and build recipe, compiled and assembled with the cross tools themselves:</p>
+        </header>
+        <div class="prose">
+<p>The per-universe target C libraries — not a host tool.  Each &quot;full&quot;
+universe carries its era's authentic sources and build recipe, compiled
+and assembled with the cross tools themselves:</p>
+<pre><code>make            # (repo root: `make libc`) both universes
+make -C bsd29   # headers -&gt; include/bsd29/, libs -&gt; lib/bsd29/
+make -C bsd28   # headers -&gt; include/bsd28/, libs -&gt; lib/bsd28/
+</code></pre>
+<p>Products per universe: <code>crt0.o</code>, <code>libc.a</code>, <code>libcurses.a</code>, <code>libtermlib.a</code>
+(+ <code>libtermcap.a</code> and the profiling crt0 variants where the era had them).</p>
+<ul>
+<li><strong>The member order is load-bearing.</strong>  <code>ld</code> lays out pulled archive
+members in archive order, so each recipe archives in the exact order
+the era's <code>mklib</code> used — that is what makes linked output byte-match
+native binaries.</li>
+<li><strong>bsd29 also builds the era-exact library:</strong> <code>libc-era.a</code>/<code>crt0-era.o</code>
+reassemble the syscall stubs against the reconstructed Feb–Mar 1983
+<code>sys-era.s</code>, reproducing the <em>shipped</em> <code>/lib/libc.a</code> stubs
+byte-for-byte (166/181 members) — link <code>-lc-era</code> to reproduce a 1983
+binary, <code>-lc</code> for the current-source library.</li>
+<li><strong>Both eras default to the non-FPU build</strong> (<code>NOFP=1</code>, the <code>fmklib</code>
+flavor with the fpsim interpreter archived in), exactly as the shipped
+systems were; <code>make NOFP=0</code> builds the FP11 <code>mklib</code> flavor.</li>
+<li><strong>Old-format archives where the era used them:</strong> the 2.9 curses/termlib
+archives are written by <code>mkcursesa.py</code>/<code>mktermliba.py</code> in the pre-4BSD
+0xff65 format with middle-endian headers, byte-identical to the shipped
+libraries.</li>
+</ul>
+<h2 id="documentation">Documentation</h2>
+<ul>
+<li><a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-libc/docs/porting.md">docs/porting.md</a> — the libc porting guide inherited
+from the source project.</li>
+</ul>
+<h2 id="build-and-test">Build and test</h2>
+<pre><code>make libc     # from the repo root (needs the tools built first)
+make check    # covered by tests/cc/libc.sh and the [bsd28] universe
+              # re-run in the end-to-end suite
+</code></pre>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+</body>
+</html>

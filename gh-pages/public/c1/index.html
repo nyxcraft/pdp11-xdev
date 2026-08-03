@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-c1 | pdp11-xdev</title>
+  <meta name="description" content="Ritchie cc pass 2: the PDP-11 code generator. Reads c0&#x27;s intermediate stream and emits 2BSD assembler for as.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-c1</span>
+    </nav>
+
+    <!-- Simple full-width page (no left rail, no section viewer) -- used for the docs index. -->
+    <main id="main-content" class="page-main" tabindex="-1">
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-c1</h1>
+          <p class="docs-article__summary">Ritchie cc pass 2: the PDP-11 code generator. Reads c0&#x27;s intermediate stream and emits 2BSD assembler for as.</p>
+        </header>
+        <div class="prose">
+<p>Ritchie cc pass 2: the PDP-11 code generator.  Reads c0's intermediate
+stream and emits 2BSD assembler for <code>as</code>.</p>
+<pre><code>pdp11-c1 tmp1 tmp2 out.s [-V]
+</code></pre>
+<ul>
+<li><strong>The codegen table is authored, not hand-written.</strong>  <code>table.s</code> is the
+authentic template source; the build runs it through <code>cvopt</code> (the 2BSD
+table compiler) and then <code>mktab</code> (a host helper) so the table compiles
+into the host binary instead of being assembled for the PDP-11.</li>
+<li><strong>Codegen-correctness fixes over the 2.8 port:</strong> <code>geti()</code> sign-extends
+to 16 bits (negative <code>switch</code> cases had degraded to compare chains),
+long-constant halves are masked before the int-fold test (<code>-1L</code> now
+folds), and negative auto offsets print as 16-bit octal, matching the
+native listings.</li>
+<li><strong>DEC floating point, not host floating point.</strong>  FP constants convert
+through <code>softfp.c</code> into exact 56-bit D-format — the last byte matches
+the 1981 compiler.</li>
+</ul>
+<h2 id="documentation">Documentation</h2>
+<ul>
+<li><a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-c1/docs/porting.md">docs/porting.md</a> — the porting guide, including the
+cvopt/mktab table pipeline.</li>
+</ul>
+<h2 id="build-and-test">Build and test</h2>
+<pre><code>make          # builds ../../bin/pdp11-c1 (regenerates table.c)
+make check    # covered by tests/c1/codegen.sh and the oracle corpus
+              # (oracle/run.sh: our c1 vs the 1981 c1 under apsim)
+</code></pre>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+</body>
+</html>
