@@ -29,6 +29,7 @@
 #include <time.h>
 #include <math.h>
 #include <dirent.h>
+#include <stdint.h>
 #include "universe.h"
 
 /* ---- universes / kernel personalities --------------------------------
@@ -486,19 +487,24 @@ static void put_stat_v6(int sb, struct stat *hs){
 	stl(sb+28,stat_time(hs->st_atime));
 	stl(sb+32,stat_time(hs->st_mtime));
 }
-/* 2.10/2.11: the 4.3-shape stat, 58 bytes on the PDP-11 -- 7 shorts, then
- * size, three (time,spare) pairs, blksize, blocks, flags, spare[3]. */
+/* 2.10/2.11: the 4.3-shape stat, 52 BYTES on the PDP-11.  The st_spare1-3
+ * fields between the times are `int' = 2 bytes here (they are 4 on the
+ * VAX -- assuming the VAX width overruns the guest's 52-byte buffer by 6
+ * and smashes the caller's adjacent frame locals: ls's DIR *dirp,
+ * _flsbuf's state, date's frame chain.  That overflow was this
+ * emulator's hardest bug; measure, don't assume).  Tail: 2.11 has
+ * u_short st_flags + spare[3], 2.10 long spare4[2] -- same 8 bytes. */
 static void put_stat_211(int sb, struct stat *hs){
 	st2(sb+0,hs->st_dev); st2(sb+2,hs->st_ino&0xffff); st2(sb+4,hs->st_mode);
 	st2(sb+6,hs->st_nlink); st2(sb+8,hs->st_uid); st2(sb+10,hs->st_gid);
 	st2(sb+12,hs->st_rdev);
 	stl(sb+14,(long)(hs->st_size>0xffffff?0xffffff:hs->st_size));
-	stl(sb+18,stat_time(hs->st_atime)); stl(sb+22,0);
-	stl(sb+26,stat_time(hs->st_mtime)); stl(sb+30,0);
-	stl(sb+34,stat_time(hs->st_ctime)); stl(sb+38,0);
-	stl(sb+42,1024);			/* st_blksize */
-	stl(sb+46,(long)((hs->st_size+1023)/1024));
-	st2(sb+50,0); st2(sb+52,0); st2(sb+54,0); st2(sb+56,0);
+	stl(sb+18,stat_time(hs->st_atime)); st2(sb+22,0);	/* int spare1 */
+	stl(sb+24,stat_time(hs->st_mtime)); st2(sb+28,0);	/* int spare2 */
+	stl(sb+30,stat_time(hs->st_ctime)); st2(sb+34,0);	/* int spare3 */
+	stl(sb+36,1024);			/* st_blksize */
+	stl(sb+40,(long)((hs->st_size+1023)/1024));
+	st2(sb+44,0); st2(sb+46,0); st2(sb+48,0); st2(sb+50,0);
 }
 /* era dispatch: stat211 is set when the number arrived through a 2.10/2.11
  * remap entry flagged SR_STAT (the "new" stat trio); the compat "old stat"
@@ -526,12 +532,16 @@ static void dir_drop(int fd){
 	struct gdir *g=dir_find(fd);
 	if(g){ free(g->buf); g->buf=0; }
 }
-static void dir_snapshot(int fd, const char *hpath){
-	DIR *d; struct dirent *e; struct gdir *g=0;
-	unsigned char *buf; int cap=4096, len=0, i, lastrec=-1;
-	for(i=0;i<NGDIR;i++) if(!gdirs[i].buf){ g=&gdirs[i]; break; }
-	if(!g) return;				/* too many open dirs: reads give EISDIR */
-	if(!(d=opendir(hpath))) return;
+/* build a directory snapshot in the era's format; returns malloc'd buffer
+ * and its length, or NULL.  Callers: dir_snapshot (registers it for a fd)
+ * and dir_guest_size (guest stat of a directory must report the SNAPSHOT
+ * length as st_size -- 2.11's opendir sizes its buffers from st_size, and
+ * a host size over a differently-sized snapshot makes readdir walk
+ * entries that do not exist). */
+static unsigned char *dir_build(const char *hpath, int *lenp){
+	DIR *d; struct dirent *e;
+	unsigned char *buf; int cap=4096, len=0, lastrec=-1;
+	if(!(d=opendir(hpath))) return 0;
 	buf=malloc(cap);
 	while((e=readdir(d))){
 		int ino=(int)(e->d_ino&0xffff); if(ino==0) ino=1;  /* 0 = free slot */
@@ -543,15 +553,20 @@ static void dir_snapshot(int fd, const char *hpath){
 		} else if(Kern>=PDP11_K_BSD210){
 			/* 4.3-style variable records packed into 512-byte blocks:
 			 * {d_ino, d_reclen, d_namlen, name NUL-padded to a 4-byte
-			 * boundary}; a record never crosses a block, so the last
-			 * record in a block is extended to the boundary. */
+			 * boundary}.  A record never crosses a block; remaining
+			 * room too small for the next entry is closed out with a
+			 * SEPARATE empty record (ino 0, reclen = what's left) --
+			 * the same shape Apout emits -- rather than by inflating
+			 * the last real entry's reclen. */
 			int nl=(int)strlen(e->d_name); if(nl>63) nl=63;
 			int rl=((6+nl+1)+3)&~3;
-			if((len&511)+rl>512 && lastrec>=0){
-				int blkend=(len+511)&~511;
-				int r2=(buf[lastrec+2]|(buf[lastrec+3]<<8))+(blkend-len);
-				buf[lastrec+2]=r2&0xff; buf[lastrec+3]=(r2>>8)&0xff;
-				len=blkend;
+			int left=512-(len&511);
+			if(rl+10 > left){
+				buf[len]=0; buf[len+1]=0;	/* empty pad record */
+				buf[len+2]=left&0xff; buf[len+3]=(left>>8)&0xff;
+				buf[len+4]=0; buf[len+5]=0;
+				memset(buf+len+6,0,left-6);
+				len+=left;
 			}
 			buf[len]=ino&0xff; buf[len+1]=(ino>>8)&0xff;
 			buf[len+2]=rl&0xff; buf[len+3]=(rl>>8)&0xff;
@@ -565,14 +580,32 @@ static void dir_snapshot(int fd, const char *hpath){
 			len+=16;
 		}
 	}
-	if(Kern>=PDP11_K_BSD210 && (len&511)!=0 && lastrec>=0){
-		int blkend=(len+511)&~511;
-		int r2=(buf[lastrec+2]|(buf[lastrec+3]<<8))+(blkend-len);
-		buf[lastrec+2]=r2&0xff; buf[lastrec+3]=(r2>>8)&0xff;
-		len=blkend;
+	if(Kern>=PDP11_K_BSD210 && (len&511)!=0){
+		/* close out the final block with an empty record */
+		int left=512-(len&511);
+		buf[len]=0; buf[len+1]=0;
+		buf[len+2]=left&0xff; buf[len+3]=(left>>8)&0xff;
+		buf[len+4]=0; buf[len+5]=0;
+		memset(buf+len+6,0,left-6);
+		len+=left;
 	}
 	closedir(d);
+	*lenp=len;
+	return buf;
+}
+static void dir_snapshot(int fd, const char *hpath){
+	struct gdir *g=0; int i, len;
+	unsigned char *buf;
+	for(i=0;i<NGDIR;i++) if(!gdirs[i].buf){ g=&gdirs[i]; break; }
+	if(!g) return;				/* too many open dirs: reads give EISDIR */
+	if(!(buf=dir_build(hpath,&len))) return;
 	g->fd=fd; g->buf=buf; g->len=len; g->pos=0;
+}
+static long dir_guest_size(const char *hpath){
+	int len; unsigned char *buf=dir_build(hpath,&len);
+	if(!buf) return 0;
+	free(buf);
+	return len;
 }
 /* ---- per-era syscall renumbering -------------------------------------
  * The switch below is the CANONICAL table: V7 numbering (the lineage
@@ -697,7 +730,7 @@ static void do_syscall(int num, int argaddr)
 		}
 	}
 	if(Kern==PDP11_K_BSD2X && num==57) num=2;	/* 2.9 vfork: treat as fork */
-	if(systrace) fprintf(stderr, "sys %d r0=%06o a1=%06o a2=%06o\n", num, R[0], a1, a2);
+	if(systrace) fprintf(stderr, "sys %d fd0=%d a1=%06o a2=%06o a3=%06o sp=%06o\n", num, fd0, a1, a2, a3, SP);
 	switch(num){
 	case 1:				/* exit(code in r0; 2.10: on stack) */
 		halted=1; ecode=(stackargs?a1:R[0])&0xff; return;
@@ -741,6 +774,7 @@ static void do_syscall(int num, int argaddr)
 	}
 	case 5: {			/* open(a1=path, a2=mode) */
 		char hp[1024]; struct stat ds;
+		if(systrace) fprintf(stderr, "    open ret=%06o path='%s'\n", ld2(SP), (char*)(M+(a1&0xffff)));
 		strncpy(hp, mappath(a1), sizeof hp-1); hp[sizeof hp-1]=0;
 		r = open(hp, Kern>=PDP11_K_BSD210 ? (a2&3) : a2);
 		/* classic UNIX lists directories by read(2); snapshot them */
@@ -813,9 +847,17 @@ static void do_syscall(int num, int argaddr)
 					 * era's struct stat shape (put_stat). */
 		struct stat hs; int sb, ok;
 		if(num==28){ ok=fstat(fd0,&hs); sb=a1&0xffff; }
-		else if(num==C_LSTAT){ ok=lstat(mappath(a1),&hs); sb=a2&0xffff; }
+		else if(num==C_LSTAT){ if(systrace) fprintf(stderr, "    lstat path='%s' -> %s\n", (char*)(M+(a1&0xffff)), mappath(a1)); ok=lstat(mappath(a1),&hs); sb=a2&0xffff; }
 		else { if(systrace) fprintf(stderr, "    stat path='%s'\n", mappath(a1)); ok=stat(mappath(a1),&hs); sb=a2&0xffff; }
 		if(ok<0){ r=-1; break; }
+		if(S_ISDIR(hs.st_mode)){
+			/* the guest sees the era-format snapshot, so its size
+			 * (not the host directory's) is the truth -- opendir
+			 * and getwd size their reads from st_size */
+			struct gdir *g = (num==28) ? dir_find(fd0) : 0;
+			if(g) hs.st_size = g->len;
+			else hs.st_size = dir_guest_size(num==28 ? "." : mappath(a1));
+		}
 		put_stat(sb, &hs, stat211);
 		r=0;
 		break;
@@ -838,6 +880,11 @@ static void do_syscall(int num, int argaddr)
 					 * is touched only when our real stdin is a tty. */
 		int req = a2;	/* inline: the 16-bit request; stack: the low half of the 32-bit 4.3 code -- both land in a2 */
 		int argp = (stackargs ? a3 : ld2(argaddr+4)) & 0xffff;
+		/* tty ioctls only succeed on a real tty: isatty() is HOW guests
+		 * decide between interactive and pipe behavior (2.11 ls picks
+		 * its whole output strategy from it) -- unconditional success
+		 * made every redirected fd look like a terminal. */
+		if(!isatty(fd0)){ errno=ENOTTY; r=-1; break; }
 		if(req == (('t'<<8)|104)){	/* TIOCGWINSZ: rows/cols/x/y --
 					 * answer 24x80; leaving it unanswered gives
 					 * column-layout code a 0-width loop (2.11 ls) */
@@ -983,11 +1030,13 @@ static void do_syscall(int num, int argaddr)
 	case 52:			/* phys: map physical memory (privileged) */
 		r = -1; break;			/* EPERM-ish: unsupported, fail cleanly */
 	case 32:			/* gtty(fd=r0, &sgttyb=a1): old-style tty get,
-					 * = ioctl TIOCGETP.  Single emulated terminal. */
+					 * = ioctl TIOCGETP. */
+		if(!isatty(fd0)){ errno=ENOTTY; r=-1; break; }
 		sgtty_get(a1&0xffff); r=0;
 		break;
 	case 31:			/* stty(fd=r0, &sgttyb=a1): old-style tty set,
 					 * = ioctl TIOCSETP. */
+		if(!isatty(fd0)){ errno=ENOTTY; r=-1; break; }
 		tty_apply(ld2((a1&0xffff)+4)&0xffff); r=0;
 		break;
 	case 41:			/* dup(fd=r0) / dup2 (fd|0100 in r0, newfd a1) */
@@ -1517,6 +1566,19 @@ static void fp_put(int spec, struct fpv v, int dbl){	/* float dest operand */
 	if(((spec>>3)&7)==0){ AC[spec&7]=v; return; }
 	wrfloat(fp_addr(spec,dbl), v, dbl);
 }
+/* Effective address of an INTEGER memory operand of the convert forms
+ * (movif/movfi -- LDCIF/LDCLF/STCFI/STCFL): autoincrement/decrement steps
+ * by the integer size selected by FPS.FL -- 4 in Long mode, 2 in Integer
+ * mode.  Resolving these through the word-size operand() made
+ * `stcfl AC,-(sp)' push 4 bytes but move SP by 2: 2.11's FPU ldiv then
+ * pops its own return address and `rts' lands at address 0, restarting
+ * crt0 -- the bug behind the 2.11 ls/date meltdowns. */
+static int fpi_addr(int spec){
+	int mode=(spec>>3)&7, rn=spec&7, size=(FPS&FPL)?4:2, a;
+	if(mode==2 && rn!=7){ a=R[rn]; R[rn]=(R[rn]+size)&0xffff; return a; }
+	if(mode==4){ R[rn]=(R[rn]-size)&0xffff; return R[rn]; }
+	return operand(spec,0);
+}
 static void fp_setcc(struct fpv v){ fN=(v.frac!=0)&&v.sign; fZ=(v.frac==0); fV=0; fC=0; }
 
 static void do_fp(int instr){
@@ -1594,14 +1656,14 @@ static void do_fp(int instr){
 		return;
 	case 0177000:	/* movif: int -> float (rounds at mode width) */
 		if(isreg) iv=(short)R[reg];
-		else { addr=operand(spec,0);
+		else { addr=fpi_addr(spec);
 		       iv=(FPS&FPL)? (int)((ld2(addr)<<16)|ld2((addr+2)&0xffff))
 				   : (short)ld2(addr); }
 		AC[ac]=fp_fromlong(iv); fp_setcc(AC[ac]); return;
 	case 0175400:	/* movfi: float -> int (truncate toward zero) */
 		iv=fp_tolong(AC[ac]);
 		if(isreg) R[reg]=iv&0xffff;
-		else { addr=operand(spec,0);
+		else { addr=fpi_addr(spec);
 		       if(FPS&FPL){ st2(addr,(iv>>16)&0xffff); st2((addr+2)&0xffff,iv&0xffff); }
 		       else st2(addr,iv&0xffff); }
 		fN=(AC[ac].frac!=0)&&AC[ac].sign; fZ=(AC[ac].frac==0); fV=0; fC=0; return;
@@ -2063,12 +2125,17 @@ static void step(void)
 			{ long p=(long)(short)R[reg]*sv; R[reg]=(p>>16)&0xffff; R[reg|1]=p&0xffff;
 			  FZ=(p==0); FN=(p<0); FV=0; FC=(p<-32768||p>32767); }
 			return;
-		case 0071000:	/* DIV */
+		case 0071000:	/* DIV: the R,R|1 pair is a SIGNED 32-bit dividend --
+				 * sign-extend it, or negative dividends (timezone
+				 * offsets, pointer differences) divide as huge
+				 * positives (found via 2.11 ls/date going insane). */
 			s=operand(instr&077,0); sv=(short)getv(s,0);
 			if(sv==0){ FV=FC=1; return; }
-			{ long dd=((long)R[reg]<<16)|R[reg|1];
-			  R[reg]=(dd/sv)&0xffff; R[reg|1]=(dd%sv)&0xffff;
-			  FZ=(R[reg]==0); FN=((short)R[reg]<0); FV=0; FC=0; }
+			{ long dd=(long)(int32_t)(((uint32_t)R[reg]<<16)|R[reg|1]);
+			  long q=dd/sv, rm=dd%sv;
+			  if(q>32767||q<-32768){ FV=1; FC=0; return; }  /* overflow: regs unchanged */
+			  R[reg]=q&0xffff; R[reg|1]=rm&0xffff;
+			  FZ=(q==0); FN=(q<0); FV=0; FC=0; }
 			return;
 		case 0072000:	/* ASH: shift R by src (signed count) */
 			s=operand(instr&077,0); sv=(short)getv(s,0);
@@ -2076,12 +2143,18 @@ static void step(void)
 			  if(cnt>=0) val<<=cnt; else val>>=(-cnt);
 			  R[reg]=val&0xffff; setNZ(R[reg],0); FV=0; }
 			return;
-		case 0073000:	/* ASHC */
+		case 0073000:	/* ASHC: the pair is a SIGNED 32-bit value; right
+				 * shifts are ARITHMETIC (sign propagates).  Building
+				 * it unsigned shifted zeros into negative values --
+				 * the bug that scrambled 2.11 ls/date (long division
+				 * helpers lean on ashc). */
 			s=operand(instr&077,0); sv=(short)getv(s,0);
 			{ int cnt=sv&077; if(cnt&040)cnt-=64;
-			  long val=((long)R[reg]<<16)|R[reg|1];
-			  if(cnt>=0) val<<=cnt; else val>>=(-cnt);
-			  R[reg]=(val>>16)&0xffff; R[reg|1]=val&0xffff;
+			  long val=(long)(int32_t)(((uint32_t)R[reg]<<16)|R[reg|1]);
+			  if(cnt>0){ FC=(cnt<=32)?((val>>(32-cnt))&1):0; val<<=cnt; }
+			  else if(cnt<0){ FC=(val>>((-cnt)-1))&1; val>>=(-cnt); }
+			  val=(long)(int32_t)(val&0xffffffffL);
+			  R[reg]=((unsigned long)val>>16)&0xffff; R[reg|1]=val&0xffff;
 			  FZ=(val==0); FN=(val<0); FV=0; }
 			return;
 		case 0074000:	/* XOR: R ^ dst -> dst */

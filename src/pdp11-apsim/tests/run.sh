@@ -81,6 +81,21 @@ if [ -x "$R/bin/echo" ] && [ -x "$R/bin/cat" ]; then
 	*2.11\ BSD*) ok 211-cat 'cat prints the genuine 2.11 motd' ;;
 	*) bad 211-cat "output: $(echo "$out" | head -1)" ;;
 	esac
+	# ls exercises the whole modern stack at once: the 4.3-dirent snapshot,
+	# the 52-byte stat shape, tty-gated ioctls (pipe output => single
+	# column), qsort, and -- the regression this test pins -- the FPU
+	# long-convert operand width (2.11's ldiv is stcfl-based; the old
+	# 2-byte step made rts jump to address 0 and restart crt0).
+	out=$(APSIM_ROOT="$R" timeout 10 "$APSIM" -u bsd211 "$R/bin/ls" / 2>&1)
+	case "$out" in
+	*bin*etc*usr*) ok 211-ls 'real 2.11 ls: sorted listing via dirents + FPU ldiv' ;;
+	*) bad 211-ls "output: $(echo "$out" | head -1)" ;;
+	esac
+	out=$(APSIM_TIME=200000000 APSIM_ROOT="$R" timeout 10 "$APSIM" -u bsd211 "$R/bin/date" 2>&1)
+	case "$out" in
+	*1976*) ok 211-date 'date renders the pinned clock through the tz engine' ;;
+	*) bad 211-date "output: $(echo "$out" | head -1)" ;;
+	esac
 else
 	skip bsd211 '~/bsd/2.11/root not present'
 fi

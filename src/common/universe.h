@@ -17,8 +17,8 @@
 	X(bsd279, 27, "planned", "2.79BSD (1980), V7-kernel userland; sources in ~/bsd/2.79") \
 	X(bsd28, 28, "full", "2.8BSD (1981), Ritchie cc era; FP11 D-format floating point") \
 	X(bsd29, 29, "full", "2.9BSD (1983), overlays and split I&D; the default universe") \
-	X(bsd210, 210, "planned", "2.10BSD (1987), 4.3-style numbering; personality present, stdio path still misbehaves (see NOTES)") \
-	X(bsd211, 211, "sim", "2.11BSD pl431 (2000), 4.4-style numbering, stack args; echo/cat/expr/hostname run, ls/date still hang (see NOTES); porting base for new tools") \
+	X(bsd210, 210, "sim", "2.10BSD (1987), 4.3-style numbering; real echo/cat/ls/date/grep run (root in ~/bsd/2.10)") \
+	X(bsd211, 211, "sim", "2.11BSD pl431 (2000), 4.4-style numbering, stack args; real ls/date/grep/sed/sort and 14 more run; porting base for new tools") \
 	X(sys3, 103, "planned", "UNIX System III (1980), PDP-11 line; sources in ~/unix/sys3") \
 	X(sys5v2, 105, "planned", "System V Release 2 (1984), the last SysV with PDP-11 support; table groundable from ~/unix/svr2 (VAX kit)") \
 	X(ultrix11v2, 21, "planned", "DEC Ultrix-11 2.0 (1984); binary tape staged in ~/unix/ultrix11/2.0; 1.0 survives as docs only (lineage root = V7M)") \
@@ -71,8 +71,8 @@ enum pdp11_kern {
 	X("bsd279", 27, "planned", PDP11_K_V7, "2.79BSD (1980), V7-kernel userland; sources in ~/bsd/2.79") \
 	X("bsd28", 28, "full", PDP11_K_BSD2X, "2.8BSD (1981), Ritchie cc era; FP11 D-format floating point") \
 	X("bsd29", 29, "full", PDP11_K_BSD2X, "2.9BSD (1983), overlays and split I&D; the default universe") \
-	X("bsd210", 210, "planned", PDP11_K_BSD210, "2.10BSD (1987), 4.3-style numbering; personality present, stdio path still misbehaves (see NOTES)") \
-	X("bsd211", 211, "sim", PDP11_K_BSD211, "2.11BSD pl431 (2000), 4.4-style numbering, stack args; echo/cat/expr/hostname run, ls/date still hang (see NOTES); porting base for new tools") \
+	X("bsd210", 210, "sim", PDP11_K_BSD210, "2.10BSD (1987), 4.3-style numbering; real echo/cat/ls/date/grep run (root in ~/bsd/2.10)") \
+	X("bsd211", 211, "sim", PDP11_K_BSD211, "2.11BSD pl431 (2000), 4.4-style numbering, stack args; real ls/date/grep/sed/sort and 14 more run; porting base for new tools") \
 	X("sys3", 103, "planned", PDP11_K_SYS3, "UNIX System III (1980), PDP-11 line; sources in ~/unix/sys3") \
 	X("sys5v2", 105, "planned", PDP11_K_SYS3, "System V Release 2 (1984), the last SysV with PDP-11 support; table groundable from ~/unix/svr2 (VAX kit)") \
 	X("ultrix11v2", 21, "planned", PDP11_K_ULTRIX, "DEC Ultrix-11 2.0 (1984); binary tape staged in ~/unix/ultrix11/2.0; 1.0 survives as docs only (lineage root = V7M)") \
