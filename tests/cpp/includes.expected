@@ -1,0 +1,11 @@
+# 1 "includes.c"
+
+# 1 "defs.h"
+
+
+struct point { int x, y; };
+# 2 "includes.c"
+char *g = "hello";
+int arr[80];
+struct pointp;
+int ab;

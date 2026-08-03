@@ -1,0 +1,11 @@
+# 1 "conditionals.c"
+
+
+int big = 1;
+# 6 "conditionals.c"
+
+
+int have_max = 1;
+
+
+int no_foo = 1;

@@ -1,0 +1,11 @@
+# 1 "defined_no_leak.c"
+
+
+
+
+
+present = 1;
+
+
+gone = 1;
+

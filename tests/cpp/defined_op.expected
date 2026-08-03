@@ -1,0 +1,7 @@
+# 1 "defined_op.c"
+
+int b = 1;
+
+
+
+int a = 1;
