@@ -27,7 +27,6 @@
 #include <termios.h>
 #include <utime.h>
 #include <time.h>
-#include <math.h>
 #include <dirent.h>
 #include <stdint.h>
 #include "universe.h"
@@ -1852,28 +1851,6 @@ static int cc_cmp16(int a,int b){	/* condition codes of CMP a,b */
 	return r;
 }
 
-/* PDP-11 F-format (32-bit) <-> double, for FIS */
-static double f32get(int a){
-	int hi=ld2(a), lo=ld2(a+2);
-	int exp=(hi>>7)&0xff; long frac;
-	if(exp==0) return 0.0;
-	frac=0x800000L | ((long)(hi&0x7f)<<16) | lo;
-	{ double v=ldexp((double)frac/(double)(1L<<24), exp-128);
-	  return (hi&0x8000)? -v : v; }
-}
-static void f32put(int a,double v){
-	int sign=0, exp; double m; long frac;
-	if(v<0){ sign=1; v=-v; }
-	if(v==0){ st2(a,0); st2(a+2,0); return; }
-	m=frexp(v,&exp);			/* m in [0.5,1) */
-	frac=(long)(m*(double)(1L<<24)+0.5);
-	if(frac>=(1L<<24)){ frac>>=1; exp++; }
-	exp+=128;
-	if(exp<=0){ st2(a,0); st2(a+2,0); return; }	/* underflow -> 0 */
-	if(exp>255) exp=255;				/* overflow -> max (lenient) */
-	st2(a,(sign<<15)|(exp<<7)|((frac>>16)&0x7f));
-	st2(a+2,frac&0xffff);
-}
 
 /* ---- CIS ---- */
 typedef unsigned __int128 u128;
@@ -2143,18 +2120,26 @@ static int late_insn(int instr)
 		if((instr&070)==0) return 0;
 		d=operand(instr&077,0); putv(d,R[0],0);
 		setNZ(R[0],0); FV=0; return 1; }
-	if((instr&0177740)==0075000){			/* fis */
-		int r=instr&7; double a,b,res;
-		b=f32get(R[r]); a=f32get((R[r]+4)&0xffff);
+	if((instr&0177740)==0075000){			/* fis (KEV11): stack F-format
+					 * add/sub/mul/div, routed through the EXACT
+					 * FP11 softfloat at F width -- not host doubles,
+					 * so the last non-exact FP path is gone and the
+					 * result matches FP11/fpsim to the bit.  A(R[r]+4)
+					 * op B(R[r]) -> A; R[r] += 4 (pop B). */
+		int r=instr&7, savefps=FPS, addr=(R[r]+4)&0xffff;
+		struct fpv a,b,res;
+		FPS &= ~FPD;			/* single precision: round at 24 bits */
+		b=rdfloat(R[r],0); a=rdfloat(addr,0);
 		switch((instr>>3)&3){
-		case 0: res=a+b; break;
-		case 1: res=a-b; break;
-		case 2: res=a*b; break;
-		default: res=(b==0.0)?0.0:a/b; break;	/* div0: lenient, like do_fp */
+		case 0: res=fp_addv(a,b); break;
+		case 1: res=fp_addv(a,fp_negv(b)); break;
+		case 2: res=fp_mulv(a,b); break;
+		default: res=(b.frac==0)?fp_zero():fp_divv(a,b); break;	/* div0: lenient */
 		}
-		f32put((R[r]+4)&0xffff,res);
-		R[r]=(R[r]+4)&0xffff;
-		FN=(res<0); FZ=(res==0); FV=0; FC=0; return 1; }
+		wrfloat(addr,res,0);
+		FPS=savefps;
+		R[r]=addr;
+		FN=(res.frac!=0)&&res.sign; FZ=(res.frac==0); FV=0; FC=0; return 1; }
 	if((instr&0177600)==0076000 && (instr&0177)!=0100)	/* cis */
 		return cis(instr);
 	if(instr==1) return 1;				/* wait: user-mode no-op */

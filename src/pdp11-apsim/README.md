@@ -28,7 +28,9 @@ the byte-exact reconstructed rogue.
 - **FP11 floating point, bit-faithful**: true 56-bit D-format (24-bit F)
   integer-mantissa arithmetic with the FP11 rounding rule (round-half-up on
   the first discarded bit) — not host doubles.  Verified against the 1981
-  compiler's constant conversion to the last bit.
+  compiler's constant conversion to the last bit.  The KEV11 **FIS**
+  instructions share the same exact engine (at F width), so there is no
+  host floating point anywhere in the simulator and no libm dependency.
 - **Syscalls, per-universe**: one canonical V7-numbered dispatcher plus
   per-era kernel personalities selected by `--universe`/`-u`/
   `$PDP11_UNIVERSE` — V5/V6 (16-bit `seek`, packed 36-byte stat, the era's
