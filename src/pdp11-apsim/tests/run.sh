@@ -113,6 +113,29 @@ if [ -x "$R/bin/echo" ] && [ -x "$R/bin/cat" ]; then
 	else
 		bad 211-script 'true/false exit statuses wrong'
 	fi
+	# Job control: the genuine csh (a 0431 separate-I&D overlay binary)
+	# must fork external commands, reap them through the 4.3 SIGCHLD
+	# frame (sigvec/sigtramp/sigreturn), run a foreach loop of externals,
+	# and report background jobs "Done".  This is the whole job-control
+	# path -- overlays, 32-bit sigmasks, sigsuspend, wait3 -- end to end.
+	if [ -x "$R/bin/csh" ]; then
+		out=$(printf 'foreach i (a b c)\n/bin/echo item $i\nend\nexit\n' | \
+		      APSIM_ROOT="$R" timeout 15 "$APSIM" -u bsd211 "$R/bin/csh" -f 2>&1)
+		nl=$(printf '%s\n' "$out" | grep -c '^item ')
+		if [ "$nl" = 3 ]; then
+			ok 211-csh 'csh forks/reaps externals: foreach loop of 3'
+		else
+			bad 211-csh "csh job control: got [$out]"
+		fi
+		out=$(printf '/bin/echo J &\nwait\nexit\n' | \
+		      APSIM_ROOT="$R" timeout 15 "$APSIM" -u bsd211 "$R/bin/csh" -f 2>&1)
+		case "$out" in
+		*Done*) ok 211-csh-bg 'csh background job reaped and reported Done' ;;
+		*) bad 211-csh-bg "no Done report: [$out]" ;;
+		esac
+	else
+		skip 211-csh 'csh not present'
+	fi
 else
 	skip bsd211 '~/bsd/2.11/root not present'
 fi

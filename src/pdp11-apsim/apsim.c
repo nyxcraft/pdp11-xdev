@@ -110,6 +110,7 @@ static int errno_h2g(int e){
 #define SG_RAW    040
 static struct termios saved_tio; static int tty_saved=0, ttyraw=0;
 static int guest_sgflags = SG_ECHO|SG_CRMOD;	/* cooked at start */
+static int guest_lmode;				/* TIOCLGET/LSET local mode word */
 static void tty_restore(void){ if(tty_saved && ttyraw){ tcsetattr(0,TCSANOW,&saved_tio); ttyraw=0; } }
 static void tty_apply(int sgf){
 	struct termios t;
@@ -136,9 +137,9 @@ static int FN, FZ, FV, FC;		/* condition codes */
 static int halted, ecode, trace, systrace, watchtext, tsizew, watchsp, watchaddr=-1, watchval;
 /* 0430 auto-overlay state: base-relative window at ov_base, ov_max bytes;
  * EMT (ovno in r0) copies overlay images in (2.9 csv.s ovhndlr protocol) */
-static int ov_proc, ov_base, ov_max, ov_siz[8];
+static int ov_proc, ov_sep, ov_base, ov_max, ov_siz[16], cur_ovno;
 static int gbrk;	/* program break (end of bss), tracked for break/sbrk */
-static unsigned char ov_img[7][16384];
+static unsigned char ov_img[15][16384];
 
 /* ---- process identity (uid model) ----
  * A real, mutable uid/gid so getuid/getgid are consistent, setuid/setgid take
@@ -166,7 +167,14 @@ static int guest_pid(void){ return g_fakepid ? (g_fakepid&0x7fff) : (getpid()&0x
  * so kill() and the catch path translate explicitly. */
 static int guest_sigh[32];
 static volatile sig_atomic_t pending_sig;
-/* 2.8 guest signal number -> Linux host signal (0 = no host equivalent) */
+static long guest_sigmask;	/* sigblock/sigsetmask: bit (s-1) blocks s */
+static int  guest_reliable[32];	/* installed via sigvec/sigaction (4.3 frame) */
+static long guest_hmask[32];	/* per-handler mask to add while it runs */
+static int  guest_sigtramp;	/* the libc sigtramp address (passed to sigvec) */
+/* Berkeley guest signal number -> Linux host signal (0 = no equivalent).
+ * 1-15 are the shared V7 set; 16-31 the Berkeley job-control/extension
+ * set (identical in 2.9/2.10/2.11 signal.h), where Linux renumbered:
+ * guest STOP 17/TSTP 18/CONT 19/CHLD 20 vs host 19/20/18/17. */
 static int sig_g2h(int g){
 	switch(g){
 	case 1: return SIGHUP;  case 2: return SIGINT;  case 3: return SIGQUIT;
@@ -175,17 +183,51 @@ static int sig_g2h(int g){
 	case 8: return SIGFPE;  case 9: return SIGKILL; case 10: return SIGBUS;
 	case 11: return SIGSEGV; case 12: return SIGSYS; case 13: return SIGPIPE;
 	case 14: return SIGALRM; case 15: return SIGTERM;
+	case 16: return SIGURG;  case 17: return SIGSTOP; case 18: return SIGTSTP;
+	case 19: return SIGCONT; case 20: return SIGCHLD; case 21: return SIGTTIN;
+	case 22: return SIGTTOU; case 23: return SIGIO;   case 24: return SIGXCPU;
+	case 25: return SIGXFSZ; case 26: return SIGVTALRM; case 27: return SIGPROF;
+	case 28: return SIGWINCH; case 30: return SIGUSR1; case 31: return SIGUSR2;
 	default: return 0;
 	}
 }
-/* Linux host signal -> 2.8 guest signal number (0 = not forwarded) */
+/* Linux host signal -> guest signal number (0 = not forwarded) */
 static int sig_h2g(int h){
 	if(h==SIGHUP)return 1;  if(h==SIGINT)return 2;  if(h==SIGQUIT)return 3;
 	if(h==SIGILL)return 4;  if(h==SIGTRAP)return 5; if(h==SIGABRT)return 6;
 	if(h==SIGFPE)return 8;  if(h==SIGKILL)return 9; if(h==SIGBUS)return 10;
 	if(h==SIGSEGV)return 11; if(h==SIGSYS)return 12; if(h==SIGPIPE)return 13;
 	if(h==SIGALRM)return 14; if(h==SIGTERM)return 15;
+	if(h==SIGURG)return 16;  if(h==SIGSTOP)return 17; if(h==SIGTSTP)return 18;
+	if(h==SIGCONT)return 19; if(h==SIGCHLD)return 20; if(h==SIGTTIN)return 21;
+	if(h==SIGTTOU)return 22; if(h==SIGIO)return 23;   if(h==SIGXCPU)return 24;
+	if(h==SIGXFSZ)return 25; if(h==SIGVTALRM)return 26; if(h==SIGPROF)return 27;
+	if(h==SIGWINCH)return 28; if(h==SIGUSR1)return 30; if(h==SIGUSR2)return 31;
 	return 0;
+}
+/* What SIG_DFL does, per signal: 0 = terminate, 1 = ignore, 2 = stop.
+ * A default stop is realized as a REAL host stop -- the guest process IS
+ * a host process, so csh's SIGCONT genuinely resumes it. */
+static int sig_dfl_action(int s){
+	if(s==17||s==18||s==21||s==22) return 2;	/* STOP TSTP TTIN TTOU */
+	if(s==16||s==19||s==20||s==23||s==28) return 1;	/* URG CONT CHLD IO WINCH */
+	return 0;
+}
+/* Guest pid <-> host pid.  Guest pids are 15-bit; host pids on modern
+ * Linux exceed that, so kill/setpgrp/wait arguments must round-trip
+ * through a small map of the processes this one knows about (self,
+ * parent, forked children).  An unknown value passes through. */
+static struct { int g, h; } pidmap[64];
+static void pid_learn(int h){
+	int g=h&0x7fff, i;
+	for(i=0;i<64;i++) if(pidmap[i].h==h) return;
+	for(i=0;i<64;i++) if(!pidmap[i].h){ pidmap[i].g=g; pidmap[i].h=h; return; }
+}
+static int pid_g2h(int g){
+	int i;
+	if(g==0) return 0;
+	for(i=0;i<64;i++) if(pidmap[i].h && pidmap[i].g==(g&0x7fff)) return pidmap[i].h;
+	return g;
 }
 static void hsig(int s){ int g=sig_h2g(s); if(g) pending_sig=g; }
 /* Raise a guest signal s (2.8 number) from emulated hardware (illegal instr,
@@ -626,7 +668,8 @@ enum {
 	C_WRITEV, C_SYMLINK, C_READLINK, C_GETRUSAGE, C_UTIMES, C_WAIT4,
 	C_GETPPID, C_GETEUID, C_GETEGID, C_SIGVEC, C_GETGROUPS,
 	C_GETRLIMIT, C_KILLPG, C_FCHDIR, C_GETLOGIN, C_UNAME, C_ULIMIT,
-	C_NAP, C_FCHMOD, C_FSYNC, C_SYSCTL, C_OK, C_NOSYS
+	C_NAP, C_FCHMOD, C_FSYNC, C_SYSCTL, C_SETPGRP, C_SIGBLOCK,
+	C_SIGSETMASK, C_SIGSUSPEND, C_SIGRETURN, C_OK, C_NOSYS
 };
 /* 2.10BSD: the 4.3BSD numbering; low numbers are 4.3's compat "old" set
  * and pass through with V7 shapes. */
@@ -634,11 +677,11 @@ static const struct sremap Bsd210Remap[] = {
 	RS_(38,18), RS_(40,C_LSTAT), RS_(62,28),
 	{57,C_SYMLINK,0}, {58,C_READLINK,0}, {64,C_GETPAGESIZE,0},
 	{69,C_SBRK,0}, {79,C_GETGROUPS,0}, {80,C_OK,0}, {81,C_GETPGRP,0},
-	{82,C_OK,0}, {83,C_OK,0}, {84,7,0}, {86,C_OK,0},
+	{82,C_SETPGRP,0}, {83,C_OK,0}, {84,7,0}, {86,C_OK,0},
 	{87,C_GETHOSTNAME,0}, {88,C_OK,0}, {89,C_GETDTABLESIZE,0},
 	{90,C_DUP2,0}, {92,C_FCNTL,0}, {93,C_SELECT,0}, {95,C_FSYNC,0},
-	{96,C_OK,0}, {100,C_OK,0}, {103,C_OK,0}, {108,C_SIGVEC,0},
-	{109,C_OK,0}, {110,C_OK,0}, {111,29,0}, {112,C_OK,0},
+	{96,C_OK,0}, {100,C_OK,0}, {103,C_SIGRETURN,0}, {108,C_SIGVEC,0},
+	{109,C_SIGBLOCK,0}, {110,C_SIGSETMASK,0}, {111,29,0}, {112,C_OK,0},
 	{116,C_GETTIMEOFDAY,0}, {117,C_GETRUSAGE,0}, {120,C_READV,0},
 	{121,C_WRITEV,0}, {122,C_OK,0}, {123,C_OK,0}, {124,C_FCHMOD,0},
 	{128,C_RENAME,0}, {129,C_TRUNCATE,0}, {130,C_FTRUNCATE,0},
@@ -660,11 +703,12 @@ static const struct sremap Bsd211Remap[] = {
 	{56,C_NOSYS,0}, {57,C_SYMLINK,0}, {58,C_READLINK,0},
 	RS_(62,28), {64,C_GETPAGESIZE,0}, {65,C_NOSYS,0} /* pselect */,
 	{66,2,0} /* vfork -> fork */, {69,C_SBRK,0},
-	{79,C_GETGROUPS,0}, {80,C_OK,0}, {81,C_GETPGRP,0}, {82,C_OK,0},
+	{79,C_GETGROUPS,0}, {80,C_OK,0}, {81,C_GETPGRP,0}, {82,C_SETPGRP,0},
 	{83,C_OK,0}, {86,C_OK,0}, {87,C_GETHOSTNAME,0}, {88,C_OK,0},
 	{89,C_GETDTABLESIZE,0}, {90,C_DUP2,0}, {92,C_FCNTL,0},
 	{93,C_SELECT,0}, {95,C_FSYNC,0}, {96,C_OK,0}, {100,C_OK,0},
-	{103,C_OK,0}, {108,C_SIGVEC,0}, {109,C_OK,0}, {110,C_OK,0},
+	{103,C_SIGRETURN,0}, {107,C_SIGSUSPEND,0} /* pl431 sigsuspend */,
+	{108,C_SIGVEC,0}, {109,C_SIGBLOCK,0}, {110,C_SIGSETMASK,0},
 	{111,29,0}, {112,C_OK,0}, {116,C_GETTIMEOFDAY,0},
 	{117,C_GETRUSAGE,0}, {120,C_READV,0}, {121,C_WRITEV,0},
 	{122,C_OK,0}, {123,C_OK,0}, {124,C_FCHMOD,0}, {128,C_RENAME,0},
@@ -698,6 +742,11 @@ static int v56_nosys(int n){
 	return 0;
 }
 
+static int TrapPC;	/* address of the current sys instruction: EINTR
+			 * restart re-executes the trap after the handler
+			 * returns (the kernel's ERESTART), so a SIGCHLD
+			 * arriving while csh sits in read() doesn't surface
+			 * as a spurious error */
 static void do_syscall(int num, int argaddr)
 {
 	/* argaddr points just past the sys instruction's number word: the
@@ -730,7 +779,7 @@ static void do_syscall(int num, int argaddr)
 		}
 	}
 	if(Kern==PDP11_K_BSD2X && num==57) num=2;	/* 2.9 vfork: treat as fork */
-	if(systrace) fprintf(stderr, "sys %d fd0=%d a1=%06o a2=%06o a3=%06o sp=%06o\n", num, fd0, a1, a2, a3, SP);
+	if(systrace) fprintf(stderr, "[%d] sys %d fd0=%d a1=%06o a2=%06o a3=%06o\n", getpid()&0x7fff, num, fd0, a1, a2, a3);
 	switch(num){
 	case 1:				/* exit(code in r0; 2.10: on stack) */
 		halted=1; ecode=(stackargs?a1:R[0])&0xff; return;
@@ -741,14 +790,27 @@ static void do_syscall(int num, int argaddr)
 					 * the CHILD at that `br' (r0=parent pid -> br 1f -> 0). */
 		int pid = fork();
 		if(pid < 0){ FC=1; R[0]=errno_h2g(errno); return; }
-		if(pid > 0){ FC=0; R[0]=pid&0x7fff; PC=(PC+2)&0xffff; return; }	/* parent */
+		if(pid > 0){ pid_learn(pid); FC=0; R[0]=pid&0x7fff; PC=(PC+2)&0xffff; return; }	/* parent */
+		pid_learn(getpid()); pid_learn(getppid());
 		FC=0; R[0]=getppid()&0x7fff; return;				/* child: r0=ppid */
 	}
-	case 7: {			/* wait: reap a child; r0=pid, r1=status word
-					 * (high byte exit code, low byte term signal). */
-		int st, wpid = wait(&st);
+	case 7: {			/* wait: reap a child; r0=pid, r1=status word.
+					 * wait3 rides the 4.2 convention: ALL FOUR
+					 * condition codes set at the trap means
+					 * options in r0 (WNOHANG=1, WUNTRACED=2) and
+					 * &rusage in r1.  A stopped child reports
+					 * status (stopsig<<8)|0177. */
+		int st, opts=0, wpid;
+		if(FC&&FV&&FZ&&FN) opts=((R[0]&1)?WNOHANG:0)|((R[0]&2)?WUNTRACED:0);
+		wpid = waitpid(-1, &st, opts);
 		if(wpid < 0){ FC=1; R[0]=errno_h2g(errno); return; }
-		R[1] = (WIFEXITED(st) ? (WEXITSTATUS(st)&0xff)<<8 : WTERMSIG(st)&0x7f) & 0xffff;
+		if(wpid == 0){ FC=0; R[0]=0; R[1]=0; return; }	/* WNOHANG: nothing */
+		if(WIFSTOPPED(st))
+			R[1] = ((sig_h2g(WSTOPSIG(st))<<8)|0177)&0xffff;
+		else if(WIFEXITED(st))
+			R[1] = ((WEXITSTATUS(st)&0xff)<<8)&0xffff;
+		else
+			R[1] = sig_h2g(WTERMSIG(st))&0x7f;
 		FC=0; R[0]=wpid&0x7fff; return;
 	}
 	case 42: {			/* pipe: r0=read fd, r1=write fd (host fds, used
@@ -885,6 +947,26 @@ static void do_syscall(int num, int argaddr)
 		 * its whole output strategy from it) -- unconditional success
 		 * made every redirected fd look like a terminal. */
 		if(!isatty(fd0)){ errno=ENOTTY; r=-1; break; }
+		if(req == (('t'<<8)|119)){	/* TIOCGPGRP: the tty's real host
+					 * process group, the other half of csh's
+					 * job-control handshake */
+			int pg = tcgetpgrp(fd0);
+			if(pg<0){ r=-1; break; }
+			st2(argp, pg&0x7fff); r=0; break;
+		}
+		if(req == (('t'<<8)|118)){	/* TIOCSPGRP: hand the terminal to a
+					 * job's process group (host tcsetpgrp; the
+					 * host kernel then does TTIN/TTOU/TSTP
+					 * routing for us) */
+			r = tcsetpgrp(fd0, pid_g2h(ld2(argp)));
+			break;
+		}
+		if(req == (('t'<<8)|124)){	/* TIOCLGET: local mode word */
+			st2(argp, guest_lmode); r=0; break;
+		}
+		if(req == (('t'<<8)|125)){ guest_lmode=ld2(argp); r=0; break; }  /* TIOCLSET */
+		if(req == (('t'<<8)|126)){ guest_lmode&=~ld2(argp); r=0; break; } /* TIOCLBIC */
+		if(req == (('t'<<8)|127)){ guest_lmode|=ld2(argp); r=0; break; }  /* TIOCLBIS */
 		if(req == (('t'<<8)|104)){	/* TIOCGWINSZ: rows/cols/x/y --
 					 * answer 24x80; leaving it unanswered gives
 					 * column-layout code a 0-width loop (2.11 ls) */
@@ -930,18 +1012,25 @@ static void do_syscall(int num, int argaddr)
 		else signal(hs, hsig);
 		r = old; break;
 	}
-	case 37: {			/* kill(pid in r0, sig=a1 inline) */
-		int gp=guest_pid(), pp=getppid()&0x7fff, want=R[0]&0x7fff, gsig=a1&037;
-		if(want==gp){		/* kill self == raise: deliver through our own
-					 * dispatch, NOT host kill -- a host fault signal
-					 * (e.g. SIGABRT for IOT) would kill apsim itself. */
+	case 37: {			/* kill(pid, sig): pid in r0 (V7 style) or on
+					 * the stack (2.10/2.11); negative pid = pgrp. */
+		int rawpid = stackargs ? (int)(short)a1 : (int)(short)R[0];
+		int gsig = (stackargs ? a2 : a1)&037;
+		int gp=guest_pid(), want=rawpid&0x7fff;
+		if(rawpid>0 && want==gp){	/* kill self == raise: deliver via our
+					 * own dispatch, NOT host kill -- a host fault
+					 * signal (e.g. SIGABRT) would kill apsim. */
 			if(gsig<1||gsig>=32){ errno=EINVAL; r=-1; }
 			else if(guest_sigh[gsig]==1){ r=0; }		/* SIG_IGN: drop */
 			else if(guest_sigh[gsig]>1){ pending_sig=gsig; r=0; }	/* handler */
-			else { halted=1; ecode=128+gsig; r=0; }		/* SIG_DFL: terminate */
-		} else {		/* another process: host kill, translated # */
-			int hp = want==pp ? getppid() : (int)(short)R[0];
+			else switch(sig_dfl_action(gsig)){
+			case 2: raise(SIGSTOP); r=0; break;
+			case 1: r=0; break;
+			default: halted=1; ecode=128+gsig; r=0; break;
+			}
+		} else {		/* another process or pgrp: host kill */
 			int hs = sig_g2h(gsig);
+			int hp = rawpid<0 ? -pid_g2h(-rawpid) : pid_g2h(rawpid);
 			r = hs ? kill(hp, hs) : 0;
 		}
 		break;
@@ -1068,16 +1157,28 @@ static void do_syscall(int num, int argaddr)
 		break;
 	}
 	/* ---- canonical extensions (no V7 ancestor; reached via remap) ---- */
-	case C_SIGVEC: {		/* sigvec/sigaction: record the handler word so
-					 * ^C and friends reach the guest handler; the
-					 * mask/flags refinements are not modeled. */
-		int sig=a1&037, vec=a2&0xffff, ovec=a3&0xffff, h;
+	case C_SIGVEC: {		/* 4.3-style sigvec(108)/sigaction(31).  The
+					 * libc stub prepends the sigtramp address
+					 * as a hidden first arg (see sigaction.s),
+					 * so the kernel-level args are
+					 * (sigtramp, sig, vec, ovec).  vec is a
+					 * {handler, long mask, flags}. */
+		int tramp=a1&0xffff, sig=a2&037, vec=a3&0xffff;
+		int ovec=(stackargs?ld2((SP+8)&0xffff):ld2(argaddr+6))&0xffff;
+		int h, hs2; long hm;
 		if(sig<1 || sig>=32){ errno=EINVAL; r=-1; break; }
-		if(ovec) { st2(ovec, guest_sigh[sig]); st2(ovec+2,0); st2(ovec+4,0); st2(ovec+6,0); }
+		if(tramp) guest_sigtramp=tramp;
+		if(ovec){
+			st2(ovec, guest_sigh[sig]);
+			stl(ovec+2, guest_hmask[sig]);
+			st2(ovec+6, 0);
+		}
 		if(vec){
-			int hs2;
-			h = ld2(vec);
+			h  = ld2(vec);
+			hm = ((long)(ld2(vec+2)&0xffff)<<16)|(ld2(vec+4)&0xffff);
 			guest_sigh[sig]=h;
+			guest_hmask[sig]=hm;
+			guest_reliable[sig]=1;
 			hs2 = sig_g2h(sig);
 			if((sig>=4 && sig<=12) || hs2==0) ;	/* fault sigs: record only */
 			else if(h==1) signal(hs2, SIG_IGN);
@@ -1086,11 +1187,33 @@ static void do_syscall(int num, int argaddr)
 		}
 		r = 0; break;
 	}
-	case C_WAIT4: {			/* wait4(pid, *status, options, *rusage) */
-		int st, opts=(a3&1)?WNOHANG:0;
-		int wpid = waitpid(a1==0xffff||a1==0 ? -1 : (int)(short)a1, &st, opts);
+	case C_SIGRETURN: {		/* sigreturn(scp): restore the context the
+					 * delivery frame saved -- sp, fp, r0, r1,
+					 * pc, ps, and the blocked mask. */
+		int scp=(stackargs?ld2((SP+2)&0xffff):ld2(argaddr))&0xffff;
+		guest_sigmask = ((long)(ld2(scp+2)&0xffff)<<16)|(ld2(scp+4)&0xffff);
+		R[6]=ld2(scp+6); R[5]=ld2(scp+8);
+		R[1]=ld2(scp+10); R[0]=ld2(scp+12);
+		PC=ld2(scp+14);
+		{ int ps=ld2(scp+16); FC=ps&1; FV=(ps>>1)&1; FZ=(ps>>2)&1; FN=(ps>>3)&1; }
+		return;
+	}
+	case C_WAIT4: {			/* wait4(pid, *status, options, *rusage):
+					 * WNOHANG=1, WUNTRACED=2; a stopped child
+					 * reports (stopsig<<8)|0177. */
+		int st, opts=((a3&1)?WNOHANG:0)|((a3&2)?WUNTRACED:0);
+		int who = (a1==0xffff||a1==0) ? -1 : pid_g2h((int)(short)a1<0?-(int)(short)a1:(int)(short)a1);
+		if((int)(short)a1<0 && a1!=0xffff) who=-who;	/* negative = pgrp */
+		int wpid = waitpid(who, &st, opts);
 		if(wpid<0){ r=-1; break; }
-		if(a2) st2(a2&0xffff, (WIFEXITED(st) ? (WEXITSTATUS(st)&0xff)<<8 : WTERMSIG(st)&0x7f)&0xffff);
+		if(wpid==0){ if(a2) st2(a2&0xffff,0); r=0; break; }
+		if(a2){
+			int gst;
+			if(WIFSTOPPED(st))     gst=((sig_h2g(WSTOPSIG(st))<<8)|0177);
+			else if(WIFEXITED(st)) gst=(WEXITSTATUS(st)&0xff)<<8;
+			else                   gst=sig_h2g(WTERMSIG(st))&0x7f;
+			st2(a2&0xffff, gst&0xffff);
+		}
 		r = wpid&0x7fff; break;
 	}
 	case C_SBRK: {			/* 2.10/2.11 sys sbrk: the libc stub tracks
@@ -1108,7 +1231,38 @@ static void do_syscall(int num, int argaddr)
 	case C_GETPPID: r = getppid()&0x7fff; break;
 	case C_GETEUID: r = g_euid; break;
 	case C_GETEGID: r = g_egid; break;
-	case C_GETPGRP: r = guest_pid(); break;
+	case C_GETPGRP:			/* getpgrp(pid): the real host pgrp */
+		r = getpgid(pid_g2h(a1)); if(r>0) r&=0x7fff; break;
+	case C_SETPGRP:			/* setpgrp(pid, pgrp) -> host setpgid; this
+					 * is what puts a csh job in its own process
+					 * group so the HOST kernel routes tty stops
+					 * and signals to it. */
+		r = setpgid(pid_g2h(a1), pid_g2h(a2)); break;
+	case C_SIGBLOCK: {		/* sigblock(long mask): OR into the mask.
+					 * The mask is a 32-bit long (SIGCHLD is
+					 * bit 19), passed high-word-first and
+					 * returned in the r0:r1 pair. */
+		long old2=guest_sigmask;
+		guest_sigmask |= ((long)(a2&0xffff)<<16)|(a1&0xffff);
+		R[1]=old2&0xffff; r=(old2>>16)&0xffff; break;
+	}
+	case C_SIGSETMASK: {		/* sigsetmask(long mask) */
+		long old2=guest_sigmask;
+		guest_sigmask = ((long)(a2&0xffff)<<16)|(a1&0xffff);
+		R[1]=old2&0xffff; r=(old2>>16)&0xffff; break;
+	}
+	case C_SIGSUSPEND: {		/* sigsuspend(mask): adopt the mask, wait
+					 * for a deliverable signal, return EINTR
+					 * with the old mask back -- csh's whole
+					 * job-wait loop turns on this. */
+		long omask=guest_sigmask;
+		long nmask=((long)(a2&0xffff)<<16)|(a1&0xffff);
+		guest_sigmask=nmask;
+		while(!(pending_sig && !((guest_sigmask>>(pending_sig-1))&1)))
+			pause();
+		guest_sigmask=omask;
+		errno=EINTR; r=-1; break;
+	}
 	case C_GETGROUPS:		/* getgroups(n, *gids): one group */
 		if(a1>=1 && a2) st2(a2&0xffff, g_rgid);
 		r = 1; break;
@@ -1217,10 +1371,9 @@ static void do_syscall(int num, int argaddr)
 		if(b && n>0){ for(k=0;k<n-1 && nm[k];k++) st1(b+k,nm[k]); st1(b+k,0); }
 		r = 0; break;
 	}
-	case C_KILLPG: {		/* killpg(pgrp, sig): only ourselves modeled */
-		int gsig=a2&037;
-		if(gsig>=1 && gsig<32 && guest_sigh[gsig]>1) pending_sig=gsig;
-		r = 0; break;
+	case C_KILLPG: {		/* killpg(pgrp, sig): real host process group */
+		int hs=sig_g2h(a2&037);
+		r = hs ? killpg(pid_g2h(a1), hs) : 0; break;
 	}
 	case C_UNAME: {			/* sys3/Ultrix utssys(buf, 0, 0): 5 x 9-char
 					 * fields sysname/node/release/version/machine */
@@ -1274,6 +1427,14 @@ static void do_syscall(int num, int argaddr)
 		errno = ENOSYS; r = -1; break;
 	}
 	if(systrace) fprintf(stderr, "    -> %ld\n", r);
+	if(r<0 && errno==EINTR && (num==3||num==4)){
+		PC=TrapPC;	/* slow read/write: deliver the signal, then
+				 * restart (the kernel's ERESTART).  wait is
+				 * NOT restarted -- a SIGCHLD handler that
+				 * reaps the child would leave a restarted
+				 * wait blocking forever (csh's job loop). */
+		return;
+	}
 	if(r<0){ FC=1; R[0]=errno_h2g(errno); }	/* error: carry + era errno in r0 */
 	else { FC=0; R[0]=r&0xffff; }
 }
@@ -1499,6 +1660,7 @@ static void do_v1sys(int instr)
 static void do_sys(int instr)
 {
 	int n=instr&0377, argaddr, num;
+	TrapPC=(PC-2)&0xffff;
 	if(v1sys){ do_v1sys(instr); return; }
 	if(n==0){			/* indirect */
 		int blk=ifetch(PC); PC=(PC+2)&0xffff;
@@ -2058,12 +2220,15 @@ static void step(void)
 			else { PC=ld2(SP); SP=(SP+2)&0xffff; }
 			return;
 		}
-		if(ov_proc){		/* 0430: overlay switch, ovno in r0 (csv.s) */
+		if(ov_proc){	/* 0430/0431: overlay switch, ovno in r0 (csv.s
+				 * ovhndlr protocol); 0431 windows live in I-space */
 			int n=R[0];
-			if(n>=1&&n<=7&&ov_siz[n]>0){
-				memset(M+ov_base,0,ov_max);
-				memcpy(M+ov_base,ov_img[n-1],ov_siz[n]);
-				if(systrace) fprintf(stderr,"apsim: overlay -> %d (%d bytes @%06o)\n",n,ov_siz[n],ov_base);
+			unsigned char *win = ov_sep ? MI : M;
+			if(n>=1&&n<=15&&ov_siz[n]>0){
+				memset(win+ov_base,0,ov_max);
+				memcpy(win+ov_base,ov_img[n-1],ov_siz[n]);
+				cur_ovno=n;
+				if(systrace) fprintf(stderr,"apsim: overlay -> %d (%d bytes @%06o%s)\n",n,ov_siz[n],ov_base,ov_sep?" I":"");
 			} else {
 				fprintf(stderr,"apsim: EMT bad overlay %d\n",n);
 				halted=1; ecode=128+7;
@@ -2381,7 +2546,7 @@ static int load_aout_env(const char *path, int nargs, char **args, int nenv, cha
 	for(i=0;i<8;i++){ int lo=fgetc(f),hi=fgetc(f); hdr[i]=lo|(hi<<8); }
 	if((hdr[0]&0xffff)==0x2123)	/* "#!" */
 		return load_script(f, path, 1, nargs, args, nenv, env);
-	if(hdr[0]!=0405&&hdr[0]!=0407&&hdr[0]!=0410&&hdr[0]!=0411&&hdr[0]!=0430){
+	if(hdr[0]!=0405&&hdr[0]!=0407&&hdr[0]!=0410&&hdr[0]!=0411&&hdr[0]!=0430&&hdr[0]!=0431){
 		int b0=hdr[0]&0xff;
 		if(initial_exec && (b0=='\n'||b0=='\t'||(b0>=' '&&b0<127)))
 			return load_script(f, path, 0, nargs, args, nenv, env);
@@ -2402,26 +2567,43 @@ static int load_aout_env(const char *path, int nargs, char **args, int nenv, cha
 		return 0;
 	}
 	tsize=hdr[1]; dsize=hdr[2]; entry=hdr[5];
-	ov_proc=0;
-	if(hdr[0]==0430){
-		/* 2.9 auto-overlay, nonseparate: exec + ovlhdr{max_ovl,ov_siz[7]},
-		 * then base text, overlay texts, data.  VA layout (ld middle()):
-		 * overlay window at (tsize+017777)&~017777, data at
-		 * (window+max_ovl+017777)&~017777. */
-		int ovh[8],j,dbase;
-		for(j=0;j<8;j++){ int lo=fgetc(f),hi=fgetc(f); ovh[j]=lo|(hi<<8); }
+	ov_proc=0; ov_sep=0; cur_ovno=0;
+	if(hdr[0]==0430 || hdr[0]==0431){
+		/* Auto-overlay executables: exec + ovlhdr{max_ovl, ov_siz[NOVL]},
+		 * then base text, overlay texts, data.  NOVL is 7 through 2.9
+		 * (32-byte header) and 15 from 2.10 on (48-byte header, gated on
+		 * the universe).  0430 shares one space: overlay window at
+		 * (tsize+017777)&~017777, data above it.  0431 is separate I&D:
+		 * base text AND the overlay window live in I-space, data at D:0
+		 * -- how 2.11 fits csh (55K base + 7K window + 10K data). */
+		int novl=(Kern>=PDP11_K_BSD210)?15:7;
+		int ovh[16],j,dbase;
+		for(j=0;j<novl+1;j++){ int lo=fgetc(f),hi=fgetc(f); ovh[j]=lo|(hi<<8); }
 		ov_max=ovh[0];
 		if(ov_max>16384){ fclose(f); return -1; }
+		ov_sep=(hdr[0]==0431);
 		ov_base=(tsize+017777)&~017777;
-		dbase=((ov_base+ov_max)+017777)&~017777;
-		tsizew=0; Isp=M;
-		memset(M,0,1<<16);
-		if(fread(M,1,tsize,f)){}
-		for(j=1;j<8;j++){
-			ov_siz[j]=ovh[j];
-			if(ovh[j]>0){ if(fread(ov_img[j-1],1,ovh[j],f)){} }
+		if(ov_base+ov_max>0x10000){ fclose(f); return -1; }
+		for(j=1;j<=novl;j++) ov_siz[j]=ovh[j];
+		for(;j<16;j++) ov_siz[j]=0;
+		if(ov_sep){
+			Isp=MI; tsizew=0;
+			memset(MI,0,1<<16); memset(M,0,1<<16);
+			if(fread(MI,1,tsize,f)){}
+			for(j=1;j<=novl;j++)
+				if(ov_siz[j]>0){ if(fread(ov_img[j-1],1,ov_siz[j],f)){} }
+			if(fread(M,1,dsize,f)){}
+			gbrk=(dsize+hdr[3])&0xffff;
+		} else {
+			dbase=((ov_base+ov_max)+017777)&~017777;
+			tsizew=0; Isp=M;
+			memset(M,0,1<<16);
+			if(fread(M,1,tsize,f)){}
+			for(j=1;j<=novl;j++)
+				if(ov_siz[j]>0){ if(fread(ov_img[j-1],1,ov_siz[j],f)){} }
+			if(fread(M+dbase,1,dsize,f)){}
+			gbrk=(dbase+dsize+hdr[3])&0xffff;
 		}
-		if(fread(M+dbase,1,dsize,f)){}
 		ov_proc=1;
 	} else if(hdr[0]==0411){
 		Isp=MI; tsizew=0;
@@ -2492,6 +2674,7 @@ int main(int argc, char **argv)
 	(void)f; (void)hdr; (void)tsize; (void)dsize; (void)bsize; (void)entry;
 	/* load via the shared loader (handles 0407/0410/0411, stack, env, PC).
 	 * Guest argv = host argv past the a.out path. */
+	pid_learn(getpid()); pid_learn(getppid());
 	initial_exec=1;
 	i=load_aout(argv[ai], argc-ai, argv+ai);
 	initial_exec=0;
@@ -2499,16 +2682,51 @@ int main(int argc, char **argv)
 		fprintf(stderr,"apsim: cannot load %s\n", argv[ai]); return 2; }
 
 	for(i=0; i<4000000000LL && !halted; i++){
-		if(pending_sig){		/* deliver a caught signal, 2.8 sendsig() */
+		if(pending_sig && !((guest_sigmask>>(pending_sig-1))&1)){
+			/* deliver a caught signal, 2.8 sendsig() (a blocked
+			 * signal stays pending until sigsetmask releases it) */
 			int s=pending_sig, h, hs; pending_sig=0;
-			if(s>0 && s<32 && (h=guest_sigh[s])>1){
+			if(s>0 && s<32 && (h=guest_sigh[s])>1 && guest_reliable[s]){
+				/* 4.3-style delivery: build the 26-byte sigframe
+				 * (signum, code, scp, sigcontext) the kernel's
+				 * sendsig() leaves, enter sigtramp with r0=handler,
+				 * and block sig+hmask until sigreturn restores.
+				 * Frame layout from pdp/machdep.c sendsig(). */
+				int ps = (FC) | (FV<<1) | (FZ<<2) | (FN<<3);
+				int n = (SP-26)&0xffff;
+				int scp = (n+6)&0xffff;
+				st2(n+0, s);			/* sf_signum */
+				st2(n+2, 0);			/* sf_code   */
+				st2(n+4, scp);			/* sf_scp    */
+				st2(scp+0, 0);			/* sc_onstack */
+				stl(scp+2, guest_sigmask);	/* sc_mask (long) */
+				st2(scp+6, SP);			/* sc_sp */
+				st2(scp+8, R[5]);		/* sc_fp */
+				st2(scp+10, R[1]);		/* sc_r1 */
+				st2(scp+12, R[0]);		/* sc_r0 */
+				st2(scp+14, PC);		/* sc_pc */
+				st2(scp+16, ps);		/* sc_ps */
+				st2(scp+18, ov_proc?cur_ovno:0);	/* sc_ovno: the overlay
+							 * mapped when the signal hit, so
+							 * sigreturn restores it (else it
+							 * emt's a garbage number -> SIGEMT) */
+				guest_sigmask |= guest_hmask[s] | ((long)1<<(s-1));
+				R[0]=h;				/* handler addr, for sigtramp jsr (r0) */
+				SP=n;
+				PC=guest_sigtramp;
+			} else if(s>0 && s<32 && (h=guest_sigh[s])>1){
 				int ps = (FC) | (FV<<1) | (FZ<<2) | (FN<<3);
 				/* V7 one-shot: reset disposition (except ILL/TRAP, kept) */
 				if(s!=4 && s!=5){ guest_sigh[s]=0; hs=sig_g2h(s); if(hs) signal(hs,SIG_DFL); }
 				SP=(SP-4)&0xffff; st2((SP+2)&0xffff, ps); st2(SP, PC);
 				PC=h;			/* enter the libc tvect trampoline */
 			} else if(s>0 && s<32 && guest_sigh[s]==0){
-				halted=1; ecode=128+s; break;	/* default: terminated by signal */
+				switch(sig_dfl_action(s)){
+				case 2:	raise(SIGSTOP); break;	/* really stop; CONT resumes */
+				case 1:	break;			/* ignore */
+				default: halted=1; ecode=128+s;	/* terminated by signal */
+				}
+				if(halted) break;
 			}
 		}
 		if(watchsp && (SP<0150000 || SP>0177700)){ fprintf(stderr,"apsim: SP=%06o pc=%06o instr=%06o (i=%lld)\n",SP,PC,ifetch(PC),i); halted=1; ecode=126; break; }

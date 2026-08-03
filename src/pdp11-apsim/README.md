@@ -39,6 +39,19 @@ the byte-exact reconstructed rogue.
   semantics, minimal `__sysctl`), and sys3/Ultrix-11 stubs
   (utssys/ulimit/fcntl).  Failing calls deliver the **era errno** (a
   host→guest map), and unknown numbers return ENOSYS instead of halting.
+- **Job control**: real host process groups back the guest's — `setpgrp`/
+  `getpgrp` map to `setpgid`/`getpgid`, `TIOCSPGRP`/`TIOCGPGRP` to
+  `tcsetpgrp`/`tcgetpgrp`, and a default-stop signal (`SIGTSTP`/`TTIN`/
+  `TTOU`) really stops the process so `SIGCONT` resumes it.  Signals use
+  the full 4.3 reliable frame (32-bit `sigmask`, `sigvec`/`sigaction`
+  with the libc trampoline, `sigsuspend`, and `sigreturn` restoring the
+  saved `sigcontext`), and `wait`/`wait4` report stopped children with
+  `WUNTRACED`.  The genuine 2.11 **csh** runs jobs, pipelines, `foreach`
+  loops, command substitution, and background jobs with `Done` reports.
+- **Auto-overlays**: 0430 (shared I&D) and **0431 (separate I&D)** with
+  the 2.10/2.11 15-overlay header — the overlay window lives in I-space
+  for 0431, which is how csh (55K base + window + data) fits 64K.  The
+  `sigreturn` path restores the overlay that was mapped when a signal hit.
 - **Interpreter scripts**: `#!` lines exec the named interpreter with the
   classic argv rewrite (one optional argument, one level); a shebang-less
   text file on apsim's own command line runs through the guest `/bin/sh`
