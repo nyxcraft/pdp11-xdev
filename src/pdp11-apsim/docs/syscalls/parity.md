@@ -76,7 +76,9 @@ two ways: `tests/ptrace.s` (a parent reads a word out of a traced child's
 D-space, single-steps it, continues it to exit), and **the genuine 2.11
 `adb` under apsim** (`tests/run.sh` 211-adb) — set a breakpoint, run
 `/bin/echo` under ptrace, hit the breakpoint, read the registers with the
-PC exactly at it, single-step, and continue to exit.  For adb's registers
+PC exactly at it, single-step, continue to exit, and produce a `$c` stack
+backtrace (walking the r5 frame chain back to crt0 -- r5 read via
+PT_READ_U, the frame/return-pc pairs via PT_READ_D).  For adb's registers
 to read right, apsim synthesizes the saved-register block at the top of
 the emulated u-page (ctob(USIZE)=3968; R0 at byte 3962, the rest at their
 `reg.h` word offsets) so `PT_READ_U` lands where adb's `uar0[regloc[i]]`

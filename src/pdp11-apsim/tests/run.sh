@@ -175,6 +175,21 @@ if [ -x "$R/bin/echo" ] && [ -x "$R/bin/cat" ]; then
 			ok 211-adb 'real adb: breakpoint hit, registers, continue' ;;
 		*) bad 211-adb "adb session: $(echo "$out" | tr '\n' ' ' | head -c 80)" ;;
 		esac
+		# $c stack backtrace: break at the write stub (deep in echo's
+		# flush-on-exit chain) and walk the r5 frame chain back to crt0.
+		# Reads r5 via PT_READ_U and the saved-frame/return-pc pairs via
+		# PT_READ_D -- the most demanding ptrace workflow.  Expect a
+		# multi-frame trace ending at crt0's main-return (0104).
+		out=$(printf '04460:b\n:r hi\n$c\n$q\n' | \
+		      APSIM_PTRACE=1 APSIM_ROOT="$R" timeout 20 "$APSIM" -u bsd211 \
+		      "$R/bin/adb" /bin/echo 2>&1)
+		nf=$(printf '%s\n' "$out" | grep -c ' from ')
+		case "$out" in
+		*breakpoint*write*from\ 0104*)
+			[ "$nf" -ge 4 ] && ok 211-adb-bt "\$c: ${nf}-frame backtrace to crt0" \
+			                || bad 211-adb-bt "only $nf frames" ;;
+		*) bad 211-adb-bt "no backtrace to crt0: $(echo "$out" | tr '\n' ' ' | head -c 80)" ;;
+		esac
 	else
 		skip 211-adb 'adb not present'
 	fi
