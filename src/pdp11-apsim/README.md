@@ -35,10 +35,16 @@ the byte-exact reconstructed rogue.
   nosys gates), V7/2.8/2.9 (the trunk: inline args, fork/wait/pipe via
   real host fork, 2.8 `sendsig` signal frames, `local` sub-calls),
   2.10/2.11 (4.3/4.4-style renumbering via remap tables, stack-argument
-  convention, 58-byte stat, 32-bit ioctl codes, `sbrk` absolute-break
+  convention, 52-byte stat, 32-bit ioctl codes, `sbrk` absolute-break
   semantics, minimal `__sysctl`), and sys3/Ultrix-11 stubs
   (utssys/ulimit/fcntl).  Failing calls deliver the **era errno** (a
   host→guest map), and unknown numbers return ENOSYS instead of halting.
+- **Interpreter scripts**: `#!` lines exec the named interpreter with the
+  classic argv rewrite (one optional argument, one level); a shebang-less
+  text file on apsim's own command line runs through the guest `/bin/sh`
+  (the execvp courtesy -- there is no calling shell to do the ENOEXEC
+  fallback), while guest execs of such files fail authentically.  The
+  real 2.11 Bourne shell runs, so `sh` scripts work end to end.
 - **Directory listing**: classic UNIX reads directories with read(2),
   which Linux refuses — apsim snapshots an opened directory in the era's
   on-disk record format (V1 10-byte, V5..2.9 16-byte, 2.10/2.11 4.3

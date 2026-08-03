@@ -96,6 +96,23 @@ if [ -x "$R/bin/echo" ] && [ -x "$R/bin/cat" ]; then
 	*1976*) ok 211-date 'date renders the pinned clock through the tz engine' ;;
 	*) bad 211-date "output: $(echo "$out" | head -1)" ;;
 	esac
+	# Script exec: "#!/bin/echo hi" must exec echo as [hi, scriptpath]
+	# (the classic one-interpreter one-optional-arg kernel rule), and the
+	# shebang-less text /bin/true ("exit 0") must run via the guest
+	# /bin/sh -- the command-line courtesy; a guest exec still gets the
+	# authentic ENOEXEC so shells do their own fallback.
+	printf '#!/bin/echo hi\n' > "$tmp/sb"
+	out=$(APSIM_ROOT="$R" timeout 10 "$APSIM" -u bsd211 "$tmp/sb" 2>&1)
+	case "$out" in
+	hi\ *) ok 211-shebang '#! line execs the interpreter, classic argv' ;;
+	*) bad 211-shebang "output: $(echo "$out" | head -1)" ;;
+	esac
+	if APSIM_ROOT="$R" timeout 10 "$APSIM" -u bsd211 "$R/bin/true" >/dev/null 2>&1 && \
+	   ! APSIM_ROOT="$R" timeout 10 "$APSIM" -u bsd211 "$R/bin/false" >/dev/null 2>&1; then
+		ok 211-script 'shebang-less text runs via guest /bin/sh (true=0 false=1)'
+	else
+		bad 211-script 'true/false exit statuses wrong'
+	fi
 else
 	skip bsd211 '~/bsd/2.11/root not present'
 fi

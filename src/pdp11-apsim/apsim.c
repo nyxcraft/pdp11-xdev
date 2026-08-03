@@ -2268,12 +2268,24 @@ static void step(void)
  * like Apout's APOUT_ROOT) so binaries that exec a hardcoded /usr/ucb/lib/...
  * and read/write /tmp/... resolve inside the sandbox.  Unset -> raw path
  * (unchanged behaviour for c0/c1/c2/ld). */
-static char *mappath(int gaddr){
+static char *mappath_s(const char *gp){
 	static char buf[1024];
-	char *gp=(char*)(M+(gaddr&0xffff)), *root=getenv("APSIM_ROOT");
+	char *root=getenv("APSIM_ROOT");
 	if(root && gp[0]=='/') snprintf(buf,sizeof buf,"%s%s",root,gp);
 	else snprintf(buf,sizeof buf,"%s",gp);
 	return buf;
+}
+static char *mappath(int gaddr){
+	return mappath_s((char*)(M+(gaddr&0xffff)));
+}
+/* The guest-visible spelling of a host path: strip the $APSIM_ROOT prefix
+ * a command-line path may carry, so an interpreter can re-open the script
+ * through its own rooted open(). */
+static const char *guestify(const char *hp){
+	char *root=getenv("APSIM_ROOT"); size_t n;
+	if(root && (n=strlen(root))>1 && !strncmp(hp,root,n) && hp[n]=='/')
+		return hp+n;
+	return hp;
 }
 /* lay out the exec stack 2.8 crt0 expects: sp -> argc, argv[], NULL, envp[],
  * NULL, then the arg+env strings near the top of D-space.  If `env' is NULL the
@@ -2321,11 +2333,60 @@ static void setup_stack_v1(int nargs, char **args){
  * before calling).  Returns -1 if the file can't be opened / has bad magic.
  * load_aout_env takes an explicit environment (for exece); load_aout uses the
  * default ($APSIM_ENV). */
+/* Interpreter scripts.  "#!" execs the named interpreter with argv
+ * rewritten to [interp, optional-arg, scriptpath, original args 1..] --
+ * one optional argument and one level of interpretation, the classic
+ * kernel rules (an interpreter that is itself a script fails).  A
+ * shebang-less TEXT file given on apsim's own command line gets the
+ * execvp courtesy -- run through the guest's /bin/sh -- because there is
+ * no calling shell to do the ENOEXEC fallback (2.11's /bin/true is
+ * literally the two bytes "exit 0"); a GUEST exec of such a file still
+ * fails, authentically, so guest shells apply their own fallback. */
+static int sb_depth;		/* one level of script interpretation */
+static int initial_exec;	/* set for the command-line load only */
+static int load_script(FILE *f, const char *path, int use_line,
+		       int nargs, char **args, int nenv, char **env){
+	static char line[256], interp[256], iarg[256], spath[1024];
+	static char *nav[72];
+	char *p, *q; int na=0, k, r;
+	if(sb_depth){ fclose(f); return -1; }
+	interp[0]=iarg[0]=0;
+	if(use_line){			/* parse "#! interp [arg]" */
+		fseek(f,2,SEEK_SET);
+		if(!fgets(line,sizeof line,f)){ fclose(f); return -1; }
+		line[strcspn(line,"\n")]=0;
+		p=line; while(*p==' '||*p=='\t')p++;
+		if(!*p){ fclose(f); return -1; }
+		q=p; while(*q&&*q!=' '&&*q!='\t')q++;
+		snprintf(interp,sizeof interp,"%.*s",(int)(q-p),p);
+		while(*q==' '||*q=='\t')q++;
+		for(p=q+strlen(q); p>q && (p[-1]==' '||p[-1]=='\t'); p--) ;
+		if(p>q) snprintf(iarg,sizeof iarg,"%.*s",(int)(p-q),q);
+	} else
+		strcpy(interp,"/bin/sh");
+	fclose(f);
+	snprintf(spath,sizeof spath,"%s",guestify(path));
+	nav[na++]=interp;
+	if(iarg[0]) nav[na++]=iarg;
+	nav[na++]=spath;
+	for(k=1;k<nargs&&na<70;k++) nav[na++]=args[k];
+	sb_depth=1;
+	r=load_aout_env(mappath_s(interp), na, nav, nenv, env);
+	sb_depth=0;
+	return r;
+}
 static int load_aout_env(const char *path, int nargs, char **args, int nenv, char **env){
 	FILE *f=fopen(path,"rb"); int hdr[8],i,tsize,dsize,entry;
 	if(!f) return -1;
 	for(i=0;i<8;i++){ int lo=fgetc(f),hi=fgetc(f); hdr[i]=lo|(hi<<8); }
-	if(hdr[0]!=0405&&hdr[0]!=0407&&hdr[0]!=0410&&hdr[0]!=0411&&hdr[0]!=0430){ fclose(f); return -1; }
+	if((hdr[0]&0xffff)==0x2123)	/* "#!" */
+		return load_script(f, path, 1, nargs, args, nenv, env);
+	if(hdr[0]!=0405&&hdr[0]!=0407&&hdr[0]!=0410&&hdr[0]!=0411&&hdr[0]!=0430){
+		int b0=hdr[0]&0xff;
+		if(initial_exec && (b0=='\n'||b0=='\t'||(b0>=' '&&b0<127)))
+			return load_script(f, path, 0, nargs, args, nenv, env);
+		fclose(f); return -1;
+	}
 	if(hdr[0]==0405){
 		/* First Edition: [0405][a_text incl header][syms][reloc][data area][0].
 		 * exec loads the whole FILE IMAGE (12-byte header included) at core
@@ -2431,7 +2492,10 @@ int main(int argc, char **argv)
 	(void)f; (void)hdr; (void)tsize; (void)dsize; (void)bsize; (void)entry;
 	/* load via the shared loader (handles 0407/0410/0411, stack, env, PC).
 	 * Guest argv = host argv past the a.out path. */
-	if(load_aout(argv[ai], argc-ai, argv+ai) < 0){
+	initial_exec=1;
+	i=load_aout(argv[ai], argc-ai, argv+ai);
+	initial_exec=0;
+	if(i < 0){
 		fprintf(stderr,"apsim: cannot load %s\n", argv[ai]); return 2; }
 
 	for(i=0; i<4000000000LL && !halted; i++){
