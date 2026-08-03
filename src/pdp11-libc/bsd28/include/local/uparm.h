@@ -1,0 +1,6 @@
+#define binpath(file)	"/usr/ucb/bin/file"
+#define libpath(file)	"/usr/ucb/lib/file"
+#define loclibpath(file) "/usr/eecs/lib/file"
+#define usrpath(file)	"/usr/ucb/file"
+#define E_TERMCAP	"/etc/termcap"
+#define B_CSH		"/usr/ucb/bin/csh"
