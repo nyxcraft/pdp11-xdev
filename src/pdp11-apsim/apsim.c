@@ -32,6 +32,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
+#include <sys/statvfs.h>
 #include "universe.h"
 
 /* ---- universes / kernel personalities --------------------------------
@@ -704,8 +705,10 @@ enum {
 	C_SOCKET, C_BIND, C_CONNECT, C_LISTEN, C_ACCEPT, C_SEND, C_RECV,
 	C_SENDTO, C_RECVFROM, C_GETSOCKNAME, C_GETPEERNAME, C_SETSOCKOPT,
 	C_GETSOCKOPT, C_SHUTDOWN, C_SOCKETPAIR, C_SENDMSG, C_RECVMSG,
+	C_STATFS, C_FSTATFS, C_GETFSSTAT,
 	C_OK, C_NOSYS
 };
+static void put_statfs(int sb, struct statvfs *vs, const char *on);
 
 /* ---- BSD sockets on real host sockets --------------------------------
  * Guest fds are host fds, so socket()/accept() hand the host fd straight
@@ -804,12 +807,12 @@ static const struct sremap Bsd210Remap[] = {
 	{144,C_GETRLIMIT,0}, {145,C_OK,0}, {146,C_KILLPG,0},
 	{66,2,0} /* vfork -> fork (2.11 has this; 2.10 needs it too) */,
 	{76,C_OK,0} /* vhangup: no controlling tty to revoke */,
-	{91,C_NOSYS,0}, {94,C_NOSYS,0} /* get/setdopt */,
+	{91,C_NOSYS,0}, {94,C_OK,0} /* getdopt refused; setdopt accepted */,
 	/* networking (no protocol stack) + privileged calls: deliberate ENOSYS */
 	{97,C_SOCKET,0}, {98,C_CONNECT,0}, {99,C_ACCEPT,0}, {101,C_SEND,0},
 	{102,C_RECV,0}, {104,C_BIND,0}, {105,C_SETSOCKOPT,0}, {106,C_LISTEN,0},
 	{113,C_RECVMSG,0}, {114,C_SENDMSG,0}, {118,C_GETSOCKOPT,0}, {125,C_RECVFROM,0},
-	{126,C_NOSYS,0}, {127,C_NOSYS,0} /* setre[ug]id */,
+	{126,C_OK,0}, {127,C_OK,0} /* setre[ug]id: accept (identity model) */,
 	{133,C_SENDTO,0}, {134,C_SHUTDOWN,0}, {135,C_SOCKETPAIR,0}, {140,C_NOSYS,0},
 	{141,C_GETPEERNAME,0}, {142,C_OK,0}, {143,C_NOSYS,0} /* get/sethostid */,
 	{148,C_NOSYS,0}, {149,C_NOSYS,0}, {150,C_GETSOCKNAME,0}, {151,C_NOSYS,0},
@@ -821,14 +824,14 @@ static const struct sremap Bsd210Remap[] = {
 static const struct sremap Bsd211Remap[] = {
 	{7,C_WAIT4,0}, {13,C_FCHDIR,0}, {17,C_OK,0}, {18,C_OK,0},
 	{23,C_SYSCTL,0}, {25,C_GETEUID,0}, {27,C_GETPPID,0},
-	{28,C_NOSYS,0}, {29,C_NOSYS,0}, {30,C_NOSYS,0} /* statfs trio */,
+	{28,C_STATFS,0}, {29,C_FSTATFS,0}, {30,C_GETFSSTAT,0} /* statfs/fstatfs/getfsstat */,
 	{31,C_SIGVEC,0} /* sigaction: same record-the-handler treatment */,
 	{32,C_OK,0}, {34,C_OK,0}, {35,C_OK,0},
 	RS_(38,18), {39,C_GETLOGIN,0}, RS_(40,C_LSTAT), {43,C_OK,0},
 	{45,23,0} /* setuid */, {46,C_OK,0} /* seteuid */,
 	{48,C_GETEGID,0}, {49,46,0} /* setgid */, {50,C_OK,0},
 	{56,C_NOSYS,0}, {57,C_SYMLINK,0}, {58,C_READLINK,0},
-	RS_(62,28), {64,C_GETPAGESIZE,0}, {65,C_NOSYS,0} /* pselect */,
+	RS_(62,28), {64,C_GETPAGESIZE,0}, {65,C_SELECT,0} /* pselect -> select */,
 	{66,2,0} /* vfork -> fork */, {69,C_SBRK,0},
 	{79,C_GETGROUPS,0}, {80,C_OK,0}, {81,C_GETPGRP,0}, {82,C_SETPGRP,0},
 	{83,C_OK,0}, {86,C_OK,0}, {87,C_GETHOSTNAME,0}, {88,C_OK,0},
@@ -914,6 +917,7 @@ static void do_syscall(int num, int argaddr)
 		case C_SEND: case C_RECV: case C_SENDTO: case C_RECVFROM:
 		case C_GETSOCKNAME: case C_GETPEERNAME: case C_SHUTDOWN:
 		case C_SETSOCKOPT: case C_GETSOCKOPT: case C_SENDMSG: case C_RECVMSG:
+		case C_FSTATFS:
 			/* first arg is an fd (V7 took it in r0) */
 			fd0=s1; a1=s2; a2=s3; a3=s4; break;
 		default:
@@ -1249,6 +1253,8 @@ static void do_syscall(int num, int argaddr)
 	case 39:			/* setpgrp: no job control -> succeed. */
 	case 25:			/* stime: don't move the clock -> succeed. */
 	case 44:			/* profil: accept and ignore the buckets. */
+	case 49:			/* rtp (2.9): make/unmake a real-time process --
+					 * no scheduler, so succeed with no effect. */
 	case 51:			/* acct: process accounting -> succeed, no effect. */
 	case 53:			/* lock: process-in-core -> succeed, no effect. */
 		r = 0; break;
@@ -1679,6 +1685,23 @@ static void do_syscall(int num, int argaddr)
 			}
 		}
 		break;
+	}
+	case C_STATFS: case C_FSTATFS: {	/* 2.11 statfs/fstatfs -> host statvfs */
+		struct statvfs vs; int ok, sb; const char *on="/";
+		if(num==C_FSTATFS){ ok=fstatvfs(fd0,&vs); sb=a1&0xffff; }
+		else { on=(char*)(M+(a1&0xffff)); ok=statvfs(mappath(a1),&vs); sb=a2&0xffff; }
+		if(ok<0){ r=-1; break; }
+		put_statfs(sb, &vs, on);
+		r=0; break;
+	}
+	case C_GETFSSTAT: {		/* getfsstat(buf, bufsize, flags): apsim
+					 * presents ONE filesystem (the root), so
+					 * report count 1 and fill one statfs if
+					 * there's room (df -a). */
+		int buf=a1&0xffff, bufsize=a2;
+		if(buf && bufsize>=232){ struct statvfs vs;
+			if(statvfs(mappath_s("/"),&vs)==0) put_statfs(buf,&vs,"/"); }
+		r=1; break;
 	}
 	case C_OK:			/* benign per-era no-ops (setpgrp, itimers,
 					 * sigblock/sigsetmask, flock, hostid, ...) */
@@ -2700,6 +2723,22 @@ static const char *guestify(const char *hp){
 	if(root && (n=strlen(root))>1 && !strncmp(hp,root,n) && hp[n]=='/')
 		return hp+n;
 	return hp;
+}
+/* Fill the 232-byte 2.11 struct statfs from a host statvfs.  Layout:
+ * short type/flags/bsize/iosize, long blocks/bfree/bavail (in 1K units),
+ * u_short files/ffree, long fsid[2]+spare[5], 90-byte mntonname/from. */
+static void put_statfs(int sb, struct statvfs *vs, const char *on){
+	int k; long u = vs->f_frsize/1024; if(u<1) u=1;
+	for(k=0;k<232;k++) st1((sb+k)&0xffff,0);
+	st2(sb+0, 1); st2(sb+2, 0);			/* f_type=UFS, f_flags */
+	st2(sb+4, 1024); st2(sb+6, 1024);		/* f_bsize, f_iosize */
+	stl(sb+8,  (long)(vs->f_blocks*u));
+	stl(sb+12, (long)(vs->f_bfree*u));
+	stl(sb+16, (long)(vs->f_bavail*u));
+	st2(sb+20, vs->f_files&0xffff); st2(sb+22, vs->f_ffree&0xffff);
+	{ const char *p=guestify(on); int n=strlen(p);
+	  for(k=0;k<n && k<89;k++) st1((sb+52+k)&0xffff,p[k]); }
+	{ const char *f="apsim"; for(k=0;f[k];k++) st1((sb+142+k)&0xffff,f[k]); }
 }
 /* lay out the exec stack 2.8 crt0 expects: sp -> argc, argv[], NULL, envp[],
  * NULL, then the arg+env strings near the top of D-space.  If `env' is NULL the
