@@ -940,14 +940,35 @@ static void pt_listen(void){
 	if(bind(pt_lfd,(struct sockaddr*)&a,pt_alen(&a))<0 || listen(pt_lfd,1)<0){
 		close(pt_lfd); pt_lfd=-1; }
 }
+/* PT_READ_U/WRITE_U -- the user structure.  A real 2.11 debugger (adb)
+ * reconstructs the whole u-page by reading it word by word, then indexes
+ * the saved registers at uar0[regloc[i]] where uar0 = &upage[ctob(USIZE)/2
+ * - 3].  ctob(USIZE) is 3968 on 2.11/pdp, so R0 lands at byte 3962 and the
+ * rest at their reg.h word offsets (R1=-3, R2=-11 ... R7/PC=+1, RPS=+2).
+ * We synthesize just those words (the registers adb reads); the remaining
+ * u-page words read as 0, which adb tolerates for a live subprocess.
+ * (Byte offsets 0..16 keep the simple index convention tests/ptrace.s uses;
+ * they don't collide with the 3940+ u-page register block.) */
+#define PT_UB 3968				/* ctob(USIZE) on 2.11/pdp */
+static const int pt_regoff[8] = {	/* byte offset of each Rk in the u-page */
+	PT_UB-6+2*0,   PT_UB-6+2*(-3),  PT_UB-6+2*(-11), PT_UB-6+2*(-10),
+	PT_UB-6+2*(-9),PT_UB-6+2*(-7),  PT_UB-6+2*(-4),  PT_UB-6+2*1
+};
+#define PT_PSOFF (PT_UB-6+2*2)			/* the saved PS */
 static int pt_readu(int off){
-	if(off>=0 && off<=14) return R[off/2];
-	if(off==16){ return (FC)|(FV<<1)|(FZ<<2)|(FN<<3); }
+	int k;
+	if(off>=0 && off<=14) return R[off/2];		/* probe convention */
+	if(off==16) return (FC)|(FV<<1)|(FZ<<2)|(FN<<3);
+	for(k=0;k<8;k++) if(off==pt_regoff[k]) return R[k];
+	if(off==PT_PSOFF) return (FC)|(FV<<1)|(FZ<<2)|(FN<<3)|0340;  /* +kernel-set bits */
 	return 0;
 }
 static void pt_writeu(int off, int val){
-	if(off>=0 && off<=14) R[off/2]=val&0xffff;
-	else if(off==16){ FC=val&1; FV=(val>>1)&1; FZ=(val>>2)&1; FN=(val>>3)&1; }
+	int k;
+	if(off>=0 && off<=14){ R[off/2]=val&0xffff; return; }
+	if(off==16){ FC=val&1; FV=(val>>1)&1; FZ=(val>>2)&1; FN=(val>>3)&1; return; }
+	for(k=0;k<8;k++) if(off==pt_regoff[k]){ R[k]=val&0xffff; return; }
+	if(off==PT_PSOFF){ FC=val&1; FV=(val>>1)&1; FZ=(val>>2)&1; FN=(val>>3)&1; }
 }
 /* tracee: park on a trap and serve the tracer until continue/step/kill.
  * Returns the signal the tracer wants delivered on resume (0 = none). */

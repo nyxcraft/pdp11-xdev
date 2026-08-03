@@ -28,7 +28,7 @@ unimplemented syscall.
 | **Sockets** (socket/socketpair/bind/connect/listen/accept, send/recv/sendto/recvfrom, sendmsg/recvmsg, get/setsockopt, getsockname/getpeername, shutdown) | full, real host sockets | **full**, real host sockets | verified AF_UNIX socketpair + AF_INET TCP loopback |
 | **Filesystem stats** (statfs/fstatfs/getfsstat) | full (host statvfs) | **full** (host statvfs) | 232-byte 2.11 struct; `df` works |
 | **select/poll** | select + poll | **select** | 2.11 has no `poll` (a 4.3+ call) |
-| **ptrace** (debug channel) | cooperative channel (drives gdb) | **cooperative channel** (adb model) | opt-in `$APSIM_PTRACE`; PT_READ/WRITE_I/D/U, CONTINUE, STEP, KILL over an abstract socket; wait reports synthetic WIFSTOPPED |
+| **ptrace** (debug channel) | cooperative channel (drives gdb) | **cooperative channel** (drives real adb) | opt-in `$APSIM_PTRACE`; PT_READ/WRITE_I/D/U, CONTINUE, STEP, KILL over an abstract socket; wait reports synthetic WIFSTOPPED; the u-page's saved registers are synthesized so adb's `$r` reads them |
 | **sbrk/brk** | full | **full** | flat 64 KB space |
 | **__sysctl** | rich node table + `/proc`-scan `ps` | **common nodes** (CTL_KERN/CTL_HW strings, hostname) | 2.11's sysctl is far smaller than 4.4's; the common facts are answered |
 | **Overlays** (auto-overlay text) | n/a (VAX has no overlays) | **0430 + 0431** (2.10/2.11 15-overlay, separate-I&D window) | how csh fits 64 KB |
@@ -71,9 +71,16 @@ apsim serving an abstract AF_UNIX socket; the tracer's ptrace ops and its
 `wait()` (which reports a synthetic `WIFSTOPPED`) go over that channel, so
 one apsim process can read/write and single-step another across their
 separate address spaces. This runs 2.11's classic `ptrace(2)`
-(PT_READ/WRITE_I/D/U, CONTINUE, STEP, KILL) — the adb model — and is
-verified by `tests/ptrace.s` (a parent reads a word out of a traced
-child's D-space, single-steps it, and continues it to exit).
+(PT_READ/WRITE_I/D/U, CONTINUE, STEP, KILL) — the adb model.  Verified
+two ways: `tests/ptrace.s` (a parent reads a word out of a traced child's
+D-space, single-steps it, continues it to exit), and **the genuine 2.11
+`adb` under apsim** (`tests/run.sh` 211-adb) — set a breakpoint, run
+`/bin/echo` under ptrace, hit the breakpoint, read the registers with the
+PC exactly at it, single-step, and continue to exit.  For adb's registers
+to read right, apsim synthesizes the saved-register block at the top of
+the emulated u-page (ctob(USIZE)=3968; R0 at byte 3962, the rest at their
+`reg.h` word offsets) so `PT_READ_U` lands where adb's `uar0[regloc[i]]`
+expects.
 
 ## Summary
 

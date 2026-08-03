@@ -159,6 +159,25 @@ if [ -x "$R/bin/echo" ] && [ -x "$R/bin/cat" ]; then
 	else
 		bad 211-ptrace 'ptrace.s did not assemble'
 	fi
+	# The real 2.11 adb debugger, driven through the ptrace channel: set a
+	# breakpoint at an instruction boundary in /bin/echo, run it under
+	# ptrace, and confirm adb reports the breakpoint hit with the correct
+	# PC (register read via PT_READ_U off the emulated u-page).  This
+	# exercises fork/trace-me/exec-stop, PT_WRITE_I (plant BPT), the BPT
+	# trace-stop, the synthetic WIFSTOPPED, and PT_READ_U registers -- the
+	# whole channel, with the genuine debugger rather than a probe.
+	if [ -x "$R/bin/adb" ] && [ -x "$R/bin/echo" ]; then
+		out=$(printf '06:b\n:r hi\n$r\n:c\n$q\n' | \
+		      APSIM_PTRACE=1 APSIM_ROOT="$R" timeout 20 "$APSIM" -u bsd211 \
+		      "$R/bin/adb" /bin/echo 2>&1)
+		case "$out" in
+		*breakpoint*06:*pc*06*terminated*)
+			ok 211-adb 'real adb: breakpoint hit, registers, continue' ;;
+		*) bad 211-adb "adb session: $(echo "$out" | tr '\n' ' ' | head -c 80)" ;;
+		esac
+	else
+		skip 211-adb 'adb not present'
+	fi
 else
 	skip bsd211 '~/bsd/2.11/root not present'
 fi
