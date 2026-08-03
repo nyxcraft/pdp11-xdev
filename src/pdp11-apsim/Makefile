@@ -7,9 +7,9 @@ include ../common/config.mk
 TARGET = $(BIN)/pdp11-apsim
 
 all: $(TARGET)
-$(TARGET): apsim.c
+$(TARGET): apsim.c $(COMMON)/universe.h
 	@mkdir -p $(BIN)
-	$(HOSTCC) $(OPT) -o $@ apsim.c -lm
+	$(HOSTCC) $(OPT) -I$(COMMON) -o $@ apsim.c -lm
 check: $(TARGET)
 	@if [ -x tests/run.sh ]; then cd tests && ./run.sh; else echo "pdp11-apsim: no tests yet"; fi
 clean:

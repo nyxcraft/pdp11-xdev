@@ -5,21 +5,24 @@
 /* X(name, id, status, desc) for every universe.  status is one of
  * "full", "sim", "planned" -- see universes.tsv. */
 #define PDP11_UNIVERSES(X) \
-	X(v1, 1, "sim", "First Edition UNIX (1971-72); apsim personality for 0405 binaries") \
-	X(v2, 2, "sim", "Second Edition UNIX (1972); 0405 format, runs on the V1 personality; sources in ~/unix/v2") \
+	X(v1, 1, "sim", "First Edition UNIX (1971-72); 0405 binaries, KE11-A, 1971 trap conventions") \
+	X(v2, 2, "sim", "Second Edition UNIX (1972); 0405 format, V1 personality; sources in ~/unix/v2") \
 	X(v3, 3, "planned", "Third Edition UNIX (1973); no complete source tree staged") \
 	X(v4, 4, "planned", "Fourth Edition UNIX (1973), first C kernel; sources in ~/unix/v4") \
-	X(v5, 5, "planned", "Fifth Edition UNIX (1974); full root with binaries in ~/unix/v5") \
-	X(v6, 6, "planned", "Sixth Edition UNIX (1975); full root with binaries in ~/unix/v6") \
-	X(v7, 7, "sim", "Seventh Edition UNIX (1979); apsim's syscall layer is the V7 set") \
+	X(v5, 5, "sim", "Fifth Edition UNIX (1974); real v5 ls/cat run (root in ~/unix/v5)") \
+	X(v6, 6, "sim", "Sixth Edition UNIX (1975); real v6 ls/cat/date run (root in ~/unix/v6)") \
+	X(v7, 7, "sim", "Seventh Edition UNIX (1979); the canonical syscall numbering") \
 	X(bsd1, 11, "planned", "1BSD (1978), V6-kernel userland; sources in ~/bsd/1bsd") \
 	X(bsd2, 20, "planned", "2BSD (1979), V7-kernel userland; sources in ~/bsd/2bsd") \
 	X(bsd279, 27, "planned", "2.79BSD (1980), V7-kernel userland; sources in ~/bsd/2.79") \
 	X(bsd28, 28, "full", "2.8BSD (1981), Ritchie cc era; FP11 D-format floating point") \
 	X(bsd29, 29, "full", "2.9BSD (1983), overlays and split I&D; the default universe") \
-	X(bsd210, 210, "planned", "2.10BSD (1987); sources in ~/bsd/2.10, das/apsim know its stat renumbering") \
-	X(bsd211, 211, "planned", "2.11BSD pl431 (2000), string-table a.out; porting base for new tools, sources in ~/bsd/2.11") \
+	X(bsd210, 210, "planned", "2.10BSD (1987), 4.3-style numbering; personality present, stdio path still misbehaves (see NOTES)") \
+	X(bsd211, 211, "sim", "2.11BSD pl431 (2000), 4.4-style numbering, stack args; echo/cat/expr/hostname run, ls/date still hang (see NOTES); porting base for new tools") \
 	X(sys3, 103, "planned", "UNIX System III (1980), PDP-11 line; sources in ~/unix/sys3") \
+	X(sys5v2, 105, "planned", "System V Release 2 (1984), the last SysV with PDP-11 support; table groundable from ~/unix/svr2 (VAX kit)") \
+	X(ultrix11v2, 21, "planned", "DEC Ultrix-11 2.0 (1984); binary tape staged in ~/unix/ultrix11/2.0; 1.0 survives as docs only (lineage root = V7M)") \
+	X(ultrix11, 31, "planned", "DEC Ultrix-11 3.1 (1986), V7 line + fcntl/ulimit/utssys; staged in ~/unix/ultrix11 (from TUHS)") \
 	/* end */
 
 #define PDP11_UNIV_V1	1
@@ -37,6 +40,64 @@
 #define PDP11_UNIV_BSD210	210
 #define PDP11_UNIV_BSD211	211
 #define PDP11_UNIV_SYS3	103
+#define PDP11_UNIV_SYS5V2	105
+#define PDP11_UNIV_ULTRIX11V2	21
+#define PDP11_UNIV_ULTRIX11	31
+
+/* apsim kernel personalities, in ERA ORDER (comparisons like
+ * `Kern >= PDP11_K_BSD210' select everything from that era on). */
+enum pdp11_kern {
+	PDP11_K_V1,
+	PDP11_K_V56,
+	PDP11_K_V7,
+	PDP11_K_SYS3,
+	PDP11_K_ULTRIX,
+	PDP11_K_BSD2X,
+	PDP11_K_BSD210,
+	PDP11_K_BSD211,
+};
+
+/* X(name, id, status, kern, desc) -- the full table for apsim. */
+#define PDP11_UNIVERSE_TABLE(X) \
+	X("v1", 1, "sim", PDP11_K_V1, "First Edition UNIX (1971-72); 0405 binaries, KE11-A, 1971 trap conventions") \
+	X("v2", 2, "sim", PDP11_K_V1, "Second Edition UNIX (1972); 0405 format, V1 personality; sources in ~/unix/v2") \
+	X("v3", 3, "planned", PDP11_K_V56, "Third Edition UNIX (1973); no complete source tree staged") \
+	X("v4", 4, "planned", PDP11_K_V56, "Fourth Edition UNIX (1973), first C kernel; sources in ~/unix/v4") \
+	X("v5", 5, "sim", PDP11_K_V56, "Fifth Edition UNIX (1974); real v5 ls/cat run (root in ~/unix/v5)") \
+	X("v6", 6, "sim", PDP11_K_V56, "Sixth Edition UNIX (1975); real v6 ls/cat/date run (root in ~/unix/v6)") \
+	X("v7", 7, "sim", PDP11_K_V7, "Seventh Edition UNIX (1979); the canonical syscall numbering") \
+	X("bsd1", 11, "planned", PDP11_K_V56, "1BSD (1978), V6-kernel userland; sources in ~/bsd/1bsd") \
+	X("bsd2", 20, "planned", PDP11_K_V7, "2BSD (1979), V7-kernel userland; sources in ~/bsd/2bsd") \
+	X("bsd279", 27, "planned", PDP11_K_V7, "2.79BSD (1980), V7-kernel userland; sources in ~/bsd/2.79") \
+	X("bsd28", 28, "full", PDP11_K_BSD2X, "2.8BSD (1981), Ritchie cc era; FP11 D-format floating point") \
+	X("bsd29", 29, "full", PDP11_K_BSD2X, "2.9BSD (1983), overlays and split I&D; the default universe") \
+	X("bsd210", 210, "planned", PDP11_K_BSD210, "2.10BSD (1987), 4.3-style numbering; personality present, stdio path still misbehaves (see NOTES)") \
+	X("bsd211", 211, "sim", PDP11_K_BSD211, "2.11BSD pl431 (2000), 4.4-style numbering, stack args; echo/cat/expr/hostname run, ls/date still hang (see NOTES); porting base for new tools") \
+	X("sys3", 103, "planned", PDP11_K_SYS3, "UNIX System III (1980), PDP-11 line; sources in ~/unix/sys3") \
+	X("sys5v2", 105, "planned", PDP11_K_SYS3, "System V Release 2 (1984), the last SysV with PDP-11 support; table groundable from ~/unix/svr2 (VAX kit)") \
+	X("ultrix11v2", 21, "planned", PDP11_K_ULTRIX, "DEC Ultrix-11 2.0 (1984); binary tape staged in ~/unix/ultrix11/2.0; 1.0 survives as docs only (lineage root = V7M)") \
+	X("ultrix11", 31, "planned", PDP11_K_ULTRIX, "DEC Ultrix-11 3.1 (1986), V7 line + fcntl/ulimit/utssys; staged in ~/unix/ultrix11 (from TUHS)") \
+	/* end */
+
+/* X(alias, canonical) -- accepted alternate spellings. */
+#define PDP11_UNIVERSE_ALIASES(X) \
+	X("unix72", "v1") \
+	X("1bsd", "bsd1") \
+	X("2bsd", "bsd2") \
+	X("2.79", "bsd279") \
+	X("2.8", "bsd28") \
+	X("2.8bsd", "bsd28") \
+	X("2.9", "bsd29") \
+	X("2.9bsd", "bsd29") \
+	X("2.10", "bsd210") \
+	X("2.10bsd", "bsd210") \
+	X("2.11", "bsd211") \
+	X("2.11bsd", "bsd211") \
+	X("svr2", "sys5v2") \
+	X("ultrix-2.0", "ultrix11v2") \
+	X("ultrix", "ultrix11") \
+	X("ultrix-3.1", "ultrix11") \
+	/* end */
 
 /* The universe assumed when PDP11_UNIVERSE is unset. */
 #define PDP11_UNIV_DEFAULT_NAME	"bsd29"

@@ -1,18 +1,88 @@
 #!/bin/sh
-# apsim regression suite.  The late-hardware golden probe (cistest.s)
-# exercises MFPT, SPL, TSTSET, WRTLCK, FIS, and the decimal CIS group:
-# each numbered case jumps to `fail' with the case number in r5, so a
-# nonzero exit identifies the first failing case; exit 0 = all pass.
+# apsim regression suite.
+#
+# 1. cistest.s -- the late-hardware golden probe (MFPT, SPL, TSTSET, WRTLCK,
+#    FIS, decimal CIS); each numbered case jumps to `fail' with the case
+#    number in r5, so a nonzero exit identifies the first failing case.
+# 2. errno.s -- errno fidelity: a failing open must deliver the era errno
+#    (ENOENT=2), not the historical blanket 1 or a raw host number.
+# 3. gate211.s -- universe gate, positive AND negative: sys 64 must be
+#    getpagesize under -u bsd211 and must FAIL under the default universe.
+#    (The negative half is what stops era numbering leaking across
+#    personalities -- the alternative is not a failure but a wrong success.)
+# 4. Real era binaries (skipped when the distribution trees are absent):
+#    V5/V6 ls|cat from ~/unix/{v5,v6}, and 2.11BSD echo/cat (4.4-style
+#    numbering, stack args, string-table a.out) from ~/bsd/2.11.
 here=$(cd "$(dirname "$0")" && pwd); BIN="$here/../../../bin"
 AS="$BIN/pdp11-as"; APSIM="$BIN/pdp11-apsim"
 fail=0; tmp=$(mktemp -d) || exit 1; trap 'rm -rf "$tmp"' EXIT
+ok()  { printf '%-11s ok    %s\n' "$1" "$2"; }
+bad() { printf '%-11s FAIL  %s\n' "$1" "$2"; fail=1; }
+skip(){ printf '%-11s skip  %s\n' "$1" "$2"; }
 
 # ---- 1: late-hardware/CIS instruction golden ---------------------------
 if "$AS" -j -o "$tmp/cistest" "$here/cistest.s" && "$APSIM" "$tmp/cistest"; then
-	printf '%-11s ok    %s\n' cistest 'MFPT/SPL/TSTSET/WRTLCK/FIS/CIS all pass'
+	ok cistest 'MFPT/SPL/TSTSET/WRTLCK/FIS/CIS all pass'
 else
-	printf '%-11s FAIL  %s\n' cistest "first failing case: exit $?"
-	fail=1
+	bad cistest "first failing case: exit $?"
+fi
+
+# ---- 2: errno fidelity -------------------------------------------------
+if "$AS" -o "$tmp/errno" "$here/errno.s" && "$APSIM" "$tmp/errno"; then
+	ok errno 'failed open delivers era ENOENT in r0'
+else
+	bad errno "check $? (1=open succeeded, 2=wrong errno)"
+fi
+
+# ---- 3: universe numbering gate (positive + negative) ------------------
+if "$AS" -o "$tmp/gate211" "$here/gate211.s"; then
+	if "$APSIM" -u bsd211 "$tmp/gate211"; then
+		if "$APSIM" "$tmp/gate211" 2>/dev/null; then
+			bad univ-gate '4.3 numbering honoured under the default universe'
+		else
+			ok univ-gate 'sys 64 = getpagesize under bsd211 only'
+		fi
+	else
+		bad univ-gate "getpagesize failed under -u bsd211 (exit $?)"
+	fi
+else
+	bad univ-gate 'probe did not assemble'
+fi
+
+# ---- 4: real era binaries (need the distribution trees) ----------------
+for era in v5 v6; do
+	R="$HOME/unix/$era"
+	if [ -x "$R/bin/ls" ] && [ -x "$R/bin/cat" ]; then
+		out=$(APSIM_ROOT="$R" timeout 10 "$APSIM" -u $era "$R/bin/ls" / 2>&1)
+		case "$out" in
+		*bin*etc*|*bin*usr*) ok "$era-ls" 'real 1974/75 ls lists / via the dir snapshot' ;;
+		*) bad "$era-ls" "output: $(echo "$out" | head -1)" ;;
+		esac
+		out=$(APSIM_ROOT="$R" timeout 10 "$APSIM" -u $era "$R/bin/cat" /etc/passwd 2>&1)
+		case "$out" in
+		root*) ok "$era-cat" 'cat reads the era /etc/passwd' ;;
+		*) bad "$era-cat" "output: $(echo "$out" | head -1)" ;;
+		esac
+	else
+		skip "$era" "~/unix/$era not present"
+	fi
+done
+
+R="$HOME/bsd/2.11/root"
+if [ -x "$R/bin/echo" ] && [ -x "$R/bin/cat" ]; then
+	out=$(APSIM_ROOT="$R" timeout 10 "$APSIM" -u bsd211 "$R/bin/echo" hello 2>&1)
+	if [ "$out" = "hello" ]; then
+		ok 211-echo 'real 2.11 (4.4-numbered, stack args) echo'
+	else
+		bad 211-echo "output: $(echo "$out" | head -1)"
+	fi
+	out=$(APSIM_ROOT="$R" timeout 10 "$APSIM" -u bsd211 "$R/bin/cat" /etc/motd 2>&1)
+	case "$out" in
+	*2.11\ BSD*) ok 211-cat 'cat prints the genuine 2.11 motd' ;;
+	*) bad 211-cat "output: $(echo "$out" | head -1)" ;;
+	esac
+else
+	skip bsd211 '~/bsd/2.11/root not present'
 fi
 
 [ "$fail" = 0 ] && echo "ALL PASS" || echo "FAILURES"; exit $fail

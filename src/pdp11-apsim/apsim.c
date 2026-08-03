@@ -28,6 +28,74 @@
 #include <utime.h>
 #include <time.h>
 #include <math.h>
+#include <dirent.h>
+#include "universe.h"
+
+/* ---- universes / kernel personalities --------------------------------
+ * One canonical syscall switch (V7 numbering, the lineage trunk) plus
+ * per-era remap tables and shape branches, following the VAX apsim's
+ * design.  --universe/-u (or $PDP11_UNIVERSE) selects the personality;
+ * a 0405 magic still auto-selects First Edition regardless (the same
+ * role load-time refinement plays on the VAX side).
+ *
+ * Kern is era-ordered (enum pdp11_kern in universe.h), so lineage checks
+ * read as ranges: `Kern >= PDP11_K_BSD210' = "the 4.3-numbered eras". */
+static int Kern = PDP11_K_BSD2X;	/* personality (default: bsd29) */
+static const char *Univ = PDP11_UNIV_DEFAULT_NAME;
+
+static const struct { const char *name; int id, kern; } UnivTab[] = {
+#define X(n, i, s, k, d) { n, i, k },
+	PDP11_UNIVERSE_TABLE(X)
+#undef X
+	{ 0, 0, 0 }
+};
+static const struct { const char *alias, *canon; } UnivAlias[] = {
+#define X(a, c) { a, c },
+	PDP11_UNIVERSE_ALIASES(X)
+#undef X
+	{ 0, 0 }
+};
+static int stackargs;	/* syscall args on the user stack at 2(sp)... (the
+			 * 2.10/2.11 kernels' C calling convention) instead of
+			 * inline after the trap / fd in r0 (V1..2.9).  Set by
+			 * the universe; -2 / APSIM_SYSARGS=stack override. */
+static int univ_apply(const char *name){
+	int i;
+	for(i=0; UnivAlias[i].alias; i++)
+		if(!strcmp(name, UnivAlias[i].alias)){ name=UnivAlias[i].canon; break; }
+	for(i=0; UnivTab[i].name; i++)
+		if(!strcmp(name, UnivTab[i].name)){
+			Univ = UnivTab[i].name;
+			Kern = UnivTab[i].kern;
+			stackargs = (Kern >= PDP11_K_BSD210);
+			return 1;
+		}
+	return 0;
+}
+
+/* Host errno -> guest errno.  The first 34 are the shared V7 inheritance
+ * and pass through; past that the eras diverge: the 4.3-numbered eras
+ * (bsd210/bsd211) moved EAGAIN to 35 (11 became EDEADLK) and added the
+ * 35..90 range, while the classic eras never saw a number above 34 --
+ * so anything unmappable collapses to a sane in-range meaning rather
+ * than letting a Linux number through (Linux ELOOP=40 would read as
+ * 2.9's ENOMSG-shaped nonsense). */
+static int errno_h2g(int e){
+	int modern = (Kern >= PDP11_K_BSD210);
+	switch(e){
+	case EAGAIN:       return modern ? 35 : 11;
+	case EDEADLK:      return modern ? 11 : 5;
+	case ELOOP:        return modern ? 62 : ENOENT;
+	case ENAMETOOLONG: return modern ? 63 : ENOENT;
+	case ENOTEMPTY:    return modern ? 66 : EEXIST;
+	case EDQUOT:       return modern ? 69 : ENOSPC;
+	case ESTALE:       return modern ? 70 : EIO;
+	case ENOSYS:       return modern ? 78 : EINVAL;
+	case ETIMEDOUT:    return modern ? 60 : EINTR;
+	case ECONNREFUSED: return modern ? 61 : EIO;
+	default:           return (e>=1 && e<=34) ? e : EIO;
+	}
+}
 
 /* ---- terminal emulation (for curses programs like rogue) ----
  * The guest sees a 2BSD `sgttyb': sg_ispeed/ospeed/erase/kill (chars) + a
@@ -68,6 +136,7 @@ static int halted, ecode, trace, systrace, watchtext, tsizew, watchsp, watchaddr
 /* 0430 auto-overlay state: base-relative window at ov_base, ov_max bytes;
  * EMT (ovno in r0) copies overlay images in (2.9 csv.s ovhndlr protocol) */
 static int ov_proc, ov_base, ov_max, ov_siz[8];
+static int gbrk;	/* program break (end of bss), tracked for break/sbrk */
 static unsigned char ov_img[7][16384];
 
 /* ---- process identity (uid model) ----
@@ -367,11 +436,6 @@ static void setNZ(int v,int byte){ FZ=((byte?v&0xff:v&0xffff)==0); FN=(sgn(v,byt
 
 /* ---- 2BSD sys-call emulation ---------------------------------------- */
 static char *mappath(int gaddr);
-static int stackargs;	/* 2.9/2.10 syscall convention: args at 2(sp),4(sp),...
-			 * (the kernel reads the user stack; libc stubs are bare
-			 * `sys N').  V7/2.8 passed args inline after the trap /
-			 * fd in r0.  Enabled by APSIM_SYSARGS=stack for running
-			 * later-BSD binaries (e.g. 2.10's as). */
 static int load_aout(const char *path, int nargs, char **args);
 static int load_aout_env(const char *path, int nargs, char **args, int nenv, char **env);
 /* fill a guest `sgttyb' (6 bytes) at byte address `buf' from our emulated tty;
@@ -381,6 +445,226 @@ static void sgtty_get(int buf){
 	st1(buf+2,0177); st1(buf+3,025);	/* erase=DEL, kill=^U */
 	st2(buf+4,guest_sgflags);
 }
+
+/* ---- per-era struct stat writers -------------------------------------
+ * One function per byte layout, selected by personality (the VAX apsim
+ * rule: a remap moves a number, never a struct shape).  PDP-11 longs are
+ * written high word first.  File times are real host times, or the
+ * pinned $APSIM_TIME when set (so byte-compared runs stay deterministic). */
+static long stat_time(time_t t){
+	char *e=getenv("APSIM_TIME");
+	return e ? atol(e) : (long)t;
+}
+static void stl(int a, long v){ st2(a,(int)((v>>16)&0xffff)); st2(a+2,(int)(v&0xffff)); }
+/* V7/2.8/2.9 (and sys3/Ultrix-11): 30 bytes -- 7 shorts, then size and
+ * three times as longs. */
+static void put_stat_v7(int sb, struct stat *hs){
+	st2(sb+0,hs->st_dev); st2(sb+2,hs->st_ino&0xffff); st2(sb+4,hs->st_mode);
+	st2(sb+6,hs->st_nlink); st2(sb+8,hs->st_uid); st2(sb+10,hs->st_gid);
+	st2(sb+12,hs->st_rdev);
+	stl(sb+14,(long)(hs->st_size>0xffffff?0xffffff:hs->st_size));
+	stl(sb+18,stat_time(hs->st_atime));
+	stl(sb+22,stat_time(hs->st_mtime));
+	stl(sb+26,stat_time(hs->st_ctime));
+}
+/* V5/V6: 36 bytes, the in-core inode image (kernel stat1 copies 14 words
+ * from &i_dev, then 4 time words off the raw disk inode): dev, ino, mode,
+ * then PACKED BYTES nlink/uid/gid/size0, size1, addr[8], atime, mtime. */
+static void put_stat_v6(int sb, struct stat *hs){
+	int k; long sz = hs->st_size>0xffffff ? 0xffffff : (long)hs->st_size;
+	int mode = 0100000 /* IALLOC */
+		| (S_ISDIR(hs->st_mode)?040000:0)
+		| (S_ISCHR(hs->st_mode)?020000:0)
+		| (S_ISBLK(hs->st_mode)?060000:0)
+		| (sz>4095?010000:0)		/* ILARG */
+		| (hs->st_mode&07777);
+	st2(sb+0,hs->st_dev); st2(sb+2,hs->st_ino&0xffff); st2(sb+4,mode);
+	st1(sb+6,hs->st_nlink&0xff); st1(sb+7,hs->st_uid&0xff);
+	st1(sb+8,hs->st_gid&0xff); st1(sb+9,(int)((sz>>16)&0xff));
+	st2(sb+10,(int)(sz&0xffff));
+	for(k=0;k<8;k++) st2(sb+12+2*k,0);	/* i_addr[8] */
+	stl(sb+28,stat_time(hs->st_atime));
+	stl(sb+32,stat_time(hs->st_mtime));
+}
+/* 2.10/2.11: the 4.3-shape stat, 58 bytes on the PDP-11 -- 7 shorts, then
+ * size, three (time,spare) pairs, blksize, blocks, flags, spare[3]. */
+static void put_stat_211(int sb, struct stat *hs){
+	st2(sb+0,hs->st_dev); st2(sb+2,hs->st_ino&0xffff); st2(sb+4,hs->st_mode);
+	st2(sb+6,hs->st_nlink); st2(sb+8,hs->st_uid); st2(sb+10,hs->st_gid);
+	st2(sb+12,hs->st_rdev);
+	stl(sb+14,(long)(hs->st_size>0xffffff?0xffffff:hs->st_size));
+	stl(sb+18,stat_time(hs->st_atime)); stl(sb+22,0);
+	stl(sb+26,stat_time(hs->st_mtime)); stl(sb+30,0);
+	stl(sb+34,stat_time(hs->st_ctime)); stl(sb+38,0);
+	stl(sb+42,1024);			/* st_blksize */
+	stl(sb+46,(long)((hs->st_size+1023)/1024));
+	st2(sb+50,0); st2(sb+52,0); st2(sb+54,0); st2(sb+56,0);
+}
+/* era dispatch: stat211 is set when the number arrived through a 2.10/2.11
+ * remap entry flagged SR_STAT (the "new" stat trio); the compat "old stat"
+ * numbers keep the V7 shape even in those universes. */
+static void put_stat(int sb, struct stat *hs, int stat211){
+	if(stat211) put_stat_211(sb,hs);
+	else if(Kern==PDP11_K_V56) put_stat_v6(sb,hs);
+	else put_stat_v7(sb,hs);
+}
+
+/* ---- directory snapshots ---------------------------------------------
+ * Classic UNIX lists a directory by read(2)ing it; Linux refuses that.
+ * When the guest opens a directory, build a snapshot in the era's on-disk
+ * record format and serve read/lseek from it (the VAX apsim's dir_build).
+ * Guest fds are host fds, so the snapshot is keyed by fd. */
+#define NGDIR 16
+static struct gdir { int fd; unsigned char *buf; int len, pos; } gdirs[NGDIR];
+static struct gdir *dir_find(int fd){
+	int i;
+	if(fd<0) return 0;
+	for(i=0;i<NGDIR;i++) if(gdirs[i].buf && gdirs[i].fd==fd) return &gdirs[i];
+	return 0;
+}
+static void dir_drop(int fd){
+	struct gdir *g=dir_find(fd);
+	if(g){ free(g->buf); g->buf=0; }
+}
+static void dir_snapshot(int fd, const char *hpath){
+	DIR *d; struct dirent *e; struct gdir *g=0;
+	unsigned char *buf; int cap=4096, len=0, i, lastrec=-1;
+	for(i=0;i<NGDIR;i++) if(!gdirs[i].buf){ g=&gdirs[i]; break; }
+	if(!g) return;				/* too many open dirs: reads give EISDIR */
+	if(!(d=opendir(hpath))) return;
+	buf=malloc(cap);
+	while((e=readdir(d))){
+		int ino=(int)(e->d_ino&0xffff); if(ino==0) ino=1;  /* 0 = free slot */
+		while(len+600>cap){ cap*=2; buf=realloc(buf,cap); }
+		if(Kern==PDP11_K_V1){		/* 10-byte: ino + name[8] */
+			int k; buf[len]=ino&0xff; buf[len+1]=(ino>>8)&0xff;
+			for(k=0;k<8;k++) buf[len+2+k]= k<(int)strlen(e->d_name)?e->d_name[k]:0;
+			len+=10;
+		} else if(Kern>=PDP11_K_BSD210){
+			/* 4.3-style variable records packed into 512-byte blocks:
+			 * {d_ino, d_reclen, d_namlen, name NUL-padded to a 4-byte
+			 * boundary}; a record never crosses a block, so the last
+			 * record in a block is extended to the boundary. */
+			int nl=(int)strlen(e->d_name); if(nl>63) nl=63;
+			int rl=((6+nl+1)+3)&~3;
+			if((len&511)+rl>512 && lastrec>=0){
+				int blkend=(len+511)&~511;
+				int r2=(buf[lastrec+2]|(buf[lastrec+3]<<8))+(blkend-len);
+				buf[lastrec+2]=r2&0xff; buf[lastrec+3]=(r2>>8)&0xff;
+				len=blkend;
+			}
+			buf[len]=ino&0xff; buf[len+1]=(ino>>8)&0xff;
+			buf[len+2]=rl&0xff; buf[len+3]=(rl>>8)&0xff;
+			buf[len+4]=nl&0xff; buf[len+5]=(nl>>8)&0xff;
+			memset(buf+len+6,0,rl-6);
+			memcpy(buf+len+6,e->d_name,nl);
+			lastrec=len; len+=rl;
+		} else {			/* V5..2.9: 16-byte ino + name[14] */
+			int k; buf[len]=ino&0xff; buf[len+1]=(ino>>8)&0xff;
+			for(k=0;k<14;k++) buf[len+2+k]= k<(int)strlen(e->d_name)?e->d_name[k]:0;
+			len+=16;
+		}
+	}
+	if(Kern>=PDP11_K_BSD210 && (len&511)!=0 && lastrec>=0){
+		int blkend=(len+511)&~511;
+		int r2=(buf[lastrec+2]|(buf[lastrec+3]<<8))+(blkend-len);
+		buf[lastrec+2]=r2&0xff; buf[lastrec+3]=(r2>>8)&0xff;
+		len=blkend;
+	}
+	closedir(d);
+	g->fd=fd; g->buf=buf; g->len=len; g->pos=0;
+}
+/* ---- per-era syscall renumbering -------------------------------------
+ * The switch below is the CANONICAL table: V7 numbering (the lineage
+ * trunk, which 2.8/2.9 extend in place) plus synthetic extension ids for
+ * calls with no V7 ancestor.  A renumbering era gets one data table
+ * mapping its guest numbers onto canonical ones; a remap entry moves a
+ * number, never a struct shape -- shape travels in the SR_STAT flag
+ * (2.10/2.11's "new" stat trio vs their compat "old stat" numbers). */
+#define SR_STAT 1
+struct sremap { unsigned short guest, canon, flags; };
+#define R_(g,c)  { (g), (c), 0 }
+#define RS_(g,c) { (g), (c), SR_STAT }
+#define CX(n) (0x100+(n))	/* canonical extension ids (not V7 numbers) */
+enum {
+	C_LSTAT=CX(1), C_GETPAGESIZE, C_SBRK, C_DUP2, C_GETDTABLESIZE,
+	C_GETTIMEOFDAY, C_SELECT, C_FCNTL, C_MKDIR, C_RMDIR, C_RENAME,
+	C_TRUNCATE, C_FTRUNCATE, C_GETPGRP, C_GETHOSTNAME, C_READV,
+	C_WRITEV, C_SYMLINK, C_READLINK, C_GETRUSAGE, C_UTIMES, C_WAIT4,
+	C_GETPPID, C_GETEUID, C_GETEGID, C_SIGVEC, C_GETGROUPS,
+	C_GETRLIMIT, C_KILLPG, C_FCHDIR, C_GETLOGIN, C_UNAME, C_ULIMIT,
+	C_NAP, C_FCHMOD, C_FSYNC, C_SYSCTL, C_OK, C_NOSYS
+};
+/* 2.10BSD: the 4.3BSD numbering; low numbers are 4.3's compat "old" set
+ * and pass through with V7 shapes. */
+static const struct sremap Bsd210Remap[] = {
+	RS_(38,18), RS_(40,C_LSTAT), RS_(62,28),
+	{57,C_SYMLINK,0}, {58,C_READLINK,0}, {64,C_GETPAGESIZE,0},
+	{69,C_SBRK,0}, {79,C_GETGROUPS,0}, {80,C_OK,0}, {81,C_GETPGRP,0},
+	{82,C_OK,0}, {83,C_OK,0}, {84,7,0}, {86,C_OK,0},
+	{87,C_GETHOSTNAME,0}, {88,C_OK,0}, {89,C_GETDTABLESIZE,0},
+	{90,C_DUP2,0}, {92,C_FCNTL,0}, {93,C_SELECT,0}, {95,C_FSYNC,0},
+	{96,C_OK,0}, {100,C_OK,0}, {103,C_OK,0}, {108,C_SIGVEC,0},
+	{109,C_OK,0}, {110,C_OK,0}, {111,29,0}, {112,C_OK,0},
+	{116,C_GETTIMEOFDAY,0}, {117,C_GETRUSAGE,0}, {120,C_READV,0},
+	{121,C_WRITEV,0}, {122,C_OK,0}, {123,C_OK,0}, {124,C_FCHMOD,0},
+	{128,C_RENAME,0}, {129,C_TRUNCATE,0}, {130,C_FTRUNCATE,0},
+	{131,C_OK,0}, {136,C_MKDIR,0}, {137,C_RMDIR,0}, {138,C_UTIMES,0},
+	{144,C_GETRLIMIT,0}, {145,C_OK,0}, {146,C_KILLPG,0},
+	{ 0, 0, 0 }
+};
+/* 2.11BSD pl431: the 4.4-style renumbered table (wait4=7, sigaction=31,
+ * getppid=27, the id calls resorted). */
+static const struct sremap Bsd211Remap[] = {
+	{7,C_WAIT4,0}, {13,C_FCHDIR,0}, {17,C_OK,0}, {18,C_OK,0},
+	{23,C_SYSCTL,0}, {25,C_GETEUID,0}, {27,C_GETPPID,0},
+	{28,C_NOSYS,0}, {29,C_NOSYS,0}, {30,C_NOSYS,0} /* statfs trio */,
+	{31,C_SIGVEC,0} /* sigaction: same record-the-handler treatment */,
+	{32,C_OK,0}, {34,C_OK,0}, {35,C_OK,0},
+	RS_(38,18), {39,C_GETLOGIN,0}, RS_(40,C_LSTAT), {43,C_OK,0},
+	{45,23,0} /* setuid */, {46,C_OK,0} /* seteuid */,
+	{48,C_GETEGID,0}, {49,46,0} /* setgid */, {50,C_OK,0},
+	{56,C_NOSYS,0}, {57,C_SYMLINK,0}, {58,C_READLINK,0},
+	RS_(62,28), {64,C_GETPAGESIZE,0}, {65,C_NOSYS,0} /* pselect */,
+	{66,2,0} /* vfork -> fork */, {69,C_SBRK,0},
+	{79,C_GETGROUPS,0}, {80,C_OK,0}, {81,C_GETPGRP,0}, {82,C_OK,0},
+	{83,C_OK,0}, {86,C_OK,0}, {87,C_GETHOSTNAME,0}, {88,C_OK,0},
+	{89,C_GETDTABLESIZE,0}, {90,C_DUP2,0}, {92,C_FCNTL,0},
+	{93,C_SELECT,0}, {95,C_FSYNC,0}, {96,C_OK,0}, {100,C_OK,0},
+	{103,C_OK,0}, {108,C_SIGVEC,0}, {109,C_OK,0}, {110,C_OK,0},
+	{111,29,0}, {112,C_OK,0}, {116,C_GETTIMEOFDAY,0},
+	{117,C_GETRUSAGE,0}, {120,C_READV,0}, {121,C_WRITEV,0},
+	{122,C_OK,0}, {123,C_OK,0}, {124,C_FCHMOD,0}, {128,C_RENAME,0},
+	{129,C_TRUNCATE,0}, {130,C_FTRUNCATE,0}, {131,C_OK,0},
+	{136,C_MKDIR,0}, {137,C_RMDIR,0}, {138,C_UTIMES,0},
+	{144,C_GETRLIMIT,0}, {145,C_OK,0}, {146,C_KILLPG,0}, {148,C_OK,0},
+	{ 0, 0, 0 }
+};
+/* System III / Ultrix-11: V7 base + the SysIII additions DEC carried
+ * (utssys, ulimit; Ultrix adds fcntl and its own housekeeping calls).
+ * Note 57 collides with 2.9's vfork -- personality disambiguates. */
+static const struct sremap Sys3Remap[] = {
+	{57,C_UNAME,0} /* utssys */, {62,C_FCNTL,0}, {63,C_ULIMIT,0},
+	{64,C_OK,0}, {68,C_OK,0}, {69,C_OK,0}, {71,C_NAP,0},
+	{79,C_NOSYS,0} /* semsys */,
+	{ 0, 0, 0 }
+};
+static int sremap_apply(const struct sremap *t, int code, int *stat211){
+	for(; t->guest; t++)
+		if(t->guest==code){
+			if(t->flags & SR_STAT) *stat211=1;
+			return t->canon;
+		}
+	return code;
+}
+/* V5/V6: numbers the era did not have (nosys slots in the sysent) */
+static int v56_nosys(int n){
+	if(n==27||n==29||n==33||n==39||n==40||n==45) return 1;
+	if(n>=49 && n<=63) return 1;
+	if(n==26 && Kern==PDP11_K_V56 && !strcmp(Univ,"v5")) return 1; /* v5: no ptrace */
+	return 0;
+}
+
 static void do_syscall(int num, int argaddr)
 {
 	/* argaddr points just past the sys instruction's number word: the
@@ -388,18 +672,31 @@ static void do_syscall(int num, int argaddr)
 	 * args are in R0 (the stubs put them there). */
 	int a1 = ld2(argaddr), a2 = ld2(argaddr+2);
 	int fd0 = R[0], a3 = ld2(argaddr+4);
+	int stat211 = 0;
 	long r;
+	/* per-era renumbering: map the guest number onto the canonical table */
+	if(Kern==PDP11_K_BSD210)      num = sremap_apply(Bsd210Remap, num, &stat211);
+	else if(Kern==PDP11_K_BSD211) num = sremap_apply(Bsd211Remap, num, &stat211);
+	else if(Kern==PDP11_K_SYS3 || Kern==PDP11_K_ULTRIX)
+	                              num = sremap_apply(Sys3Remap, num, &stat211);
+	else if(Kern==PDP11_K_V56 && v56_nosys(num)){
+		if(systrace) fprintf(stderr, "sys %d: nosys in this era\n", num);
+		FC=1; R[0]=EINVAL; return;
+	}
 	if(stackargs){
 		int s1=ld2((SP+2)&0xffff), s2=ld2((SP+4)&0xffff),
 		    s3=ld2((SP+6)&0xffff), s4=ld2((SP+8)&0xffff);
 		switch(num){
-		case 3: case 4: case 6: case 19: case 28: case 41: case 62:
+		case 3: case 4: case 6: case 19: case 28: case 41: case 54:
+		case C_DUP2: case C_FCNTL: case C_READV: case C_WRITEV:
+		case C_FTRUNCATE: case C_FCHMOD: case C_FSYNC: case C_FCHDIR:
 			/* first arg is an fd (V7 took it in r0) */
 			fd0=s1; a1=s2; a2=s3; a3=s4; break;
 		default:
 			a1=s1; a2=s2; a3=s3; break;
 		}
 	}
+	if(Kern==PDP11_K_BSD2X && num==57) num=2;	/* 2.9 vfork: treat as fork */
 	if(systrace) fprintf(stderr, "sys %d r0=%06o a1=%06o a2=%06o\n", num, R[0], a1, a2);
 	switch(num){
 	case 1:				/* exit(code in r0; 2.10: on stack) */
@@ -410,52 +707,86 @@ static void do_syscall(int num, int argaddr)
 					 * follows `sys fork' (so PC+=2, r0=child pid), and to
 					 * the CHILD at that `br' (r0=parent pid -> br 1f -> 0). */
 		int pid = fork();
-		if(pid < 0){ FC=1; R[0]=errno&0xffff; return; }
+		if(pid < 0){ FC=1; R[0]=errno_h2g(errno); return; }
 		if(pid > 0){ FC=0; R[0]=pid&0x7fff; PC=(PC+2)&0xffff; return; }	/* parent */
 		FC=0; R[0]=getppid()&0x7fff; return;				/* child: r0=ppid */
 	}
 	case 7: {			/* wait: reap a child; r0=pid, r1=status word
 					 * (high byte exit code, low byte term signal). */
 		int st, wpid = wait(&st);
-		if(wpid < 0){ FC=1; R[0]=errno&0xffff; return; }
+		if(wpid < 0){ FC=1; R[0]=errno_h2g(errno); return; }
 		R[1] = (WIFEXITED(st) ? (WEXITSTATUS(st)&0xff)<<8 : WTERMSIG(st)&0x7f) & 0xffff;
 		FC=0; R[0]=wpid&0x7fff; return;
 	}
 	case 42: {			/* pipe: r0=read fd, r1=write fd (host fds, used
 					 * directly by the guest). */
 		int fd[2];
-		if(pipe(fd) < 0){ FC=1; R[0]=errno&0xffff; return; }
+		if(pipe(fd) < 0){ FC=1; R[0]=errno_h2g(errno); return; }
 		R[1]=fd[1]&0xffff; FC=0; R[0]=fd[0]&0xffff; return;
 	}
 	case 4:				/* write(r0=fd, a1=buf, a2=count) */
 		r = write(fd0, M+(a1&0xffff), a2&0xffff);
 		break;
-	case 3:				/* read(r0=fd, a1=buf, a2=count) */
+	case 3: {			/* read(r0=fd, a1=buf, a2=count) */
+		struct gdir *g = dir_find(fd0);
+		if(g){			/* directory: serve the era-format snapshot */
+			int n = a2&0xffff;
+			if(n > g->len - g->pos) n = g->len - g->pos;
+			if(n < 0) n = 0;
+			memcpy(M+(a1&0xffff), g->buf+g->pos, n);
+			g->pos += n; r = n; break;
+		}
 		r = read(fd0, M+(a1&0xffff), a2&0xffff);
 		break;
-	case 5:				/* open(a1=path, a2=mode) */
-		r = open(mappath(a1), a2);
+	}
+	case 5: {			/* open(a1=path, a2=mode) */
+		char hp[1024]; struct stat ds;
+		strncpy(hp, mappath(a1), sizeof hp-1); hp[sizeof hp-1]=0;
+		r = open(hp, Kern>=PDP11_K_BSD210 ? (a2&3) : a2);
+		/* classic UNIX lists directories by read(2); snapshot them */
+		if(r>=0 && fstat((int)r,&ds)==0 && S_ISDIR(ds.st_mode))
+			dir_snapshot((int)r, hp);
 		break;
+	}
 	case 6:				/* close(r0=fd) */
+		dir_drop(fd0);
 		r = close(fd0);
 		break;
 	case 8:				/* creat(a1=path, a2=mode) */
 		if(systrace) fprintf(stderr, "    creat path='%s' mode=%o\n", mappath(a1), a2);
 		r = creat(mappath(a1), a2);
 		break;
-	case 19: {			/* lseek(r0=fd, off, whence): off is a long passed
-					 * high-word-first (a1=high, a2=low), whence inline 3rd.
-					 * The RESULT is also a long, returned in the r0:r1 pair
-					 * (r0=high, r1=low) -- like time(13).  The common return
-					 * path below only sets r0 (low 16 bits), which is right
-					 * for int-returning calls but truncates lseek: ftell()
-					 * then reads (r0<<16)|r1 = garbage and multi-member
-					 * archive scans (nm/ranlib nextel) seek past EOF after
-					 * the first member.  Split high/low like time does. */
+	case 19: {			/* V5/V6: seek(fd, offset16, ptrname 0-5);
+					 * V7+: lseek(fd, long off, whence). */
+		struct gdir *g = dir_find(fd0);
+		if(Kern <= PDP11_K_V56){
+			long off; int ptr = a2;
+			off = (ptr==0) ? (long)(a1&0xffff) : (long)(short)a1;
+			if(ptr>=3){ off*=512; ptr-=3; }	/* block modes */
+			if(g){			/* directory snapshot position */
+				g->pos = (ptr==0)?off : (ptr==1)?g->pos+off : g->len+off;
+				if(g->pos<0) g->pos=0; r=0; break;
+			}
+			r = lseek(fd0, off, ptr);
+			if(r>=0) r=0;
+			break;
+		}
+		/* lseek: off is a long passed high-word-first (a1=high, a2=low),
+		 * whence inline 3rd.  The RESULT is also a long, returned in the
+		 * r0:r1 pair (r0=high, r1=low) -- like time(13); a single 16-bit
+		 * return truncates ftell() and archive scans. */
+		{
 		long off = ((long)(a1&0xffff)<<16) | (a2&0xffff);
-		r = lseek(fd0, off, stackargs?a3:ld2(argaddr+4));
+		int whence = stackargs?a3:ld2(argaddr+4);
+		if(g){
+			g->pos = (whence==0)?off : (whence==1)?g->pos+off : g->len+off;
+			if(g->pos<0) g->pos=0;
+			R[1] = g->pos & 0xffff; r = (g->pos>>16)&0xffff; break;
+		}
+		r = lseek(fd0, off, whence);
 		if (r >= 0) { R[1] = r & 0xffff; r = (r >> 16) & 0xffff; }
 		break;
+		}
 	}
 	case 10:			/* unlink(a1=path) */
 		r = unlink(mappath(a1));
@@ -469,29 +800,23 @@ static void do_syscall(int num, int argaddr)
 		while(n<64){ p=ld2(aptr); aptr+=2; if(p==0) break;
 			strncpy(argbuf[n],(char*)(M+(p&0xffff)),255); argbuf[n][255]=0;
 			args[n]=argbuf[n]; n++; }
-		if(load_aout(hp, n, args)<0){ FC=1; R[0]=2; break; }  /* ENOENT */
+		if(load_aout(hp, n, args)<0){ FC=1; R[0]=ENOENT; break; }
 		return;			/* success: run the new program */
 	}
 	case 33:			/* access(a1=path, a2=mode) -- ld/openlp probes
 					 * library files for existence/readability. */
 		r = access(mappath(a1), a2);
 		break;
-	case 18: case 28:
-	case 38: case 62: {		/* (38/62: 2.10 renumbered stat/fstat)
-					/* stat(a1=path,a2=buf) / fstat(r0=fd,a1=buf):
-					 * as probes the output file's existence.  Fill the
-					 * 30-byte 2.8 struct stat (7 shorts + 4 longs, size
-					 * & times high-word-first). */
+	case 18: case 28: case C_LSTAT: {
+					/* stat(a1=path,a2=buf) / fstat(r0=fd,a1=buf) /
+					 * lstat (2.10/2.11, and 2.9's local #2): fill the
+					 * era's struct stat shape (put_stat). */
 		struct stat hs; int sb, ok;
-		if(num==28||num==62){ ok=fstat(num==28&&!stackargs?R[0]:fd0,&hs); sb=a1&0xffff; }
+		if(num==28){ ok=fstat(fd0,&hs); sb=a1&0xffff; }
+		else if(num==C_LSTAT){ ok=lstat(mappath(a1),&hs); sb=a2&0xffff; }
 		else { if(systrace) fprintf(stderr, "    stat path='%s'\n", mappath(a1)); ok=stat(mappath(a1),&hs); sb=a2&0xffff; }
 		if(ok<0){ r=-1; break; }
-		st2(sb+0,hs.st_dev); st2(sb+2,hs.st_ino&0xffff); st2(sb+4,hs.st_mode);
-		st2(sb+6,hs.st_nlink); st2(sb+8,hs.st_uid); st2(sb+10,hs.st_gid);
-		st2(sb+12,hs.st_rdev);
-		st2(sb+14,(hs.st_size>>16)&0xffff); st2(sb+16,hs.st_size&0xffff);
-		st2(sb+18,0); st2(sb+20,0); st2(sb+22,0);
-		st2(sb+24,0); st2(sb+26,0); st2(sb+28,0);
+		put_stat(sb, &hs, stat211);
 		r=0;
 		break;
 	}
@@ -503,12 +828,22 @@ static void do_syscall(int num, int argaddr)
 					 * output executable after writing it. */
 		r = chmod(mappath(a1), a2);
 		break;
-	case 54: {			/* ioctl(fd, request, argp): inline args fd,
-					 * request, argp.  apsim presents ONE emulated
-					 * terminal, so the tty ioctls succeed regardless of
-					 * which fd; host termios is touched only when our
-					 * real stdin is a tty (tty_apply guards on that). */
-		int req=a2, argp=ld2(argaddr+4)&0xffff;
+	case 54: {			/* ioctl(fd, request, argp).  Inline form (V7..2.9):
+					 * args are fd, request(16-bit), argp.  Stack form
+					 * (2.10/2.11): request is a 32-bit 4.3-style _IO code
+					 * pushed high word first -- a1=IOC bits|size, a2=the
+					 * identifying ('t'<<8)|n low half -- and argp is a3.
+					 * apsim presents ONE emulated terminal, so the tty
+					 * ioctls succeed regardless of which fd; host termios
+					 * is touched only when our real stdin is a tty. */
+		int req = a2;	/* inline: the 16-bit request; stack: the low half of the 32-bit 4.3 code -- both land in a2 */
+		int argp = (stackargs ? a3 : ld2(argaddr+4)) & 0xffff;
+		if(req == (('t'<<8)|104)){	/* TIOCGWINSZ: rows/cols/x/y --
+					 * answer 24x80; leaving it unanswered gives
+					 * column-layout code a 0-width loop (2.11 ls) */
+			st2(argp+0,24); st2(argp+2,80); st2(argp+4,0); st2(argp+6,0);
+			r=0; break;
+		}
 		switch(req){
 		case ('t'<<8)|8:	/* TIOCGETP: fill sgttyb from our notion of the tty */
 			sgtty_get(argp);
@@ -533,7 +868,7 @@ static void do_syscall(int num, int argaddr)
 					 * disposition and mirror it onto the host so the
 					 * signal is actually caught/ignored/defaulted. */
 		int sig=a1&037, h=a2&0xffff, old, hs;
-		if(sig<1 || sig>=32){ r=-1; break; }
+		if(sig<1 || sig>=32){ errno=EINVAL; r=-1; break; }
 		old = guest_sigh[sig]; guest_sigh[sig]=h;
 		/* Mirror onto the host (translating the number) EXCEPT 2.8's
 		 * synchronous fault signals 4-12 (ILL/TRAP/IOT/EMT/FPE/KILL/BUS/SEGV/
@@ -553,7 +888,7 @@ static void do_syscall(int num, int argaddr)
 		if(want==gp){		/* kill self == raise: deliver through our own
 					 * dispatch, NOT host kill -- a host fault signal
 					 * (e.g. SIGABRT for IOT) would kill apsim itself. */
-			if(gsig<1||gsig>=32){ r=-1; }
+			if(gsig<1||gsig>=32){ errno=EINVAL; r=-1; }
 			else if(guest_sigh[gsig]==1){ r=0; }		/* SIG_IGN: drop */
 			else if(guest_sigh[gsig]>1){ pending_sig=gsig; r=0; }	/* handler */
 			else { halted=1; ecode=128+gsig; r=0; }		/* SIG_DFL: terminate */
@@ -586,7 +921,8 @@ static void do_syscall(int num, int argaddr)
 					 * flat-mapped, so the heap memory already
 					 * exists; just succeed unless the new break
 					 * would run into the stack (R6). */
-		r = ((a1&0xffff) < (R[6]&0xffff)) ? 0 : -1;
+		if((a1&0xffff) < (R[6]&0xffff)){ gbrk=a1&0xffff; r=0; }
+		else { errno=ENOMEM; r=-1; }
 		break;
 	case 27:			/* alarm(sec in r0): real host alarm -> SIGALRM,
 					 * forwarded to the guest's handler if installed. */
@@ -597,21 +933,32 @@ static void do_syscall(int num, int argaddr)
 		{ char p1[1024]; strncpy(p1,mappath(a1),sizeof p1-1); p1[sizeof p1-1]=0;
 		  r = link(p1, mappath(a2)); }
 		break;
-	case 16:			/* chown(path, uid, gid): try; succeed even if the
-					 * sandbox can't actually chown. */
-		chown(mappath(a1), a2, ld2(argaddr+4)); r = 0;
+	case 16:			/* chown(path, uid[, gid]): 2 args through V6,
+					 * 3 from V7.  Try; succeed even if the sandbox
+					 * can't actually chown. */
+		if(Kern <= PDP11_K_V56){ if(chown(mappath(a1), a2&0xff, -1)){} }
+		else if(chown(mappath(a1), a2, stackargs?a3:ld2(argaddr+4))){}
+		r = 0;
 		break;
 	case 14:			/* mknod(path, mode, dev): unprivileged -> EPERM. */
-		r = -1;
+		errno = EPERM; r = -1;
 		break;
-	case 30:			/* utime(path, timep[2]): set access+mod times. */
+	case 30:			/* V5: smdate (set mod date; accept, no effect);
+					 * V6: inoperative; V7+: utime(path, timep[2]). */
+		if(Kern <= PDP11_K_V56){ r = 0; break; }
 		{ struct utimbuf u; int tp=a2&0xffff;
 		  u.actime = ((long)(ld2(tp)&0xffff)<<16)|(ld2(tp+2)&0xffff);
 		  u.modtime= ((long)(ld2(tp+4)&0xffff)<<16)|(ld2(tp+6)&0xffff);
 		  r = utime(mappath(a1), &u); }
 		break;
-	case 35:			/* sleep(sec in r0): really sleep. */
-		r = sleep(R[0]); break;
+	case 35:			/* V5/V6: sleep(sec in r0): really sleep.
+					 * V7+: ftime(&timeb) -- time + millitm + tz. */
+		if(Kern <= PDP11_K_V56){ r = sleep(R[0]); break; }
+		{ long t=2; char *e=getenv("APSIM_TIME"); if(e) t=atol(e);
+		  stl(a1&0xffff, t); st2((a1+4)&0xffff, 0);	/* millitm */
+		  st2((a1+6)&0xffff, 0); st2((a1+8)&0xffff, 0);	/* tz, dst */
+		  r = 0; }
+		break;
 	case 29:			/* pause: block until a signal arrives, then the main
 					 * loop delivers it; pause returns EINTR. */
 		while(!pending_sig) pause();
@@ -658,7 +1005,7 @@ static void do_syscall(int num, int argaddr)
 		strncpy(hp, mappath(a1), sizeof hp-1); hp[sizeof hp-1]=0;
 		while(na<63){ p=ld2(ap); ap+=2; if(!p)break; strncpy(ab[na],(char*)(M+(p&0xffff)),255); ab[na][255]=0; av[na]=ab[na]; na++; }
 		while(ep && ne<63){ p=ld2(ep); ep+=2; if(!p)break; strncpy(eb[ne],(char*)(M+(p&0xffff)),255); eb[ne][255]=0; ev[ne]=eb[ne]; ne++; }
-		if(load_aout_env(hp, na, av, ne, ev)<0){ FC=1; R[0]=2; break; }
+		if(load_aout_env(hp, na, av, ne, ev)<0){ FC=1; R[0]=ENOENT; break; }
 		return;			/* success: run the new program */
 	}
 	case 58: {			/* local(sub): 2.8's site-syscall dispatcher.
@@ -671,18 +1018,214 @@ static void do_syscall(int num, int argaddr)
 		} else r=0;		/* other local calls: succeed, no effect */
 		break;
 	}
-	case 108: case 109: case 110: case 111: case 112:
-		/* 2.9/2.10 4.1-style signal calls (sigvec/sigblock/sigsetmask/
-		 * sigpause/sigstack): benign no-op stubs so later-BSD binaries
-		 * (e.g. 2.10's as) get through their startup signal setup. */
-		r = 0;
+	/* ---- canonical extensions (no V7 ancestor; reached via remap) ---- */
+	case C_SIGVEC: {		/* sigvec/sigaction: record the handler word so
+					 * ^C and friends reach the guest handler; the
+					 * mask/flags refinements are not modeled. */
+		int sig=a1&037, vec=a2&0xffff, ovec=a3&0xffff, h;
+		if(sig<1 || sig>=32){ errno=EINVAL; r=-1; break; }
+		if(ovec) { st2(ovec, guest_sigh[sig]); st2(ovec+2,0); st2(ovec+4,0); st2(ovec+6,0); }
+		if(vec){
+			int hs2;
+			h = ld2(vec);
+			guest_sigh[sig]=h;
+			hs2 = sig_g2h(sig);
+			if((sig>=4 && sig<=12) || hs2==0) ;	/* fault sigs: record only */
+			else if(h==1) signal(hs2, SIG_IGN);
+			else if(h==0) signal(hs2, SIG_DFL);
+			else signal(hs2, hsig);
+		}
+		r = 0; break;
+	}
+	case C_WAIT4: {			/* wait4(pid, *status, options, *rusage) */
+		int st, opts=(a3&1)?WNOHANG:0;
+		int wpid = waitpid(a1==0xffff||a1==0 ? -1 : (int)(short)a1, &st, opts);
+		if(wpid<0){ r=-1; break; }
+		if(a2) st2(a2&0xffff, (WIFEXITED(st) ? (WEXITSTATUS(st)&0xff)<<8 : WTERMSIG(st)&0x7f)&0xffff);
+		r = wpid&0x7fff; break;
+	}
+	case C_SBRK: {			/* 2.10/2.11 sys sbrk: the libc stub tracks
+					 * curbrk itself and passes the ABSOLUTE new
+					 * break ("nsiz", like break); the syscall's
+					 * return value is discarded -- only the carry
+					 * matters. */
+		if((a1&0xffff) >= (SP&0xffff)){ errno=ENOMEM; r=-1; break; }
+		gbrk=a1&0xffff; r=0; break;
+	}
+	case C_GETPAGESIZE: r = 1024; break;	/* 2.11 ctob(CLSIZE) */
+	case C_GETDTABLESIZE: r = 30; break;	/* NOFILE */
+	case C_DUP2:
+		r = dup2(fd0, a1); break;
+	case C_GETPPID: r = getppid()&0x7fff; break;
+	case C_GETEUID: r = g_euid; break;
+	case C_GETEGID: r = g_egid; break;
+	case C_GETPGRP: r = guest_pid(); break;
+	case C_GETGROUPS:		/* getgroups(n, *gids): one group */
+		if(a1>=1 && a2) st2(a2&0xffff, g_rgid);
+		r = 1; break;
+	case C_GETLOGIN: {		/* getlogin() -> static name; libc copies it */
+		/* 2.11 getlogin(2) writes into a buffer: args (buf, len) */
+		int b=a1&0xffff, n=a2&0xffff;
+		if(b && n>0){ const char *nm="root"; int k;
+			for(k=0;k<n-1 && nm[k];k++) st1(b+k,nm[k]); st1(b+k,0); }
+		r = 0; break;
+	}
+	case C_GETTIMEOFDAY: {		/* gettimeofday(*tv, *tz) */
+		long t=2; char *e=getenv("APSIM_TIME"); if(e) t=atol(e);
+		if(a1){ stl(a1&0xffff,t); stl((a1+4)&0xffff,0); }
+		if(a2){ stl(a2&0xffff,0); }
+		r = 0; break;
+	}
+	case C_GETRUSAGE: {		/* getrusage(who, *ru): zeroed usage */
+		int b=a2&0xffff, k;
+		if(b) for(k=0;k<36;k+=2) st2(b+k,0);
+		r = 0; break;
+	}
+	case C_GETRLIMIT: {		/* getrlimit(res, *rlp): "unlimited" */
+		int b=a2&0xffff;
+		if(b){ stl(b,0x7fffffffL); stl(b+4,0x7fffffffL); }
+		r = 0; break;
+	}
+	case C_FCNTL:			/* fcntl(fd, cmd, arg): F_DUPFD works; the
+					 * flag get/set commands report benign values */
+		if(a1==0){ r = fcntl(fd0, F_DUPFD, a2); }
+		else r = 0;
 		break;
+	case C_SELECT: {		/* select(nfds, *r, *w, *e, *tv): guest fds are
+					 * host fds, so translate the 16-bit masks. */
+		fd_set rs, ws; struct timeval tv, *tvp=0;
+		int nf=a1&0xffff, rm=a2?ld2(a2&0xffff):0, wm=a3?ld2(a3&0xffff):0, k;
+		int ea=stackargs?ld2((SP+8)&0xffff):ld2(argaddr+6);
+		int ta=stackargs?ld2((SP+10)&0xffff):ld2(argaddr+8);
+		if(nf>16) nf=16;
+		FD_ZERO(&rs); FD_ZERO(&ws);
+		for(k=0;k<nf;k++){ if(rm&(1<<k)) FD_SET(k,&rs); if(wm&(1<<k)) FD_SET(k,&ws); }
+		if(ta){ long sec=((long)(ld2(ta&0xffff)&0xffff)<<16)|(ld2((ta+2)&0xffff)&0xffff);
+			long usec=((long)(ld2((ta+4)&0xffff)&0xffff)<<16)|(ld2((ta+6)&0xffff)&0xffff);
+			tv.tv_sec=sec; tv.tv_usec=usec; tvp=&tv; }
+		r = select(nf, &rs, &ws, 0, tvp);
+		if(r>=0){
+			int nrm=0, nwm=0;
+			for(k=0;k<nf;k++){ if(FD_ISSET(k,&rs)) nrm|=1<<k; if(FD_ISSET(k,&ws)) nwm|=1<<k; }
+			if(a2) st2(a2&0xffff,nrm);
+			if(a3) st2(a3&0xffff,nwm);
+			if(ea) st2(ea&0xffff,0);
+		}
+		break;
+	}
+	case C_READV: case C_WRITEV: {	/* readv/writev(fd, *iov, cnt) */
+		int iov=a1&0xffff, cnt=a2&0xffff, k; long tot=0;
+		if(cnt>16) cnt=16;
+		r=0;
+		for(k=0;k<cnt;k++){
+			int base=ld2(iov+4*k)&0xffff, len=ld2(iov+4*k+2)&0xffff;
+			long n = (num==C_READV) ? read(fd0, M+base, len)
+			                        : write(fd0, M+base, len);
+			if(n<0){ r=-1; break; }
+			tot+=n;
+			if(n<len) break;
+		}
+		if(r>=0) r=tot;
+		break;
+	}
+	case C_MKDIR:  r = mkdir(mappath(a1), a2&07777); break;
+	case C_RMDIR:  r = rmdir(mappath(a1)); break;
+	case C_RENAME: {
+		char p1[1024]; strncpy(p1,mappath(a1),sizeof p1-1); p1[sizeof p1-1]=0;
+		r = rename(p1, mappath(a2)); break;
+	}
+	case C_SYMLINK: {
+		char p1[1024]; strncpy(p1,(char*)(M+(a1&0xffff)),sizeof p1-1); p1[sizeof p1-1]=0;
+		r = symlink(p1, mappath(a2)); break;	/* target string verbatim */
+	}
+	case C_READLINK: {
+		char lb[1024]; int n2, b=a2&0xffff, max=a3&0xffff, k;
+		n2 = readlink(mappath(a1), lb, sizeof lb-1);
+		if(n2<0){ r=-1; break; }
+		if(n2>max) n2=max;
+		for(k=0;k<n2;k++) st1(b+k, lb[k]);
+		r = n2; break;
+	}
+	case C_TRUNCATE: {
+		long len=((long)(a2&0xffff)<<16)|(a3&0xffff);
+		r = truncate(mappath(a1), len); break;
+	}
+	case C_FTRUNCATE: {
+		long len=((long)(a1&0xffff)<<16)|(a2&0xffff);
+		r = ftruncate(fd0, len); break;
+	}
+	case C_FCHMOD:  r = fchmod(fd0, a1&07777); break;
+	case C_FSYNC:   r = fsync(fd0); break;
+	case C_FCHDIR:  r = fchdir(fd0); break;
+	case C_UTIMES: {		/* utimes(path, tv[2]) -> utime */
+		struct utimbuf u; int tp=a2&0xffff;
+		u.actime = ((long)(ld2(tp)&0xffff)<<16)|(ld2(tp+2)&0xffff);
+		u.modtime= ((long)(ld2(tp+8)&0xffff)<<16)|(ld2(tp+10)&0xffff);
+		r = utime(mappath(a1), &u); break;
+	}
+	case C_GETHOSTNAME: {		/* gethostname(buf, len) */
+		int b=a1&0xffff, n=a2&0xffff; const char *nm="apsim"; int k;
+		if(b && n>0){ for(k=0;k<n-1 && nm[k];k++) st1(b+k,nm[k]); st1(b+k,0); }
+		r = 0; break;
+	}
+	case C_KILLPG: {		/* killpg(pgrp, sig): only ourselves modeled */
+		int gsig=a2&037;
+		if(gsig>=1 && gsig<32 && guest_sigh[gsig]>1) pending_sig=gsig;
+		r = 0; break;
+	}
+	case C_UNAME: {			/* sys3/Ultrix utssys(buf, 0, 0): 5 x 9-char
+					 * fields sysname/node/release/version/machine */
+		int b=a1&0xffff, k; const char *f[5]={"apsim","apsim","3","1","pdp11"};
+		for(k=0;k<5;k++){ int j; for(j=0;j<9;j++) st1(b+9*k+j, j<(int)strlen(f[k])?f[k][j]:0); }
+		r = 0; break;
+	}
+	case C_ULIMIT:			/* ulimit(cmd, val): report a big limit */
+		r = 0x7fff; break;
+	case C_NAP:			/* Ultrix nap(ms): sleep in ticks */
+		{ struct timespec ts; long ms=(long)(a1&0xffff);
+		  ts.tv_sec=ms/1000; ts.tv_nsec=(ms%1000)*1000000L;
+		  nanosleep(&ts,0); r=0; }
+		break;
+	case C_SYSCTL: {		/* 2.11 pl431 __sysctl(name, namelen, old,
+					 * *oldlenp, new, newlen): late 2.11 libc reaches
+					 * hostname/uname facts through this.  Answer the
+					 * common CTL_KERN/CTL_HW string and int nodes. */
+		int name=a1&0xffff, oldp=a3&0xffff;
+		int oldlenp=ld2((SP+10)&0xffff)&0xffff;	/* 4th stack arg */
+		int top=ld2(name)&0xffff, sub=ld2(name+2)&0xffff;
+		const char *s=0; long iv=-1;
+		if(top==1){		/* CTL_KERN */
+			if(sub==1) s="2.11BSD";		/* KERN_OSTYPE */
+			else if(sub==2) s="2.11BSD";	/* KERN_OSRELEASE */
+			else if(sub==4) s="2.11 BSD UNIX (apsim)";	/* KERN_VERSION */
+			else if(sub==10) s="apsim";	/* KERN_HOSTNAME */
+		} else if(top==6){	/* CTL_HW */
+			if(sub==7) iv=1024;		/* HW_PAGESIZE */
+			else if(sub==3) iv=1;		/* HW_NCPU */
+		}
+		if(s){
+			int k, n2=(int)strlen(s)+1;
+			if(oldp) for(k=0;k<n2;k++) st1(oldp+k, s[k]);
+			if(oldlenp) st2(oldlenp, n2);
+			r=0;
+		} else if(iv>=0){
+			if(oldp) st2(oldp, (int)iv);
+			if(oldlenp) st2(oldlenp, 2);
+			r=0;
+		} else { errno=ENOSYS; r=-1; }
+		break;
+	}
+	case C_OK:			/* benign per-era no-ops (setpgrp, itimers,
+					 * sigblock/sigsetmask, flock, hostid, ...) */
+		r = 0; break;
+	case C_NOSYS:
+		errno = ENOSYS; r = -1; break;
 	default:
-		fprintf(stderr, "apsim: unhandled sys %d\n", num);
-		halted=1; ecode=127; return;
+		fprintf(stderr, "apsim: unhandled sys %d (universe %s) -> ENOSYS\n", num, Univ);
+		errno = ENOSYS; r = -1; break;
 	}
 	if(systrace) fprintf(stderr, "    -> %ld\n", r);
-	if(r<0){ FC=1; R[0]=1; }	/* error: set carry, errno-ish in r0 */
+	if(r<0){ FC=1; R[0]=errno_h2g(errno); }	/* error: carry + era errno in r0 */
 	else { FC=0; R[0]=r&0xffff; }
 }
 
@@ -706,6 +1249,16 @@ static int sysnargs(int num){
 	/*40*/	0,0,0,1,4,0,0,0,  /* - dup pipe times profil - setgid getgid */
 	/*48*/	2,0,0,1,3,1,3,0,  /* signal - - acct phys lock ioctl reboot */
 	/*56*/	4,0,0,3,1,1,0,0 };/* mpx - - exece umask chroot - - */
+	if(Kern <= PDP11_K_V56){
+		/* the V5/V6 sysent counts where they differ from V7's:
+		 * chown 2 args, seek 2 (16-bit offset), smdate 1, sleep 0 */
+		switch(num){
+		case 16: return 2;
+		case 19: return 2;
+		case 30: return 1;
+		case 35: return 0;
+		}
+	}
 	return (num>=0 && num<64) ? inl[num] : 2;
 }
 /* ---- First Edition trap layer -----------------------------------------
@@ -902,9 +1455,13 @@ static void do_sys(int instr)
 		int blk=ifetch(PC); PC=(PC+2)&0xffff;
 		num=ld2(blk)&0377;	/* the real sys instruction's number */
 		argaddr=blk+2;
-	} else {			/* direct: inline args follow the trap */
+	} else {			/* direct: inline args follow the trap.  Under the
+					 * stack-args convention (2.10/2.11) a bare `sys N'
+					 * has NO inline words -- skipping would eat real
+					 * instructions after the trap. */
 		num=n; argaddr=PC;
-		PC=(PC+2*sysnargs(num))&0xffff;	/* skip them (exec resets PC itself) */
+		if(!stackargs)
+			PC=(PC+2*sysnargs(num))&0xffff;	/* skip them (exec resets PC itself) */
 	}
 	do_syscall(num, argaddr);
 }
@@ -1742,7 +2299,9 @@ static int load_aout_env(const char *path, int nargs, char **args, int nenv, cha
 		tsizew=(hdr[0]==0407)?0:tsize; Isp=M;
 		memset(M,0,1<<16);
 		if(fread(M,1,tsize,f)){} if(fread(M+dbase,1,dsize,f)){}
+		gbrk=(dbase+dsize+hdr[3])&0xffff;
 	}
+	if(hdr[0]==0411) gbrk=(dsize+hdr[3])&0xffff;
 	fclose(f);
 	setup_stack(nargs,args,nenv,env);
 	PC=entry;
@@ -1763,15 +2322,36 @@ int main(int argc, char **argv)
 	if(getenv("APSIM_UID")){ g_ruid=g_euid=atoi(getenv("APSIM_UID")); }
 	if(getenv("APSIM_GID")){ g_rgid=g_egid=atoi(getenv("APSIM_GID")); }
 	if(getenv("APSIM_PID")){ g_fakepid=atoi(getenv("APSIM_PID")); }
+	/* universe: $PDP11_UNIVERSE first, then --universe/-u override */
+	{ char *e=getenv("PDP11_UNIVERSE");
+	  if(e && *e && !univ_apply(e)){
+		fprintf(stderr,"apsim: unknown universe `%s' in PDP11_UNIVERSE; valid:",e);
+#define X(n,i,s,k,d) fprintf(stderr," %s",n);
+		PDP11_UNIVERSE_TABLE(X)
+#undef X
+		fprintf(stderr,"\n"); return 2; } }
+	if(getenv("APSIM_SYSARGS") && !strcmp(getenv("APSIM_SYSARGS"),"stack")) stackargs=1;
 	/* flags (any order): -t trace instrs, -s trace syscalls, -p N fix getpid() */
 	while(ai<argc && argv[ai][0]=='-' && argv[ai][1]){
 		if(!strcmp(argv[ai],"-t")) { trace=1; ai++; }
 		else if(!strcmp(argv[ai],"-s")) { systrace=1; ai++; }
-		else if(!strcmp(argv[ai],"-2")) { stackargs=1; ai++; }	/* 2.9/2.10 stack-arg syscalls */
+		else if(!strcmp(argv[ai],"-2")) { stackargs=1; ai++; }	/* stack-arg syscalls override */
 		else if(!strcmp(argv[ai],"-p") && ai+1<argc) { g_fakepid=atoi(argv[ai+1]); ai+=2; }
+		else if(!strncmp(argv[ai],"--universe=",11) || !strcmp(argv[ai],"-u") || !strcmp(argv[ai],"--universe")) {
+			const char *nm;
+			if(argv[ai][1]=='-' && argv[ai][10]=='='){ nm=argv[ai]+11; ai++; }
+			else { if(ai+1>=argc){ fprintf(stderr,"apsim: %s needs a name\n",argv[ai]); return 2; } nm=argv[ai+1]; ai+=2; }
+			if(!univ_apply(nm)){
+				fprintf(stderr,"apsim: unknown universe `%s'; valid:",nm);
+#define X(n,i,s,k,d) fprintf(stderr," %s",n);
+				PDP11_UNIVERSE_TABLE(X)
+#undef X
+				fprintf(stderr,"\n"); return 2;
+			}
+		}
 		else break;
 	}
-	if(ai>=argc){ fprintf(stderr,"usage: apsim [-t] [-s] [-p pid] a.out [args]\n"); return 2; }
+	if(ai>=argc){ fprintf(stderr,"usage: apsim [-t] [-s] [-p pid] [-u universe] [-2] a.out [args]\n"); return 2; }
 	/* save the host terminal so a curses guest's raw/cbreak mode can be applied
 	 * and restored.  No-op when stdin isn't a tty (e.g. piped test input). */
 	if(isatty(0) && tcgetattr(0,&saved_tio)==0){ tty_saved=1; atexit(tty_restore); }

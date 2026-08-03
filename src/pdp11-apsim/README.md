@@ -29,10 +29,20 @@ the byte-exact reconstructed rogue.
   integer-mantissa arithmetic with the FP11 rounding rule (round-half-up on
   the first discarded bit) — not host doubles.  Verified against the 1981
   compiler's constant conversion to the last bit.
-- **Syscalls**: the ~50-call 2.8BSD set (Apout v7trap parity) — files,
-  processes (fork/wait/pipe via real host fork), ids (with a settable
-  uid/gid model), time, signals with 2.8 `sendsig` frame semantics and
-  RTI/RTT, kill/alarm/pause.
+- **Syscalls, per-universe**: one canonical V7-numbered dispatcher plus
+  per-era kernel personalities selected by `--universe`/`-u`/
+  `$PDP11_UNIVERSE` — V5/V6 (16-bit `seek`, packed 36-byte stat, the era's
+  nosys gates), V7/2.8/2.9 (the trunk: inline args, fork/wait/pipe via
+  real host fork, 2.8 `sendsig` signal frames, `local` sub-calls),
+  2.10/2.11 (4.3/4.4-style renumbering via remap tables, stack-argument
+  convention, 58-byte stat, 32-bit ioctl codes, `sbrk` absolute-break
+  semantics, minimal `__sysctl`), and sys3/Ultrix-11 stubs
+  (utssys/ulimit/fcntl).  Failing calls deliver the **era errno** (a
+  host→guest map), and unknown numbers return ENOSYS instead of halting.
+- **Directory listing**: classic UNIX reads directories with read(2),
+  which Linux refuses — apsim snapshots an opened directory in the era's
+  on-disk record format (V1 10-byte, V5..2.9 16-byte, 2.10/2.11 4.3
+  variable records) and serves reads from it, so the real `ls` works.
 - **Terminal**: gtty/stty/ioctl `sgttyb` emulation mapped onto host
   termios (raw/cbreak/echo), enough for curses programs — rogue plays.
 - **Runtime root**: `root/` provides `/etc/passwd`, `/etc/termcap`, etc.;
