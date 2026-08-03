@@ -705,7 +705,7 @@ enum {
 	C_SOCKET, C_BIND, C_CONNECT, C_LISTEN, C_ACCEPT, C_SEND, C_RECV,
 	C_SENDTO, C_RECVFROM, C_GETSOCKNAME, C_GETPEERNAME, C_SETSOCKOPT,
 	C_GETSOCKOPT, C_SHUTDOWN, C_SOCKETPAIR, C_SENDMSG, C_RECVMSG,
-	C_STATFS, C_FSTATFS, C_GETFSSTAT,
+	C_STATFS, C_FSTATFS, C_GETFSSTAT, C_SIGWAIT,
 	C_OK, C_NOSYS
 };
 static void put_statfs(int sb, struct statvfs *vs, const char *on);
@@ -830,7 +830,7 @@ static const struct sremap Bsd211Remap[] = {
 	RS_(38,18), {39,C_GETLOGIN,0}, RS_(40,C_LSTAT), {43,C_OK,0},
 	{45,23,0} /* setuid */, {46,C_OK,0} /* seteuid */,
 	{48,C_GETEGID,0}, {49,46,0} /* setgid */, {50,C_OK,0},
-	{56,C_NOSYS,0}, {57,C_SYMLINK,0}, {58,C_READLINK,0},
+	{56,C_SIGWAIT,0}, {57,C_SYMLINK,0}, {58,C_READLINK,0},
 	RS_(62,28), {64,C_GETPAGESIZE,0}, {65,C_SELECT,0} /* pselect -> select */,
 	{66,2,0} /* vfork -> fork */, {69,C_SBRK,0},
 	{79,C_GETGROUPS,0}, {80,C_OK,0}, {81,C_GETPGRP,0}, {82,C_SETPGRP,0},
@@ -880,6 +880,150 @@ static int v56_nosys(int n){
 	if(n==27||n==29||n==33||n==39||n==40||n==45) return 1;
 	if(n>=49 && n<=63) return 1;
 	if(n==26 && Kern==PDP11_K_V56 && !strcmp(Univ,"v5")) return 1; /* v5: no ptrace */
+	return 0;
+}
+
+/* ---- cooperative ptrace debug channel --------------------------------
+ * ptrace lets a tracer read/write the TRACEE's memory and registers -- but
+ * with apsim's real-host-fork process model, tracer and tracee have
+ * separate M[]/R[], so the tracer cannot reach the tracee's state directly.
+ * So (as the VAX apsim does) a traced guest does NOT host-stop: on a trap
+ * it PARKS inside apsim serving requests over an abstract AF_UNIX socket
+ * named for its pid, and the tracer's ptrace ops -- and its wait(), which
+ * reports a synthetic WIFSTOPPED -- go over that socket.  This runs 2.11's
+ * classic ptrace(2) (adb): PT_READ/WRITE_I/D/U, PT_CONTINUE, PT_STEP,
+ * PT_KILL.  Opt-in via $APSIM_PTRACE (AF_INET-style real access), else
+ * ptrace stays EPERM.
+ *
+ * Wire protocol on the socket (host-native ints, both ends are apsim):
+ *   tracee->tracer notify:  {1, sig}  stopped   |  {2, code}  exited
+ *   tracer->tracee request: {req, addr, data}
+ *   tracee->tracer reply:   {status(0/-1), data}
+ * Register convention for PT_READ_U/WRITE_U: byte offset o selects R[o/2]
+ * for o in 0..14, and the PS at o==16.  (adb's own u-page offsets differ;
+ * the channel is offset-agnostic, so a debugger using this convention --
+ * see tests/ptrace.s -- drives it directly.) */
+#define PT_TRACE_ME 0
+#define PT_READ_I 1
+#define PT_READ_D 2
+#define PT_READ_U 3
+#define PT_WRITE_I 4
+#define PT_WRITE_D 5
+#define PT_WRITE_U 6
+#define PT_CONTINUE 7
+#define PT_KILL 8
+#define PT_STEP 9
+static int pt_enabled;		/* $APSIM_PTRACE opt-in */
+static int pt_traced;		/* this process is a tracee (did PT_TRACE_ME) */
+static int pt_step;		/* tracee: single-step armed */
+static int pt_pending;		/* tracee: a trap-stop is pending (signal #) */
+static int pt_lfd=-1;		/* tracee: listening socket */
+static int pt_cfd=-1;		/* both: the connected control socket */
+static int pt_kids[16], pt_nkids;	/* tracer: pids it forked (candidate tracees) */
+static int pt_tracee_pid;	/* tracer: guest pid of the connected tracee */
+static int pt_tracee_hpid;	/* tracer: raw host pid, for reaping the husk */
+
+static void pt_addr(struct sockaddr_un *a, int pid){
+	memset(a,0,sizeof *a); a->sun_family=AF_UNIX;
+	a->sun_path[0]=0;			/* abstract namespace */
+	sprintf(a->sun_path+1, "apsim.pt.%d", pid&0x7fff);
+}
+static socklen_t pt_alen(struct sockaddr_un *a){
+	return offsetof(struct sockaddr_un,sun_path)+1+strlen(a->sun_path+1);
+}
+/* tracee: create the listening socket once, at PT_TRACE_ME time */
+static void pt_listen(void){
+	struct sockaddr_un a;
+	if(pt_lfd>=0) return;
+	pt_lfd=socket(AF_UNIX,SOCK_STREAM,0);
+	pt_addr(&a, getpid());
+	if(bind(pt_lfd,(struct sockaddr*)&a,pt_alen(&a))<0 || listen(pt_lfd,1)<0){
+		close(pt_lfd); pt_lfd=-1; }
+}
+static int pt_readu(int off){
+	if(off>=0 && off<=14) return R[off/2];
+	if(off==16){ return (FC)|(FV<<1)|(FZ<<2)|(FN<<3); }
+	return 0;
+}
+static void pt_writeu(int off, int val){
+	if(off>=0 && off<=14) R[off/2]=val&0xffff;
+	else if(off==16){ FC=val&1; FV=(val>>1)&1; FZ=(val>>2)&1; FN=(val>>3)&1; }
+}
+/* tracee: park on a trap and serve the tracer until continue/step/kill.
+ * Returns the signal the tracer wants delivered on resume (0 = none). */
+static int pt_stop(int sig){
+	int msg[3], rep[2], notify[2];
+	if(pt_cfd<0){			/* first stop: wait for the tracer to attach */
+		pt_cfd=accept(pt_lfd,0,0);
+		if(pt_cfd<0){ pt_traced=0; return sig; }	/* attach failed: give up tracing */
+	}
+	notify[0]=1; notify[1]=sig;
+	if((int)write(pt_cfd,notify,sizeof notify)!=(int)sizeof notify){ pt_traced=0; return sig; }
+	for(;;){
+		if(read(pt_cfd,msg,sizeof msg)!=(int)sizeof msg){ pt_traced=0; return 0; }
+		{ int req=msg[0], addr=msg[1]&0xffff, data=msg[2];
+		  rep[0]=0; rep[1]=0;
+		  switch(req){
+		  case PT_READ_I: rep[1]=Isp[addr]|(Isp[(addr+1)&0xffff]<<8); break;
+		  case PT_READ_D: rep[1]=M[addr]|(M[(addr+1)&0xffff]<<8); break;
+		  case PT_READ_U: rep[1]=pt_readu(msg[1]); break;
+		  case PT_WRITE_I: Isp[addr]=data&0xff; Isp[(addr+1)&0xffff]=(data>>8)&0xff; break;
+		  case PT_WRITE_D: M[addr]=data&0xff; M[(addr+1)&0xffff]=(data>>8)&0xff; break;
+		  case PT_WRITE_U: pt_writeu(msg[1],data); break;
+		  case PT_CONTINUE:
+			if((msg[1]&0xffff)!=1) PC=addr;
+			pt_step=0; if(write(pt_cfd,rep,sizeof rep)){} return data&037;
+		  case PT_STEP:
+			if((msg[1]&0xffff)!=1) PC=addr;
+			pt_step=1; if(write(pt_cfd,rep,sizeof rep)){} return data&037;
+		  case PT_KILL:
+			if(write(pt_cfd,rep,sizeof rep)){} halted=1; ecode=0; return 0;
+		  default: rep[0]=-1; rep[1]=-1;
+		  }
+		  if(write(pt_cfd,rep,sizeof rep)){}
+		}
+	}
+}
+/* tracee: tell the tracer we exited, so its wait() returns WIFEXITED */
+static void pt_notify_exit(int code){
+	int n[2]={2, code&0xff};
+	if(pt_cfd>=0) { if(write(pt_cfd,n,sizeof n)){} }
+}
+/* tracer: connect to a child's control socket (retrying briefly, since the
+ * child may not have reached its accept() yet).  Returns 1 on success. */
+static int pt_connect(int pid){
+	struct sockaddr_un a; int fd, k;
+	pt_addr(&a, pid);
+	for(k=0;k<200;k++){
+		fd=socket(AF_UNIX,SOCK_STREAM,0);
+		if(connect(fd,(struct sockaddr*)&a,pt_alen(&a))==0){
+			pt_cfd=fd; pt_tracee_pid=pid&0x7fff; pt_tracee_hpid=pid; return 1; }
+		close(fd);
+		{ struct timespec ts={0,1000000L}; nanosleep(&ts,0); }	/* 1ms */
+	}
+	return 0;
+}
+/* tracer: is any forked child a tracee?  Connect to the first that answers.
+ * Retries briefly, since the child does PT_TRACE_ME just after fork and may
+ * not have created its socket yet; if no child ever traces (a normal wait
+ * under $APSIM_PTRACE), give up so the host waitpid path runs. */
+static int pt_find_tracee(void){
+	int i, k;
+	if(pt_cfd>=0) return 1;
+	if(pt_nkids==0) return 0;
+	for(k=0;k<100;k++){		/* ~100ms: a real tracee connects in <1ms;
+					 * a non-traced child just costs the delay
+					 * before falling through to host waitpid */
+		for(i=0;i<pt_nkids;i++){
+			struct sockaddr_un a; int fd;
+			pt_addr(&a, pt_kids[i]);
+			fd=socket(AF_UNIX,SOCK_STREAM,0);
+			if(connect(fd,(struct sockaddr*)&a,pt_alen(&a))==0){
+				pt_cfd=fd; pt_tracee_pid=pt_kids[i]&0x7fff; pt_tracee_hpid=pt_kids[i]; return 1; }
+			close(fd);
+		}
+		{ struct timespec ts={0,1000000L}; nanosleep(&ts,0); }	/* 1ms */
+	}
 	return 0;
 }
 
@@ -936,7 +1080,7 @@ static void do_syscall(int num, int argaddr)
 					 * the CHILD at that `br' (r0=parent pid -> br 1f -> 0). */
 		int pid = fork();
 		if(pid < 0){ FC=1; R[0]=errno_h2g(errno); return; }
-		if(pid > 0){ pid_learn(pid); FC=0; R[0]=pid&0x7fff; PC=(PC+2)&0xffff; return; }	/* parent */
+		if(pid > 0){ pid_learn(pid); if(pt_nkids<16) pt_kids[pt_nkids++]=pid; FC=0; R[0]=pid&0x7fff; PC=(PC+2)&0xffff; return; }	/* parent */
 		pid_learn(getpid()); pid_learn(getppid());
 		FC=0; R[0]=getppid()&0x7fff; return;				/* child: r0=ppid */
 	}
@@ -948,6 +1092,18 @@ static void do_syscall(int num, int argaddr)
 					 * status (stopsig<<8)|0177. */
 		int st, opts=0, wpid;
 		if(FC&&FV&&FZ&&FN) opts=((R[0]&1)?WNOHANG:0)|((R[0]&2)?WUNTRACED:0);
+		if(pt_enabled && pt_find_tracee()){	/* a traced child parked on a trap:
+					 * read its stop/exit over the channel and
+					 * report a synthetic wait status. */
+			int n[2];
+			if(read(pt_cfd,n,sizeof n)==(int)sizeof n){
+				if(n[0]==1){ R[1]=((n[1]<<8)|0177)&0xffff; }	/* WIFSTOPPED */
+				else { R[1]=((n[1]&0xff)<<8)&0xffff;		/* WIFEXITED */
+				       waitpid(pt_tracee_hpid,&st,0);		/* reap the host husk */
+				       close(pt_cfd); pt_cfd=-1; }
+				FC=0; R[0]=pt_tracee_pid; return;
+			}
+		}
 		wpid = waitpid(-1, &st, opts);
 		if(wpid < 0){ FC=1; R[0]=errno_h2g(errno); return; }
 		if(wpid == 0){ FC=0; R[0]=0; R[1]=0; return; }	/* WNOHANG: nothing */
@@ -1261,11 +1417,29 @@ static void do_syscall(int num, int argaddr)
 	case 61:			/* chroot: sandbox already roots paths via mappath;
 					 * accept without changing the host root. */
 		r = 0; break;
+	case 26: {			/* ptrace(req, pid, addr, data): the cooperative
+					 * debug channel (opt-in via $APSIM_PTRACE). */
+		int req=a1, addr=a3;
+		int data=stackargs?ld2((SP+8)&0xffff):ld2(argaddr+6);
+		if(!pt_enabled){ errno=EINVAL; r=-1; break; }
+		if(req==PT_TRACE_ME){		/* tracee declares itself; the first
+					 * trap-stop comes at the next exec (like
+					 * the real kernel) or the first BPT. */
+			pt_traced=1; pt_listen();
+			r=0; break;
+		}
+		/* tracer op on a child: attach if needed, forward, read reply */
+		if(pt_cfd<0 && !pt_connect(a2)){ errno=ESRCH; r=-1; break; }
+		{ int msg[3]={req,addr,data}, rep[2];
+		  if(write(pt_cfd,msg,sizeof msg)!=(int)sizeof msg ||
+		     read(pt_cfd,rep,sizeof rep)!=(int)sizeof rep){ errno=ESRCH; r=-1; break; }
+		  if(rep[0]<0){ errno=EIO; r=-1; } else r=rep[1]&0xffff; }
+		break;
+	}
 	case 21:			/* mount */
 	case 22:			/* umount */
-	case 26:			/* ptrace: no in-sim debugging */
 	case 52:			/* phys: map physical memory (privileged) */
-		r = -1; break;			/* EPERM-ish: unsupported, fail cleanly */
+		errno=EPERM; r = -1; break;	/* unsupported, fail cleanly */
 	case 32:			/* gtty(fd=r0, &sgttyb=a1): old-style tty get,
 					 * = ioctl TIOCGETP. */
 		if(!isatty(fd0)){ errno=ENOTTY; r=-1; break; }
@@ -1292,6 +1466,7 @@ static void do_syscall(int num, int argaddr)
 		while(na<63){ p=ld2(ap); ap+=2; if(!p)break; strncpy(ab[na],(char*)(M+(p&0xffff)),255); ab[na][255]=0; av[na]=ab[na]; na++; }
 		while(ep && ne<63){ p=ld2(ep); ep+=2; if(!p)break; strncpy(eb[ne],(char*)(M+(p&0xffff)),255); eb[ne][255]=0; ev[ne]=eb[ne]; ne++; }
 		if(load_aout_env(hp, na, av, ne, ev)<0){ FC=1; R[0]=ENOENT; break; }
+		if(pt_traced){ pt_listen(); pt_pending=5; }	/* traced exec -> SIGTRAP stop */
 		return;			/* success: run the new program */
 	}
 	case 58: {			/* local(sub): 2.8's site-syscall dispatcher.
@@ -1350,6 +1525,15 @@ static void do_syscall(int num, int argaddr)
 					 * WNOHANG=1, WUNTRACED=2; a stopped child
 					 * reports (stopsig<<8)|0177. */
 		int st, opts=((a3&1)?WNOHANG:0)|((a3&2)?WUNTRACED:0);
+		if(pt_enabled && pt_find_tracee()){	/* traced child parked on a trap */
+			int n[2];
+			if(read(pt_cfd,n,sizeof n)==(int)sizeof n){
+				int gst = (n[0]==1) ? ((n[1]<<8)|0177) : ((n[1]&0xff)<<8);
+				if(n[0]!=1){ waitpid(pt_tracee_hpid,&st,0); close(pt_cfd); pt_cfd=-1; }
+				if(a2) st2(a2&0xffff, gst&0xffff);
+				r=pt_tracee_pid; break;
+			}
+		}
 		int who = (a1==0xffff||a1==0) ? -1 : pid_g2h((int)(short)a1<0?-(int)(short)a1:(int)(short)a1);
 		if((int)(short)a1<0 && a1!=0xffff) who=-who;	/* negative = pgrp */
 		int wpid = waitpid(who, &st, opts);
@@ -1702,6 +1886,17 @@ static void do_syscall(int num, int argaddr)
 		if(buf && bufsize>=232){ struct statvfs vs;
 			if(statvfs(mappath_s("/"),&vs)==0) put_statfs(buf,&vs,"/"); }
 		r=1; break;
+	}
+	case C_SIGWAIT: {		/* sigwait(*set, *sig): block until a signal in
+					 * set is pending, clear it, return it in *sig. */
+		int setp=a1&0xffff, sigp=a2&0xffff; long want;
+		if(!setp || !sigp){ errno=EINVAL; r=-1; break; }
+		want = ((long)(ld2(setp)&0xffff)<<16)|(ld2(setp+2)&0xffff);
+		while(!pending_sig) pause();
+		if((want>>(pending_sig-1))&1){		/* a wanted signal arrived */
+			st2(sigp, pending_sig); pending_sig=0; r=0;
+		} else { errno=EINTR; r=-1; }		/* other: let it deliver */
+		break;
 	}
 	case C_OK:			/* benign per-era no-ops (setpgrp, itimers,
 					 * sigblock/sigsetmask, flock, hostid, ...) */
@@ -2667,6 +2862,7 @@ static void step(void)
 		return;
 	}
 	case 0000003:					/* BPT -> SIGTRAP (adb breakpoints) */
+		if(pt_traced){ pt_pending=5; return; }	/* traced: trap-stop for the tracer */
 		if(raise_fault(5)) return;
 		fprintf(stderr,"apsim: BPT at %06o (no SIGTRAP handler)\n",(PC-2)&0xffff);
 		halted=1; ecode=128+5; return;
@@ -2926,6 +3122,7 @@ int main(int argc, char **argv)
 	if(getenv("APSIM_UID")){ g_ruid=g_euid=atoi(getenv("APSIM_UID")); }
 	if(getenv("APSIM_GID")){ g_rgid=g_egid=atoi(getenv("APSIM_GID")); }
 	if(getenv("APSIM_PID")){ g_fakepid=atoi(getenv("APSIM_PID")); }
+	if(getenv("APSIM_PTRACE")) pt_enabled=1;	/* enable the ptrace debug channel */
 	/* universe: $PDP11_UNIVERSE first, then --universe/-u override */
 	{ char *e=getenv("PDP11_UNIVERSE");
 	  if(e && *e && !univ_apply(e)){
@@ -2970,6 +3167,23 @@ int main(int argc, char **argv)
 		fprintf(stderr,"apsim: cannot load %s\n", argv[ai]); return 2; }
 
 	for(i=0; i<4000000000LL && !halted; i++){
+		if(pt_traced && pt_pending){		/* traced: park on the trap and
+					 * let the tracer inspect/step/continue.
+					 * pt_stop returns the signal (if any) to
+					 * deliver on resume. */
+			int s=pt_pending; pt_pending=0;
+			s=pt_stop(s);
+			if(halted) break;
+			if(s) pending_sig=s;		/* tracer re-injected a signal */
+		}
+		if(pending_sig && pt_traced){		/* a signal for a traced process is
+					 * reported to the tracer first (it may
+					 * suppress or substitute it) */
+			int s=pending_sig; pending_sig=0;
+			s=pt_stop(s);
+			if(halted) break;
+			pending_sig=s;			/* 0 = suppressed */
+		}
 		if(pending_sig && !((guest_sigmask>>(pending_sig-1))&1)){
 			/* deliver a caught signal, 2.8 sendsig() (a blocked
 			 * signal stays pending until sigsetmask releases it) */
@@ -3024,7 +3238,9 @@ int main(int argc, char **argv)
 		if(trace) fprintf(stderr,"pc=%06o sp=%06o r0=%06o instr=%06o\n",PC,SP,R[0],ifetch(PC));
 		if((i&0xFFFFFFF)==0xFFFFFFF) fprintf(stderr,"apsim: %lldM pc=%06o sp=%06o\n",i>>20,PC,SP);
 		step();
+		if(pt_traced && pt_step) pt_pending=5;	/* single-step done -> SIGTRAP stop */
 	}
+	if(pt_traced) pt_notify_exit(ecode);		/* let the tracer's wait see us go */
 	if(!halted){ fprintf(stderr,"apsim: instruction limit\n"); return 125; }
 	return ecode;
 }

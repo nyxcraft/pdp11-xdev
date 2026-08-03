@@ -28,6 +28,7 @@ unimplemented syscall.
 | **Sockets** (socket/socketpair/bind/connect/listen/accept, send/recv/sendto/recvfrom, sendmsg/recvmsg, get/setsockopt, getsockname/getpeername, shutdown) | full, real host sockets | **full**, real host sockets | verified AF_UNIX socketpair + AF_INET TCP loopback |
 | **Filesystem stats** (statfs/fstatfs/getfsstat) | full (host statvfs) | **full** (host statvfs) | 232-byte 2.11 struct; `df` works |
 | **select/poll** | select + poll | **select** | 2.11 has no `poll` (a 4.3+ call) |
+| **ptrace** (debug channel) | cooperative channel (drives gdb) | **cooperative channel** (adb model) | opt-in `$APSIM_PTRACE`; PT_READ/WRITE_I/D/U, CONTINUE, STEP, KILL over an abstract socket; wait reports synthetic WIFSTOPPED |
 | **sbrk/brk** | full | **full** | flat 64 KB space |
 | **__sysctl** | rich node table + `/proc`-scan `ps` | **common nodes** (CTL_KERN/CTL_HW strings, hostname) | 2.11's sysctl is far smaller than 4.4's; the common facts are answered |
 | **Overlays** (auto-overlay text) | n/a (VAX has no overlays) | **0430 + 0431** (2.10/2.11 15-overlay, separate-I&D window) | how csh fits 64 KB |
@@ -48,10 +49,10 @@ categories the VAX apsim refuses:
   VAX's `nfssvc`/`getkerninfo`/`audgen` refusals.
 - **`sigwait`** — the POSIX synchronous wait; the VAX refuses it too.
 
-## The one applicable VAX feature not yet ported
+## The VAX features that don't apply to the PDP-11 line
 
-The VAX apsim's headline extras are, by category, inapplicable to the
-PDP-11 line:
+The VAX apsim's remaining headline extras are, by category, inapplicable
+to the PDP-11 UNIX era set:
 
 - **LWP threads on real pthreads behind a GIL** — no PDP-11 UNIX had
   kernel threads. Not applicable.
@@ -61,12 +62,16 @@ PDP-11 line:
 - **Multi-personality NetBSD/OpenBSD/SVR2 remap tables with shaped
   struct marshallers** — those ABIs don't run on a PDP-11.
 
-The single exception — a VAX capability that *does* apply to the PDP-11
-and is not yet implemented — is the **cooperative `ptrace` debug
-channel**. 2.11BSD has `ptrace(2)` (adb uses it); pdp11-apsim currently
-refuses it (`EPERM`). Bringing up the VAX's `APSIM_PTRACE` channel so a
-host debugger can drive a traced guest is the remaining parity item, and
-the only one that matters for the PDP-11 era set.
+The one applicable feature that *was* the outstanding parity item — the
+**cooperative `ptrace` debug channel** — is now implemented (opt-in via
+`$APSIM_PTRACE`). A traced guest, instead of host-stopping, parks inside
+apsim serving an abstract AF_UNIX socket; the tracer's ptrace ops and its
+`wait()` (which reports a synthetic `WIFSTOPPED`) go over that channel, so
+one apsim process can read/write and single-step another across their
+separate address spaces. This runs 2.11's classic `ptrace(2)`
+(PT_READ/WRITE_I/D/U, CONTINUE, STEP, KILL) — the adb model — and is
+verified by `tests/ptrace.s` (a parent reads a word out of a traced
+child's D-space, single-steps it, and continues it to exit).
 
 ## Summary
 

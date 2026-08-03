@@ -146,6 +146,19 @@ if [ -x "$R/bin/echo" ] && [ -x "$R/bin/cat" ]; then
 	else
 		bad 211-socket 'sockpair.s did not assemble'
 	fi
+	# ptrace debug channel: a parent forks a traced child, waits for its
+	# BPT trace-stop, reads a known word out of the child's SEPARATE
+	# address space via PT_READ_D, single-steps, and continues it to exit.
+	# Proves the cooperative channel (the mechanism adb needs).
+	if "$AS" -o "$tmp/ptrace" "$here/ptrace.s"; then
+		if APSIM_PTRACE=1 APSIM_ROOT=/ timeout 12 "$APSIM" -u bsd211 "$tmp/ptrace" 2>/dev/null; then
+			ok 211-ptrace 'ptrace channel: read/step/continue a traced child'
+		else
+			bad 211-ptrace "exit $? (parent could not trace the child)"
+		fi
+	else
+		bad 211-ptrace 'ptrace.s did not assemble'
+	fi
 else
 	skip bsd211 '~/bsd/2.11/root not present'
 fi
