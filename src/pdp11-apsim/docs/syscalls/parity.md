@@ -47,7 +47,9 @@ categories the VAX apsim refuses:
 - **Kernel-internal pokes** — `fetchi` (fetch from user I-space), `ucall`
   (call a kernel subroutine): no user-mode equivalent, exactly like the
   VAX's `nfssvc`/`getkerninfo`/`audgen` refusals.
-- **`sigwait`** — the POSIX synchronous wait; the VAX refuses it too.
+
+(`sigwait` — which the VAX apsim refuses — is instead implemented here:
+it blocks for a signal in the given set and returns it.)
 
 ## The VAX features that don't apply to the PDP-11 line
 
@@ -78,6 +80,7 @@ child's D-space, single-steps it, and continues it to exit).
 For the universe range this project targets (First Edition through
 2.11BSD), pdp11-apsim is at syscall parity with vax11-apsim: the same file,
 process, signal, job-control, socket, filesystem-stat, and time coverage;
-the same set of deliberate refusals; plus PDP-11-specific work the VAX
-never needed (auto-overlays, the FP11/FIS softfloat, the era `struct stat`
-and directory shapes). The remaining gap is the ptrace debug channel.
+the same set of deliberate refusals; the cooperative ptrace debug channel;
+plus PDP-11-specific work the VAX never needed (auto-overlays, the FP11/FIS
+softfloat, the era `struct stat` and directory shapes). Every syscall in
+every PDP-11 era's own table is answered.
