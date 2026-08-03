@@ -8,6 +8,8 @@
 
 📖 **Documentation site: <https://nyxcraft.github.io/pdp11-xdev/>**
 
+*Software architecture, design & engineering by Nicholas J. Kisseberth.*
+
 A host-side, **multi-universe PDP-11 cross-development toolchain**.  On a
 modern LP64 Linux host it builds PDP-11 programs — preprocess, compile,
 optimize, assemble, link — into real 2BSD `a.out` binaries, and runs them,
@@ -110,3 +112,7 @@ Merged from three sibling projects — `pdp11-bsd28-toolchain`,
 add from here on.  Sources are BSD-licensed (see [LICENSE](LICENSE)); the
 vintage UNIX content the tools operate on is under the Caldera
 ancient-UNIX license.
+
+## Credits
+
+Software architecture, design & engineering by **Nicholas J. Kisseberth**.
