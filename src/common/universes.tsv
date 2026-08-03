@@ -12,9 +12,15 @@
 #
 # name	id	status	desc
 v1	1	sim	First Edition UNIX (1971-72); apsim personality for 0405 binaries
-v5	5	planned	Fifth Edition UNIX (1974); sources in ~/unix/v5
-v6	6	planned	Sixth Edition UNIX (1975); sources in ~/unix/v6
+v2	2	sim	Second Edition UNIX (1972); 0405 format, runs on the V1 personality; sources in ~/unix/v2
+v3	3	planned	Third Edition UNIX (1973); no complete source tree staged
+v4	4	planned	Fourth Edition UNIX (1973), first C kernel; sources in ~/unix/v4
+v5	5	planned	Fifth Edition UNIX (1974); full root with binaries in ~/unix/v5
+v6	6	planned	Sixth Edition UNIX (1975); full root with binaries in ~/unix/v6
 v7	7	sim	Seventh Edition UNIX (1979); apsim's syscall layer is the V7 set
+bsd1	11	planned	1BSD (1978), V6-kernel userland; sources in ~/bsd/1bsd
+bsd2	20	planned	2BSD (1979), V7-kernel userland; sources in ~/bsd/2bsd
+bsd279	27	planned	2.79BSD (1980), V7-kernel userland; sources in ~/bsd/2.79
 bsd28	28	full	2.8BSD (1981), Ritchie cc era; FP11 D-format floating point
 bsd29	29	full	2.9BSD (1983), overlays and split I&D; the default universe
 bsd210	210	planned	2.10BSD (1987); sources in ~/bsd/2.10, das/apsim know its stat renumbering
