@@ -1982,12 +1982,14 @@ static int sysnargs(int num){
  * Cross-checked page-by-page against the Nov 1971 First Edition manual
  * (sys II): every number and arg convention below matches, as does the
  * 34-byte stat (v1statout) and the 0405 a.out format as/ld emit. */
-static const signed char v1inl[35] = {
+static const signed char v1inl[38] = {
 /*0*/	0,0,0,2,2,2,0,0,	/* rele exit fork read write open close wait */
 /*8*/	2,2,1,2,1,0,2,2,	/* creat link unlink exec chdir time makdir chmod */
 /*16*/	2,1,2,2,2,2,1,0,	/* chown break stat seek tell mount umount setuid */
 /*24*/	0,0,1,1,1,1,1,1,	/* getuid stime quit intr fstat cemt mdate stty */
-/*32*/	1,1,0 };		/* gtty ilgins nice */
+/*32*/	1,1,0,			/* gtty ilgins nice/hog */
+/*35*/	0,0,0 };		/* sleep sync kill -- Second Edition additions,
+				 * all take their arg (if any) in r0, 0 inline */
 
 /* V1 mode bits (i-node flags), for chmod/creat/makdir and the stat report */
 #define V1M_SUID 040
@@ -2051,6 +2053,21 @@ static void do_v1syscall(int num, int argaddr)
 		FC=0; return;
 	case 30:				/* mdate: set mod date (from AC/MQ) */
 		FC=0; return;
+	case 36:				/* V2 sync: flush super blocks (nothing
+						 * to flush in this user-mode sim) */
+		FC=0; return;
+	case 35: {				/* V2 sleep: suspend for r0/60 seconds */
+		int t60 = R[0]&0xffff;
+		struct timespec ts;
+		ts.tv_sec = t60/60; ts.tv_nsec = (long)(t60%60)*(1000000000L/60);
+		nanosleep(&ts, 0);
+		FC=0; return;
+	}
+	case 37: {				/* V2 kill: destroy a process (pid in r0) */
+		int hp = pid_g2h(R[0]&0x7fff);
+		if(hp>0 && kill(hp, SIGTERM)==0) FC=0; else FC=1;
+		return;
+	}
 	case 21: case 22:			/* mount / umount */
 		FC=1; return;
 	case 1:					/* exit: NEITHER V1 nor V2 exit reliably
@@ -2163,7 +2180,11 @@ static void do_v1syscall(int num, int argaddr)
 static void do_v1sys(int instr)
 {
 	int num=instr&077, argaddr=PC;
-	if(num>34){ fprintf(stderr,"apsim: bad V1 sys %o at pc=%06o\n",num,(PC-2)&0xffff);
+	/* First Edition (v1) has calls 0..34; Second Edition (v2) adds sleep=35,
+	 * sync=36, kill=37 -- so a v2 binary that uses them runs under -u v2 but
+	 * is a "bad system call" under -u v1, the real edition boundary. */
+	int limit = !strcmp(Univ,"v2") ? 37 : 34;
+	if(num>limit){ fprintf(stderr,"apsim: bad V1 sys %o at pc=%06o\n",num,(PC-2)&0xffff);
 		halted=1; ecode=127; return; }
 	PC=(PC+2*v1inl[num])&0xffff;	/* step past the inline args (exec resets PC) */
 	do_v1syscall(num, argaddr);
