@@ -99,8 +99,12 @@ libc: headers dirs
 	${ASM} -o common/gen/cuexit.o ${LSYS} common/gen/cuexit.s
 	for f in $(filter-out cuexit,${GENS}); do ${ASM} -o common/gen/$$f.o common/gen/$$f.s; done
 	for f in ${STDIOS}; do ${ASM} -o common/stdio/$$f.o common/stdio/$$f.s; done
-	# syscall stubs, assembled against the syscall-number table.
-	for f in ${SYS}; do ${ASM} -o common/sys/$$f.o ${LSYS} common/sys/$$f.s; done
+	# syscall stubs: mkdual.py wraps each pristine V7 stub into a DUAL-
+	# convention stub (V7 body for __univ<210, a 4BSD `sys N.'-with-stack-args
+	# head for >=210, dispatched at run time), reading the 4.x numbers from
+	# tools/sysnums.tsv.  Then assemble the generated stubs against sys.s.
+	python3 tools/mkdual.py build/sys ${SYS}
+	for f in ${SYS}; do ${ASM} -o common/sys/$$f.o ${LSYS} build/sys/$$f.s; done
 	# software long-arith + csv/cerror (the no-FPU flavour) and the FP interp.
 	for f in csv cerror ${ARITH}; do ${ASM} -o common/nonfpcrt/$$f.o ${LSYS} common/nonfpcrt/$$f.s; done
 	${ASM} -o fpsim/fpsim.o ${LSYS} fpsim/fp1.s fpsim/fp2.s fpsim/fp3.s fpsim/fpx.s

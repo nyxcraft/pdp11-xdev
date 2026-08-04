@@ -28,3 +28,4 @@ oracle/work/
 # Test scratch
 tests/work/
 __pycache__/
+src/pdp11-libc/build/

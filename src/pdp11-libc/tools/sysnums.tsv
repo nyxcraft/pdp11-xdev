@@ -1,0 +1,71 @@
+# 4BSD (2.10/2.11BSD) syscall numbers for the universal libc's stubs,
+# extracted from each tree's usr/include/syscall.h (authoritative).  Blank
+# = the call has no 4BSD number (stays V7-only under 2.10/2.11).  mkdual.py
+# reads this; regenerate with tools/mksysnums.sh if the target trees change.
+# name	bsd210	bsd211
+write	4	4
+read	3	3
+open	5	5
+close	6	6
+creat	8	8
+lseek	19	19
+exit	1	1
+sbrk	69	69
+unlink	10	10
+fstat	62	62
+stat	38	38
+lstat	40	40
+dup	41	41
+pipe	42	42
+fork	2	2
+wait	84	
+getpid	20	20
+getuid	24	24
+getgid	47	47
+setuid		
+setgid		
+access	33	33
+chmod	15	15
+chown	16	16
+chdir	12	12
+link	9	9
+kill	37	37
+ioctl	54	54
+umask	60	60
+time		
+stime		
+sync	36	36
+alarm		
+pause		
+nice		
+times		
+mknod	14	14
+chroot	61	61
+execv	11	11
+execl		
+signal		
+gldav	156	156
+acct	51	51
+execle		
+execve	59	59
+lfstat		
+lock	53	53
+mount	21	21
+mpxcall		
+phys	52	52
+profil	44	44
+ptrace	26	26
+quota	149	149
+umount	22	22
+utime		
+killpg	146	146
+getppid		
+qfstat		
+qstat		
+rtp	151	
+submit		
+reboot	55	55
+renice		
+ucall	154	154
+vfork	66	66
+vhangup	76	76

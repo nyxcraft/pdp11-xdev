@@ -94,9 +94,14 @@ same thing everywhere.</p>
 <td>Fifth/Sixth/Seventh Edition: the rest of the V7-syscall-convention family the one universal libc compiles and runs</td>
 </tr>
 <tr>
-<td><code>bsd210</code> <code>bsd211</code></td>
-<td>simulator</td>
-<td>2.10/2.11BSD: apsim runs their native binaries today; a compile target once the libc dispatches the 4BSD stack-arg convention</td>
+<td><code>bsd211</code></td>
+<td>full</td>
+<td>2.11BSD (porting base): the 4BSD stack-arg convention + 4.x numbers, dispatched on <code>__univ</code> by the same libc</td>
+</tr>
+<tr>
+<td><code>bsd210</code></td>
+<td>full</td>
+<td>2.10BSD: the same 4BSD-convention personality</td>
 </tr>
 <tr>
 <td><code>v1</code></td>

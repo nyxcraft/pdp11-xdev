@@ -42,10 +42,12 @@ int main(){ double x=1.0/3.0; printf("%.4f %.2e\n", x, x*300.0); return 0; }
 EOF
 
 echo "== A. compiler pipeline (cpp/c0/c1/c2/as/ld + libc) x full universes =="
-# One universal libc.a (flat lib/) serves the whole V7-syscall-convention
-# family; --universe only selects __univ, which ld stamps and crt0 records.
-# We compile+run the battery under EACH to prove the single library serves all.
-for u in v5 v6 v7 bsd28 bsd29; do
+# One universal libc.a (flat lib/) serves both syscall-convention families:
+# the V7 family (v5..bsd29, inline/indirect) and the 4BSD family (bsd210/bsd211,
+# stack args + 4.x numbers) -- the stubs dispatch on __univ, which ld stamps and
+# crt0 records.  Compile+run the battery under EACH to prove the one library
+# serves all.
+for u in v5 v6 v7 bsd28 bsd29 bsd210 bsd211; do
   [ -f "$here/../lib/libc.a" ] || { skip cc "$u" "no libc"; continue; }
   # plain and -O, for each battery program
   for prog in hello arith str float; do
