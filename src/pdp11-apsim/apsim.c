@@ -3078,6 +3078,24 @@ static int load_aout_env(const char *path, int nargs, char **args, int nenv, cha
 		PC=040000;
 		return 0;
 	}
+	if(hdr[0]==0407 && Kern==PDP11_K_V1){
+		/* Second Edition (V2) 0407: the transition binary.  Like a V7 0407 the
+		 * 8-word header is STRIPPED (not loaded), but the load base is 040000
+		 * (V1/V2 space, apout's V12_MEMBASE), not 0, and the trap layer is the
+		 * 1971 inline-arg form + KE11-A.  Text (not write-protected, so its
+		 * strings live in it) then data load at 040000; entry is 040000.  Only
+		 * for -u v1/v2 -- a 0407 under a V7/BSD universe is the load-at-0 form
+		 * handled below. */
+		tsize=hdr[1]; dsize=hdr[2];
+		v1sys=1; ov_proc=0; tsizew=0; Isp=M;
+		memset(M,0,1<<16);
+		fseek(f,020,SEEK_SET);			/* skip the 8-word (16-byte) header */
+		if(fread(M+040000,1,(tsize+dsize)&0xffff,f)){}
+		fclose(f);
+		setup_stack_v1(nargs,args);
+		PC=040000;
+		return 0;
+	}
 	tsize=hdr[1]; dsize=hdr[2]; entry=hdr[5];
 	ov_proc=0; ov_sep=0; cur_ovno=0;
 	if(hdr[0]==0430 || hdr[0]==0431){

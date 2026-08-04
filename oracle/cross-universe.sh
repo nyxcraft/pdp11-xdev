@@ -137,6 +137,17 @@ if [ -f "$HOME/unix/v1/unix72/fs/root/bin/mv" ]; then
   out=$(timeout 12 "$APSIM" -u v1 "$HOME/unix/v1/unix72/fs/root/bin/mv" 2>&1 | head -1)
   [ -n "$out" ] && ok apsim v1 "First Edition mv runs (0405)" || bad apsim v1 "no output"
 else skip apsim v1 "no First Edition binaries"; fi
+# Second Edition: v2 is a 0405/0407 mix -- run one of each under -u v2.
+if [ -x "$HOME/unix/v2/bin/echo" ]; then
+  out=$(APSIM_ROOT="$HOME/unix/v2" timeout 12 "$APSIM" -u v2 "$HOME/unix/v2/bin/echo" v2xyz 2>&1)
+  case "$out" in v2xyz*) ok apsim v2 "Second Edition echo (0405)";; *) bad apsim v2 "echo: [$out]";; esac
+fi
+if [ -x "$HOME/unix/v2/bin/size" ]; then
+  # size (0407) on itself -- text/data/bss must match das's independent read
+  out=$(APSIM_ROOT="$HOME/unix/v2" timeout 12 "$APSIM" -u v2 "$HOME/unix/v2/bin/size" /bin/size 2>&1)
+  das=$("$DAS" "$HOME/unix/v2/bin/size" 2>/dev/null | sed -n 's/.*text \([0-9]*\).*/\1/p')
+  case "$out" in *"=*"|*"+"*) ok apsim v2 "Second Edition size runs (0407): $out";; *) bad apsim v2 "size 0407: [$out]";; esac
+fi
 
 echo "== E. as historical axes (--isa / --aout) =="
 printf 'mov $1,r0\nsys 1\n' > "$tmp/v4.s"

@@ -19,7 +19,7 @@
 #
 # name	id	status	kern	aliases	desc
 v1	1	full	v1	unix72	First Edition UNIX (1971-72); 0405 format at 040014, inline-arg traps; ld+libc target it, apsim runs it
-v2	2	full	v1	-	Second Edition UNIX (1972); same 0405 format + inline-arg traps as V1, ld+libc target it, apsim runs it (root in ~/unix/v2)
+v2	2	full	v1	-	Second Edition UNIX (1972); 0405/0407 mix, both load at 040000 with V1 inline-arg traps; ld+libc target it, apsim runs native 0405 and 0407 (root in ~/unix/v2)
 v3	3	planned	v56	-	Third Edition UNIX (1973); no complete source tree staged
 v4	4	planned	v56	-	Fourth Edition UNIX (1973), first C kernel; sources in ~/unix/v4
 v5	5	full	v56	-	Fifth Edition UNIX (1974); universal libc compiles+runs here (root in ~/unix/v5)
