@@ -2050,21 +2050,21 @@ static void do_v1syscall(int num, int argaddr)
 		FC=0; return;
 	case 21: case 22:			/* mount / umount */
 		FC=1; return;
-	case 1:					/* exit: the one V1<->V2 boundary
-						 * difference that reaches us.  First
-						 * Edition (v1) exit took NO status --
-						 * r0 is junk -- so report 0.  Second
-						 * Edition (v2) introduced the exit
-						 * status in r0 (the s2 convention our
-						 * own compiled programs use), so honor
-						 * it there by default.  $APSIM_V1EXIT
-						 * (=r0 / =0) overrides either way -- e.g.
-						 * =0 for a native s2 binary whose `as'
-						 * left r0 unset. */
+	case 1:					/* exit: NEITHER V1 nor V2 exit reliably
+						 * carries a status -- r0 is whatever the
+						 * last syscall left (surveyed: every
+						 * native v2 /bin binary returns leftover
+						 * junk here, e.g. ld=255, dc=134), and
+						 * even the s2 tape's `as' doesn't set it.
+						 * So report 0.  $APSIM_V1EXIT=r0 opts in
+						 * to reading r0 for the few 1972 binaries
+						 * (and our own compiled programs) that do
+						 * set it.  (An earlier v2-defaults-to-r0
+						 * experiment was reverted: it gave native
+						 * v2 binaries garbage exit codes.) */
 		halted=1;
 		{ char *e=getenv("APSIM_V1EXIT");
-		  int r0stat = e ? !strcmp(e,"r0") : !strcmp(Univ,"v2");
-		  ecode = r0stat ? (R[0]&0xff) : 0; }
+		  ecode = (e && !strcmp(e,"r0")) ? (R[0]&0xff) : 0; }
 		return;
 	case 2: {				/* fork: parent skips the child branch */
 		int pid=fork();
