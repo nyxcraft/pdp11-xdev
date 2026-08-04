@@ -70,8 +70,8 @@ V1SPEC = {
 
 
 def v1_body(num, fd_in_r0, ninl):
-    """The __univ==1 First Edition inline-arg path for one stub."""
-    out = ["\tcmp\t___univ,$2", "\tbge\tLnv1"]     # >=2: not V1, use dual head
+    """The First Edition (v1 AND v2, __univ 1|2) inline-arg path for one stub."""
+    out = ["\tcmp\t___univ,$3", "\tbge\tLnv1"]     # >=3: not First Edition, use dual head
     if fd_in_r0:
         out.append("\tmov\t2(sp),r0")              # fd
     base = 4 if fd_in_r0 else 2                     # first inline arg's stack slot

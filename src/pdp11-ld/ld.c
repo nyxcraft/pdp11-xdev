@@ -745,6 +745,16 @@ p11_univ_id()
 	return (PDP11_UNIV_BSD29);
 }
 
+/* The First Edition family -- v1 and v2 -- shares the 0405 a.out format
+ * (loaded whole at 040000, code at 040014) and the 1971 inline-arg traps, so
+ * ld emits that format for both.  (v3+ are V5/V6-personality, the V7 line.) */
+static int
+p11_firsted()
+{
+	int id = p11_univ_id();
+	return id == PDP11_UNIV_V1 || id == PDP11_UNIV_V2;
+}
+
 middle()
 {
 	register struct symbol *sp, *symp;
@@ -755,7 +765,7 @@ middle()
 	/* First Edition (0405) links whole at core 040000 with a 12-byte header,
 	 * so text runs from 040014; every text/data address is that origin + off.
 	 * (v1out is set in setupout from the active universe.) */
-	torigin = (p11_univ_id()==1) ? 040014 : 0;
+	torigin = p11_firsted() ? 040014 : 0;
 	dorigin=0;
 	borigin=0;
 
@@ -920,7 +930,7 @@ struct symbol *asp;
 
 setupout()
 {
-	int v1out = (p11_univ_id()==1);	/* First Edition (0405) output */
+	int v1out = p11_firsted();	/* First Edition (0405) output: v1, v2 */
 
 	if (v1out)
 		sflag = 1;		/* First Edition exes here carry no symtab */

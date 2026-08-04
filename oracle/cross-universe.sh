@@ -44,11 +44,11 @@ EOF
 echo "== A. compiler pipeline (cpp/c0/c1/c2/as/ld + libc) x full universes =="
 # One universal libc.a (flat lib/) serves THREE syscall-convention families,
 # the stubs dispatching on __univ (which ld stamps and crt0 records):
-#   v1              First Edition inline-arg traps (ld emits the 0405 format)
+#   v1, v2          First Edition inline-arg traps (ld emits the 0405 format)
 #   v5..bsd29       the V7 family (inline/indirect)
 #   bsd210/bsd211   the 4BSD family (stack args + 4.x numbers)
 # Compile+run the battery under EACH to prove the one library serves all.
-for u in v1 v5 v6 v7 bsd28 bsd29 bsd210 bsd211; do
+for u in v1 v2 v5 v6 v7 bsd28 bsd29 bsd210 bsd211; do
   [ -f "$here/../lib/libc.a" ] || { skip cc "$u" "no libc"; continue; }
   # plain and -O, for each battery program
   for prog in hello arith str float; do

@@ -71,23 +71,23 @@ trap convention, V7-era numbers (the pristine body);</li>
 <li>the <strong>4BSD family (2.10BSD, 2.11BSD)</strong> — args already on the C stack, the
 4.x numbers (stat 18→38, fstat 28→62, …).  For <code>__univ &gt;= 210</code> the stub
 traps directly with the era number before the V7 frame is ever built;</li>
-<li>the <strong>First Edition (V1, <code>__univ==1</code>)</strong> — the 1972 convention: the fd (if
+<li>the <strong>First Edition family (V1 and V2, <code>__univ</code> 1 or 2)</strong> — the 1972 convention: the fd (if
 any) in r0 and the remaining args as <em>inline words after the trap</em>, which
 for a C call are run-time values, so the stub patches those words before
 trapping (self-modifying text; the 11/20 had no split I&amp;D).  <code>pdp11-ld</code>
 emits the 0405 format (12-byte header, code at 040014); apsim emulates the
 11/20's missing EIS and <code>setd</code>, so the same <code>libc.a</code> — <code>printf</code> and all —
-runs on 1972 First Edition UNIX.</li>
+runs on 1972 First AND Second Edition UNIX.</li>
 </ul>
 <p>The 4BSD/V1 halves are machine-generated: <code>tools/mkdual.py</code> wraps each
 pristine V7 stub, reading the 4.x numbers from <code>tools/sysnums.tsv</code> (extracted
 from the target trees' own <code>syscall.h</code>) and the V1 inline shapes from a small
 table.  The battery (hello/arith/str/float) compiles once per universe and
-runs under all <strong>eight</strong> (<code>oracle/cross-universe.sh</code>).  Still V7-only under
+runs under all <strong>nine</strong> (<code>oracle/cross-universe.sh</code>).  Still V7-only under
 2.10/2.11 (a documented edge, being closed): <code>stat</code>/<code>fstat</code>/<code>lstat</code> (they
 also need the 52-byte <code>struct stat</code> header) and <code>fork</code>/<code>pipe</code>/<code>wait</code>
 (two-value returns) — the same <code>struct stat</code> layout edge vax11-libc
-documented.  Under V1 the covered set is the common syscalls (write/read/
+documented.  Under V1/V2 the covered set is the common syscalls (write/read/
 open/close/creat/unlink/lseek/chdir); the rest stay V7-shaped there.</p>
 </li>
 </ul>

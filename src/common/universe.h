@@ -6,7 +6,7 @@
  * "full", "sim", "planned" -- see universes.tsv. */
 #define PDP11_UNIVERSES(X) \
 	X(v1, 1, "full", "First Edition UNIX (1971-72); 0405 format at 040014, inline-arg traps; ld+libc target it, apsim runs it") \
-	X(v2, 2, "sim", "Second Edition UNIX (1972); 0405 format, V1 personality; sources in ~/unix/v2") \
+	X(v2, 2, "full", "Second Edition UNIX (1972); same 0405 format + inline-arg traps as V1, ld+libc target it, apsim runs it (root in ~/unix/v2)") \
 	X(v3, 3, "planned", "Third Edition UNIX (1973); no complete source tree staged") \
 	X(v4, 4, "planned", "Fourth Edition UNIX (1973), first C kernel; sources in ~/unix/v4") \
 	X(v5, 5, "full", "Fifth Edition UNIX (1974); universal libc compiles+runs here (root in ~/unix/v5)") \
@@ -60,7 +60,7 @@ enum pdp11_kern {
 /* X(name, id, status, kern, desc) -- the full table for apsim. */
 #define PDP11_UNIVERSE_TABLE(X) \
 	X("v1", 1, "full", PDP11_K_V1, "First Edition UNIX (1971-72); 0405 format at 040014, inline-arg traps; ld+libc target it, apsim runs it") \
-	X("v2", 2, "sim", PDP11_K_V1, "Second Edition UNIX (1972); 0405 format, V1 personality; sources in ~/unix/v2") \
+	X("v2", 2, "full", PDP11_K_V1, "Second Edition UNIX (1972); same 0405 format + inline-arg traps as V1, ld+libc target it, apsim runs it (root in ~/unix/v2)") \
 	X("v3", 3, "planned", PDP11_K_V56, "Third Edition UNIX (1973); no complete source tree staged") \
 	X("v4", 4, "planned", PDP11_K_V56, "Fourth Edition UNIX (1973), first C kernel; sources in ~/unix/v4") \
 	X("v5", 5, "full", PDP11_K_V56, "Fifth Edition UNIX (1974); universal libc compiles+runs here (root in ~/unix/v5)") \
