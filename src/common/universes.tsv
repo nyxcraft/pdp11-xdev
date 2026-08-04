@@ -6,8 +6,12 @@
 # Columns (tab-separated):
 #   name    canonical universe name (what PDP11_UNIVERSE / --universe take)
 #   id      small integer id, stable once assigned
-#   status  full = headers+libc+tests present; sim = apsim runs this era's
-#           binaries (verified); planned = registered, not yet proven
+#   status  full = a compile target: the universal libc + headers serve it and
+#           tests pass; sim = apsim runs this era's native binaries (verified)
+#           but it is not a compile target; planned = registered, not yet proven.
+#           The "full" set is the V7-syscall-convention family (V5..2.9BSD),
+#           which the one universal libc serves; 2.10/2.11 use the 4BSD stack-
+#           arg convention and remain sim until the libc dispatches it.
 #   kern    apsim kernel personality (era-ascending: v1 v56 v7 sys3 ultrix
 #           bsd2x bsd210 bsd211); the syscall table/shapes apsim presents
 #   aliases comma-separated accepted spellings, or - for none
@@ -18,9 +22,9 @@ v1	1	sim	v1	unix72	First Edition UNIX (1971-72); 0405 binaries, KE11-A, 1971 tra
 v2	2	sim	v1	-	Second Edition UNIX (1972); 0405 format, V1 personality; sources in ~/unix/v2
 v3	3	planned	v56	-	Third Edition UNIX (1973); no complete source tree staged
 v4	4	planned	v56	-	Fourth Edition UNIX (1973), first C kernel; sources in ~/unix/v4
-v5	5	sim	v56	-	Fifth Edition UNIX (1974); real v5 ls/cat run (root in ~/unix/v5)
-v6	6	sim	v56	-	Sixth Edition UNIX (1975); real v6 ls/cat/date run (root in ~/unix/v6)
-v7	7	sim	v7	-	Seventh Edition UNIX (1979); the canonical syscall numbering
+v5	5	full	v56	-	Fifth Edition UNIX (1974); universal libc compiles+runs here (root in ~/unix/v5)
+v6	6	full	v56	-	Sixth Edition UNIX (1975); universal libc compiles+runs here (root in ~/unix/v6)
+v7	7	full	v7	-	Seventh Edition UNIX (1979); the canonical syscall numbering the V7-family libc uses
 bsd1	11	planned	v56	1bsd	1BSD (1978), V6-kernel userland; sources in ~/bsd/1bsd
 bsd2	20	planned	v7	2bsd	2BSD (1979), V7-kernel userland; sources in ~/bsd/2bsd
 bsd279	27	planned	v7	2.79	2.79BSD (1980), V7-kernel userland; sources in ~/bsd/2.79

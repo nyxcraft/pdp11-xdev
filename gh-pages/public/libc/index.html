@@ -59,12 +59,14 @@ serve all).  A disagreeing input definition fails the link.</li>
 into a data cell (<code>extern int __univ;</code>) the library can read.</li>
 <li><strong>Movers branch on it.</strong>  Any routine whose ABI moved between releases is
 a single function that tests <code>__univ</code> — a run-time <code>if</code> on a link-time
-constant.  On the PDP-11 the served pair, <strong>2.8BSD and 2.9BSD, share
-every syscall number</strong> (2.9 only <em>adds</em> four calls), so no routine has to
-dispatch yet; the machinery is in place for 2.10/2.11, whose 4.x-style
-renumber and 52-byte <code>struct stat</code> make them a separate personality
-(future work), exactly as vax11-libc left <code>struct stat</code> layout as its
-open edge.</li>
+constant.  The library serves the whole <strong>V7-syscall-convention family —
+V5, V6, V7, 2.8BSD, 2.9BSD</strong> — which share the inline/indirect <code>sys</code> trap
+convention and (bar <code>creat</code>) the same numbers, so no routine has to
+dispatch yet.  The battery compiles once per universe and runs under each
+(<code>oracle/cross-universe.sh</code>).  The machinery is in place for 2.10/2.11,
+which use the 4BSD <strong>stack-arg</strong> convention and a 4.x renumber (stat 18→38,
+fstat 28→62, wait 7→84, …) plus a 52-byte <code>struct stat</code> — a second
+personality still to be dispatched, exactly as vax11-libc left <code>struct stat</code> layout as its open edge.</li>
 </ul>
 <h2 id="source-layout">Source layout</h2>
 <p>The sources are 2.9BSD's libc (a functional superset of 2.8BSD — identical

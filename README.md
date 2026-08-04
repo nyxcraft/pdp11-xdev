@@ -43,9 +43,10 @@ same thing everywhere.
 |---|---|---|
 | `bsd29` | full (default) | 2.9BSD (1983): overlays, split I&D, the most-verified era |
 | `bsd28` | full | 2.8BSD (1981): the Ritchie-cc era rogue was built in |
+| `v7` `v6` `v5` | full | Fifth/Sixth/Seventh Edition: the rest of the V7-syscall-convention family the one universal libc compiles and runs |
+| `bsd210` `bsd211` | simulator | 2.10/2.11BSD: apsim runs their native binaries today; a compile target once the libc dispatches the 4BSD stack-arg convention |
 | `v1` | simulator | First Edition UNIX (1971-72): apsim runs 0405 binaries |
-| `v7` | simulator | Seventh Edition: apsim's syscall layer is the V7 set |
-| `v5` `v6` `bsd210` `bsd211` `sys3` | planned | sources staged in `~/unix` and `~/bsd` |
+| `sys3` `ultrix11` … | planned | sources staged in `~/unix` and `~/bsd` |
 
 Independently of the universe, the **assembler** is historically
 parameterized: `--isa=`, `--sys=`, and `--aout=` select the instruction

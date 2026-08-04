@@ -23,12 +23,15 @@ Products (installed **flat**, not per-universe): `libc.a`, the crt0 flavours
   into a data cell (`extern int __univ;`) the library can read.
 - **Movers branch on it.**  Any routine whose ABI moved between releases is
   a single function that tests `__univ` — a run-time `if` on a link-time
-  constant.  On the PDP-11 the served pair, **2.8BSD and 2.9BSD, share
-  every syscall number** (2.9 only *adds* four calls), so no routine has to
-  dispatch yet; the machinery is in place for 2.10/2.11, whose 4.x-style
-  renumber and 52-byte `struct stat` make them a separate personality
-  (future work), exactly as vax11-libc left `struct stat` layout as its
-  open edge.
+  constant.  The library serves the whole **V7-syscall-convention family —
+  V5, V6, V7, 2.8BSD, 2.9BSD** — which share the inline/indirect `sys` trap
+  convention and (bar `creat`) the same numbers, so no routine has to
+  dispatch yet.  The battery compiles once per universe and runs under each
+  (`oracle/cross-universe.sh`).  The machinery is in place for 2.10/2.11,
+  which use the 4BSD **stack-arg** convention and a 4.x renumber (stat 18→38,
+  fstat 28→62, wait 7→84, …) plus a 52-byte `struct stat` — a second
+  personality still to be dispatched, exactly as vax11-libc left `struct
+  stat` layout as its open edge.
 
 ## Source layout
 

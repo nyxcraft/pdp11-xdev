@@ -9,9 +9,9 @@
 	X(v2, 2, "sim", "Second Edition UNIX (1972); 0405 format, V1 personality; sources in ~/unix/v2") \
 	X(v3, 3, "planned", "Third Edition UNIX (1973); no complete source tree staged") \
 	X(v4, 4, "planned", "Fourth Edition UNIX (1973), first C kernel; sources in ~/unix/v4") \
-	X(v5, 5, "sim", "Fifth Edition UNIX (1974); real v5 ls/cat run (root in ~/unix/v5)") \
-	X(v6, 6, "sim", "Sixth Edition UNIX (1975); real v6 ls/cat/date run (root in ~/unix/v6)") \
-	X(v7, 7, "sim", "Seventh Edition UNIX (1979); the canonical syscall numbering") \
+	X(v5, 5, "full", "Fifth Edition UNIX (1974); universal libc compiles+runs here (root in ~/unix/v5)") \
+	X(v6, 6, "full", "Sixth Edition UNIX (1975); universal libc compiles+runs here (root in ~/unix/v6)") \
+	X(v7, 7, "full", "Seventh Edition UNIX (1979); the canonical syscall numbering the V7-family libc uses") \
 	X(bsd1, 11, "planned", "1BSD (1978), V6-kernel userland; sources in ~/bsd/1bsd") \
 	X(bsd2, 20, "planned", "2BSD (1979), V7-kernel userland; sources in ~/bsd/2bsd") \
 	X(bsd279, 27, "planned", "2.79BSD (1980), V7-kernel userland; sources in ~/bsd/2.79") \
@@ -63,9 +63,9 @@ enum pdp11_kern {
 	X("v2", 2, "sim", PDP11_K_V1, "Second Edition UNIX (1972); 0405 format, V1 personality; sources in ~/unix/v2") \
 	X("v3", 3, "planned", PDP11_K_V56, "Third Edition UNIX (1973); no complete source tree staged") \
 	X("v4", 4, "planned", PDP11_K_V56, "Fourth Edition UNIX (1973), first C kernel; sources in ~/unix/v4") \
-	X("v5", 5, "sim", PDP11_K_V56, "Fifth Edition UNIX (1974); real v5 ls/cat run (root in ~/unix/v5)") \
-	X("v6", 6, "sim", PDP11_K_V56, "Sixth Edition UNIX (1975); real v6 ls/cat/date run (root in ~/unix/v6)") \
-	X("v7", 7, "sim", PDP11_K_V7, "Seventh Edition UNIX (1979); the canonical syscall numbering") \
+	X("v5", 5, "full", PDP11_K_V56, "Fifth Edition UNIX (1974); universal libc compiles+runs here (root in ~/unix/v5)") \
+	X("v6", 6, "full", PDP11_K_V56, "Sixth Edition UNIX (1975); universal libc compiles+runs here (root in ~/unix/v6)") \
+	X("v7", 7, "full", PDP11_K_V7, "Seventh Edition UNIX (1979); the canonical syscall numbering the V7-family libc uses") \
 	X("bsd1", 11, "planned", PDP11_K_V56, "1BSD (1978), V6-kernel userland; sources in ~/bsd/1bsd") \
 	X("bsd2", 20, "planned", PDP11_K_V7, "2BSD (1979), V7-kernel userland; sources in ~/bsd/2bsd") \
 	X("bsd279", 27, "planned", PDP11_K_V7, "2.79BSD (1980), V7-kernel userland; sources in ~/bsd/2.79") \
