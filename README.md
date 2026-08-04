@@ -44,6 +44,7 @@ same thing everywhere.
 | `bsd29` | full (default) | 2.9BSD (1983): overlays, split I&D, the most-verified era |
 | `bsd28` | full | 2.8BSD (1981): the Ritchie-cc era rogue was built in |
 | `v7` `v6` `v5` | full | Fifth/Sixth/Seventh Edition: the rest of the V7-syscall-convention family the one universal libc compiles and runs |
+| `v3` | full | Third Edition (1973, 11/45): no native tree survives, so a best-guess modeled on the V5/V6 personality (0407 load-at-0) — our compiler + libc target it and apsim runs the result |
 | `bsd211` | full | 2.11BSD (porting base): the 4BSD stack-arg convention + 4.x numbers, dispatched on `__univ` by the same libc |
 | `bsd210` | full | 2.10BSD: the same 4BSD-convention personality |
 | `v1` `v2` | full | First & Second Edition UNIX (1971-72): the third convention — inline-arg traps; `ld` emits the 0405 format at 040014 and the same libc's `printf` runs on it |
