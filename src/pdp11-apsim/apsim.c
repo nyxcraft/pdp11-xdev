@@ -1978,7 +1978,10 @@ static int sysnargs(int num){
  * inline argument words after the trap (nwords - nregs, from the V1
  * kernel's sysent dispatch as transcribed in apout's v1trap.c), fd-style
  * first args in r0, and the C bit for errors.  Results that are values
- * return in r0; `time' returns in the KE11-A's AC/MQ pair. */
+ * return in r0; `time' returns in the KE11-A's AC/MQ pair.
+ * Cross-checked page-by-page against the Nov 1971 First Edition manual
+ * (sys II): every number and arg convention below matches, as does the
+ * 34-byte stat (v1statout) and the 0405 a.out format as/ld emit. */
 static const signed char v1inl[35] = {
 /*0*/	0,0,0,2,2,2,0,0,	/* rele exit fork read write open close wait */
 /*8*/	2,2,1,2,1,0,2,2,	/* creat link unlink exec chdir time makdir chmod */
