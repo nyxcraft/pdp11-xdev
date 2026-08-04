@@ -111,8 +111,7 @@ docs/            cross-cutting design and user guide
 
 Merged from three sibling projects — `pdp11-bsd28-toolchain`,
 `pdp11-bsd29-toolchain` (its direct descendant, the merge base), and
-`pdp11-bsd28-apsim` — taking the most capable version of every tool; see
-[NOTES.md](NOTES.md) for the per-tool decisions.  2.11BSD
+`pdp11-bsd28-apsim` — taking the most capable version of every tool.  2.11BSD
 (`~/bsd/2.11`, patch level 431) is the designated porting base for tools we
 add from here on.  Sources are BSD-licensed (see [LICENSE](LICENSE)); the
 vintage UNIX content the tools operate on is under the Caldera

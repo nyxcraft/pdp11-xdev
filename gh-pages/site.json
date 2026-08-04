@@ -93,10 +93,6 @@
     { "slug": "user-guide", "title": "User guide", "source": "docs/user-guide.md", "template": "doc",
       "featured": true,
       "summary": "Build the toolchain, pick a universe, compile and run PDP-11 programs, and drive the pipeline by hand." },
-    { "slug": "provenance", "title": "Provenance", "source": "NOTES.md", "template": "page",
-      "featured": true,
-      "summary": "The merge of three sibling projects into one: where each tool came from, which version was chosen as the best standalone one, and why." },
-
     { "slug": "apsim-parity", "title": "apsim: syscall parity", "source": "src/pdp11-apsim/docs/syscalls/parity.md",
       "template": "page", "featured": true,
       "summary": "A category-by-category comparison of pdp11-apsim's system-call coverage against the reference vax11-apsim, and the calls both deliberately refuse." },

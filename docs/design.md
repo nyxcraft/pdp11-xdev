@@ -2,8 +2,7 @@
 
 How the merged toolchain is put together: the universe mechanism, the
 pipeline and object model, the fidelity contract, and the verification
-tiers.  For how to *use* it, see the [user guide](user-guide.md); for what
-was taken from where, see [../NOTES.md](../NOTES.md).
+tiers.  For how to *use* it, see the [user guide](user-guide.md).
 
 ---
 
