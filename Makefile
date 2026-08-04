@@ -1,7 +1,7 @@
 # pdp11-xdev -- host-side PDP-11 cross-development toolchain.
 #
 #   make            build every host tool into ./bin
-#   make libc       build the per-universe target libraries into ./lib
+#   make libc       build the one universal target C library into ./lib
 #                   (and install the era headers into ./include) -- needs
 #                   the tools, so it implies `make all`
 #   make check      every tool's regression suite + the end-to-end suite
@@ -20,9 +20,10 @@ all: $(TOOLS)
 $(TOOLS):
 	@$(MAKE) -C src/$@
 
-# Target-side: per-universe headers into include/<universe>/ and the C
-# library, crt0, curses, termlib into lib/<universe>/.  Built with the
-# cross tools themselves, so it depends on `all`.
+# Target-side: the matched headers into include/ and one universal C
+# library, crt0, curses, termlib into lib/ (flat -- the universe is selected
+# at link via __univ).  Built with the cross tools themselves, so it depends
+# on `all`.
 libc: all
 	@$(MAKE) -C src/pdp11-libc
 

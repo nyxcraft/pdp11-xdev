@@ -126,8 +126,8 @@
         <div class="tool-grid">
           <article class="tool-card">
             <h4><a href="libc/index.html">pdp11-libc</a></h4>
-            <p class="tool-card__tagline">Per-universe C libraries</p>
-            <p>The target C library, crt0, curses and termlib — built per universe with the cross tools themselves, so each era links against its own libc.</p>
+            <p class="tool-card__tagline">One universal C library</p>
+            <p>A single libc.a and crt0 that serve every era: the universe is chosen at link (ld stamps __univ), crt0 records it, and the routines whose ABI moved branch on it at run time. Plus curses and termlib.</p>
 
           </article>
         </div>

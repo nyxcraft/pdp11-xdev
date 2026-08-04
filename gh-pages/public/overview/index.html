@@ -61,9 +61,12 @@ bin/pdp11-apsim ./hi
 <h2 id="the-one-idea-universes">The one idea: universes</h2>
 <p>&quot;Which UNIX&quot; is a parameter, not a fork of the toolchain.  One set of host
 tools serves every supported era; <code>--universe=NAME</code> (or the exported
-<code>PDP11_UNIVERSE</code>) selects the target runtime — which system headers <code>cpp</code>
-reads (<code>include/&lt;universe&gt;/</code>), which <code>crt0.o</code> and libraries <code>cc</code>/<code>ld</code> link
-(<code>lib/&lt;universe&gt;/</code>), and which personality <code>apsim</code> provides.  The universe
+<code>PDP11_UNIVERSE</code>) selects the target runtime — and one <strong>universal</strong>
+<code>libc.a</code> + <code>crt0</code> serve every era from <code>lib/</code>, with the universe chosen at
+<em>link</em> time: <code>ld</code> stamps an absolute <code>__univ</code> = the era id into the
+executable, <code>crt0</code> records it, and any libc routine whose ABI moved branches
+on it.  So <code>--universe</code> picks which system headers <code>cpp</code> reads, the <code>__univ</code>
+value <code>ld</code> stamps, and which personality <code>apsim</code> provides.  The universe
 names live in one table, <code>src/common/universes.tsv</code>, so a name means the
 same thing everywhere.</p>
 <table>
@@ -124,8 +127,8 @@ and disk-image tooling:</p>
 <td><code>cc</code> <code>cpp</code> <code>c0</code> <code>c1</code> <code>c2</code> <code>as</code> <code>ld</code></td>
 </tr>
 <tr>
-<td>C libraries</td>
-<td>per-universe <code>libc.a</code> + <code>crt0.o</code> (+ curses, termlib, the 2.9 era-exact <code>libc-era.a</code>)</td>
+<td>C library</td>
+<td>one universal <code>libc.a</code> + <code>crt0.o</code>, universe selected at link via <code>__univ</code> (+ curses, termlib)</td>
 </tr>
 <tr>
 <td>object tools</td>
@@ -152,7 +155,7 @@ and disk-image tooling:</p>
 <p>Each tool lives in <code>src/pdp11-&lt;tool&gt;/</code> with its own Makefile and tests.</p>
 <h2 id="build-and-test">Build and test</h2>
 <pre><code class="language-sh">make            # every host tool -&gt; ./bin/pdp11-*
-make libc       # era headers -&gt; ./include/&lt;u&gt;/, target libs -&gt; ./lib/&lt;u&gt;/
+make libc       # matched headers -&gt; ./include/, one universal libc.a -&gt; ./lib/
 make check      # per-tool suites + the end-to-end pipeline suite
                 # (compile/link/run under apsim, both universes, plain and -O)
 </code></pre>
@@ -169,8 +172,8 @@ kernel).  Fixtures regenerate locally from the vintage distribution trees.</p>
                  universe.h), host-side a.out/ar structs (cross/), the
                  relocatable-path helpers (ucbpath/), shared config.mk
   pdp11-*/       one directory per tool: Makefile, sources, docs/, tests/
-  pdp11-libc/    per-universe target code: bsd28/ and bsd29/ each carry the
-                 era's authentic libc, csu, headers, curses, termlib, fpsim
+  pdp11-libc/    one universal target C library (common/{gen,stdio,sys,csu,
+                 nonfpcrt}, headers, curses, termlib, fpsim); __univ-selected
 bin/ include/ lib/   build products (git-ignored)
 tests/           the end-to-end pipeline suite (make check runs it last)
 oracle/          opt-in native-binary verification (fixtures not committed)

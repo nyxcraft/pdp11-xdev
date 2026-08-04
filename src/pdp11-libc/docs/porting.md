@@ -1,5 +1,17 @@
 # libc + crt0 (runtime)
 
+> **Status (superseded).**  This document describes the original
+> *per-universe* libc — one authentic `libc.a` built per era, with a
+> load-bearing archive member order for byte-for-byte reproduction of the
+> native `/lib/libc.a`.  That model has been replaced by **one universal
+> `libc.a`** (the vax11-libc mechanism): the era is chosen at *link* time via
+> the absolute symbol `__univ`, one `crt0` and one `libc.a` serve every
+> universe, and native-libc byte reproduction is no longer a goal (so the
+> archive order is free and the `libc-era.a`/`sys-era.s` machinery is retired).
+> See the [pdp11-libc README](../README.md) for the current design; the parts
+> below about the pieces, the syscall stubs, and the cc/as/ld build steps
+> still apply, but the per-universe/byte-order/`libc-era` sections do not.
+
 The C runtime and a substantial slice of the **authentic 2.8BSD libc**
 (`libc/` mirrors `usr/kernel/src/libc/`), built by this toolchain's own `cc`
 (C sources) and `as` (assembly), archived by its `ar`, and indexed by its

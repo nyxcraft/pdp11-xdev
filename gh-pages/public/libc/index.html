@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>pdp11-libc | pdp11-xdev</title>
-  <meta name="description" content="The per-universe target C libraries — not a host tool. Each &quot;full&quot; universe carries its era&#x27;s authentic sources and build recipe, compiled and assembled with the cross tools themselves:">
+  <meta name="description" content="tool. A single libc.a and one crt0 serve every universe; the era is chosen when a program is linked, not when the library is built. This is the vax11-libc mechanism, ported to the PDP-11.">
   <link rel="stylesheet" href="../assets/site.css">
 </head>
 <body class="site-doc">
@@ -35,45 +35,65 @@
         <header class="docs-article__header">
           <p class="eyebrow">Documentation</p>
           <h1>pdp11-libc</h1>
-          <p class="docs-article__summary">The per-universe target C libraries — not a host tool. Each &quot;full&quot; universe carries its era&#x27;s authentic sources and build recipe, compiled and assembled with the cross tools themselves:</p>
+          <p class="docs-article__summary">tool. A single libc.a and one crt0 serve every universe; the era is chosen when a program is linked, not when the library is built. This is the vax11-libc mechanism, ported to the PDP-11.</p>
         </header>
         <div class="prose">
-<p>The per-universe target C libraries — not a host tool.  Each &quot;full&quot;
-universe carries its era's authentic sources and build recipe, compiled
-and assembled with the cross tools themselves:</p>
-<pre><code>make            # (repo root: `make libc`) both universes
-make -C bsd29   # headers -&gt; include/bsd29/, libs -&gt; lib/bsd29/
-make -C bsd28   # headers -&gt; include/bsd28/, libs -&gt; lib/bsd28/
+<p><strong>One universal C library</strong> for the PDP-11 cross toolchain — not a host
+tool.  A single <code>libc.a</code> and one <code>crt0</code> serve every universe; the era is
+chosen when a program is <strong>linked</strong>, not when the library is built.  This
+is the <a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/gh-pages/site.json">vax11-libc</a> mechanism, ported to the
+PDP-11.</p>
+<pre><code>make libc       # from the repo root: builds lib/libc.a + crt0 + curses/termlib
 </code></pre>
-<p>Products per universe: <code>crt0.o</code>, <code>libc.a</code>, <code>libcurses.a</code>, <code>libtermlib.a</code>
-(+ <code>libtermcap.a</code> and the profiling crt0 variants where the era had them).</p>
+<p>Products (installed <strong>flat</strong>, not per-universe): <code>libc.a</code>, the crt0 flavours
+<code>crt0.o</code>/<code>mcrt0.o</code>/<code>fcrt0.o</code>/<code>fmcrt0.o</code>, <code>libcurses.a</code>, <code>libtermlib.a</code>
+(+ <code>libtermcap.a</code>), and the matched header set into <code>include/</code>.</p>
+<h2 id="how-one-library-serves-every-era">How one library serves every era</h2>
 <ul>
-<li><strong>The member order is load-bearing.</strong>  <code>ld</code> lays out pulled archive
-members in archive order, so each recipe archives in the exact order
-the era's <code>mklib</code> used — that is what makes linked output byte-match
-native binaries.</li>
-<li><strong>bsd29 also builds the era-exact library:</strong> <code>libc-era.a</code>/<code>crt0-era.o</code>
-reassemble the syscall stubs against the reconstructed Feb–Mar 1983
-<code>sys-era.s</code>, reproducing the <em>shipped</em> <code>/lib/libc.a</code> stubs
-byte-for-byte (166/181 members) — link <code>-lc-era</code> to reproduce a 1983
-binary, <code>-lc</code> for the current-source library.</li>
-<li><strong>Both eras default to the non-FPU build</strong> (<code>NOFP=1</code>, the <code>fmklib</code>
-flavor with the fpsim interpreter archived in), exactly as the shipped
-systems were; <code>make NOFP=0</code> builds the FP11 <code>mklib</code> flavor.</li>
-<li><strong>Old-format archives where the era used them:</strong> the 2.9 curses/termlib
-archives are written by <code>mkcursesa.py</code>/<code>mktermliba.py</code> in the pre-4BSD
-0xff65 format with middle-endian headers, byte-identical to the shipped
-libraries.</li>
+<li><strong><code>ld</code> stamps <code>__univ</code>.</strong>  <code>pdp11-ld</code>, reading <code>--universe</code> /
+<code>$PDP11_UNIVERSE</code>, defines the absolute symbol <code>__univ</code> = the era id
+(28, 29, …) in the executable.  <code>--universe</code> does <em>only</em> this — it does
+not pick a startup file or an archive path (one <code>crt0</code>, one <code>libc.a</code>
+serve all).  A disagreeing input definition fails the link.</li>
+<li><strong><code>crt0</code> records it.</strong>  The first thing <code>crt0</code> does is copy <code>$__univ</code>
+into a data cell (<code>extern int __univ;</code>) the library can read.</li>
+<li><strong>Movers branch on it.</strong>  Any routine whose ABI moved between releases is
+a single function that tests <code>__univ</code> — a run-time <code>if</code> on a link-time
+constant.  On the PDP-11 the served pair, <strong>2.8BSD and 2.9BSD, share
+every syscall number</strong> (2.9 only <em>adds</em> four calls), so no routine has to
+dispatch yet; the machinery is in place for 2.10/2.11, whose 4.x-style
+renumber and 52-byte <code>struct stat</code> make them a separate personality
+(future work), exactly as vax11-libc left <code>struct stat</code> layout as its
+open edge.</li>
 </ul>
+<h2 id="source-layout">Source layout</h2>
+<p>The sources are 2.9BSD's libc (a functional superset of 2.8BSD — identical
+syscall numbers, superset <code>errno</code>/<code>signal</code>, one <code>struct stat</code> layout), split
+by <em>what kind</em> of code a file is, not by universe:</p>
+<pre><code>common/gen      ABI-independent C + asm: string, ctype, malloc, qsort, ...
+common/stdio    the buffered-I/O layer (one UCB_LINEBUF buffering model)
+common/sys      the syscall stubs (assembled against common/include/sys.s)
+common/nonfpcrt software long-arithmetic (EIS) + csv/cerror -- the no-FPU
+                default; fpsim (the FP interpreter) rides along
+common/csu      crt0 and its variants (each stamps __univ at startup)
+include/        the matched header set, installed flat into ../../include
+curses/ termlib/ fpsim/   the screen libraries and the FP interpreter
+</code></pre>
+<p>Byte-for-byte reproduction of the native per-era <code>libc.a</code> is deliberately
+<strong>not</strong> a goal (that was the old per-universe build), so the archive member
+order is free.  Note this made the fake <code>_cleanup</code>/<code>fptrap</code> fallbacks
+(<code>fakcu</code>/<code>fakfp</code>) unnecessary and, once member order stopped being
+load-bearing, harmful — they are excluded so the real <code>_cleanup</code> (which
+flushes stdio on exit) and the real <code>fptrap</code> always win.</p>
 <h2 id="documentation">Documentation</h2>
 <ul>
-<li><a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-libc/docs/porting.md">docs/porting.md</a> — the libc porting guide inherited
-from the source project.</li>
+<li><a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-libc/docs/porting.md">docs/porting.md</a> — the libc porting guide.</li>
 </ul>
 <h2 id="build-and-test">Build and test</h2>
 <pre><code>make libc     # from the repo root (needs the tools built first)
-make check    # covered by tests/cc/libc.sh and the [bsd28] universe
-              # re-run in the end-to-end suite
+make check    # exercised by the end-to-end suite (a bsd28 AND a bsd29
+              # re-run of every correctness program, from the one libc.a)
+              # and oracle/cross-universe.sh
 </code></pre>
 
         </div>

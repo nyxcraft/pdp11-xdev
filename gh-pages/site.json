@@ -47,8 +47,8 @@
       "blurb": "Bill Joy's 1978 xstr: pulls a C program's string literals into one shared strings file and hashes them." },
 
     { "id": "libc", "group": "c-library", "name": "pdp11-libc",
-      "tagline": "Per-universe C libraries",
-      "blurb": "The target C library, crt0, curses and termlib — built per universe with the cross tools themselves, so each era links against its own libc." },
+      "tagline": "One universal C library",
+      "blurb": "A single libc.a and crt0 that serve every era: the universe is chosen at link (ld stamps __univ), crt0 records it, and the routines whose ABI moved branch on it at run time. Plus curses and termlib." },
 
     { "id": "nm",   "group": "object-tools", "name": "pdp11-nm",
       "tagline": "List symbols",

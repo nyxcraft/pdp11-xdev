@@ -13,8 +13,9 @@
 #include <stdint.h>	/* fixed-width on-disk a.out/ar fields on LP64 host */
 #include <unistd.h>	/* readlink for relocatable -l lib path */
 #include <stdlib.h>	/* getenv for PDP11_UNIVERSE */
+#include <string.h>	/* strcmp for the universe name->id map */
 #include <ar.h>		/* PDPL: PDP-11 middle-endian on-disk ar longs */
-#include "universe.h"	/* era names for the lib/<universe>/ search */
+#include "universe.h"	/* era names for the lib/<universe>/ search + __univ id */
 
 /* ld defines its own putw(word, struct buf *) for buffered output; the host's
  * <stdio.h> (which 2.9BSD's ld.c includes) also declares putw(int, FILE *),
@@ -723,6 +724,27 @@ long loc;
 	return(0);
 }
 
+/*
+ * Map the active PDP11_UNIVERSE name to its numeric era id (see universe.h).
+ * ld stamps this value as the absolute symbol __univ so that ONE universal
+ * libc.a can pick an era's behaviour at run time: crt0 copies __univ into a
+ * data cell the library reads, and any routine whose ABI moved branches on it.
+ * The era chosen at LINK is thus recorded in the executable, deterministically,
+ * with no kernel probing.  Unset/unknown falls back to the default universe.
+ */
+static int
+p11_univ_id()
+{
+	char *u = getenv("PDP11_UNIVERSE");
+
+	if (u == 0 || *u == 0)
+		u = PDP11_UNIV_DEFAULT_NAME;
+#define X(nm, uid, status, desc)	if (strcmp(u, #nm) == 0) return (uid);
+	PDP11_UNIVERSES(X)
+#undef X
+	return (PDP11_UNIV_BSD29);
+}
+
 middle()
 {
 	register struct symbol *sp, *symp;
@@ -737,6 +759,16 @@ middle()
 	p_etext = *slookup("_etext");
 	p_edata = *slookup("_edata");
 	p_end = *slookup("_end");
+	/*
+	 * Stamp the linked-in universe as an absolute __univ, but ONLY in a
+	 * final link (not an explicit -r) and BEFORE the undefined scan below:
+	 * a referenced __univ must already be a defined absolute, or that scan
+	 * would treat it as a straggler and force the link relocatable.  Defined
+	 * only if referenced (by crt0); a disagreeing input definition trips
+	 * ldrsym's "Multiply defined".
+	 */
+	if (rflag == 0)
+		ldrsym(*slookup("__univ"), p11_univ_id(), EXTERN+ABS);
 	/*
 	 * If there are any undefined symbols, save the relocation bits.
 	 * (Unless we are overlaying.)

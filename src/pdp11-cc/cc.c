@@ -150,8 +150,11 @@ resolve_universe()
 		exit(8);
 	}
 	setenv("PDP11_UNIVERSE", universe, 1);
+	/* ONE universal libc: crt0 (and libc.a, headers) live FLAT in lib/,
+	 * not per-universe -- the universe now selects only __univ, which ld
+	 * stamps into the executable and crt0 records for the library. */
 	if (libroot[0])
-		sprintf(prefbuf, "%s%s/%s", libroot, universe, crtname);
+		sprintf(prefbuf, "%s%s", libroot, crtname);
 	else
 		sprintf(prefbuf, "/lib/%s", crtname);
 	pref = prefbuf;

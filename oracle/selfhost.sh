@@ -18,10 +18,13 @@
 # chain cpp->c0->c1->c2 is byte-exact to native 2.9, so the residual is source,
 # not tool.  See [[bin-utilities-byte-match]].
 #
-# Needs sim/native/{as,as2,strip.target} + libc-era.a/crt0-era.o (`make libc-era').
+# Needs sim/native/{as,as2,strip.target}.  The as/as2 byte-match uses NO libc
+# and still runs.  The `strip' byte-match needed the era libc (libc-era.a/
+# crt0-era.o) -- RETIRED with the move to one universal libc (native-libc byte
+# reproduction was dropped by design); that block now self-skips.
 HERE=$(cd "$(dirname "$0")" && pwd); BIN="$HERE/../bin/pdp11"
 NAT="$HERE/native"; SRC="${SRC:-$HOME/bsd/2.9/usr/src}"; SYSS="$HOME/bsd/2.9/usr/include/sys.s"
-LIB="$HERE/../lib/bsd29"
+LIB="$HERE/../lib"
 for f in as as2 strip.target; do [ -f "$NAT/$f" ] || { echo "missing $NAT/$f -- run extract-rootdump.py"; exit 1; }; done
 
 R="${CORPUS_WORK:-$HOME/.pdp11-corpus/selfhost.$$}"; rm -rf "$R"; mkdir -p "$R"; trap 'rm -rf "$R"' EXIT

@@ -30,9 +30,12 @@ bin/pdp11-apsim ./hi
 
 "Which UNIX" is a parameter, not a fork of the toolchain.  One set of host
 tools serves every supported era; `--universe=NAME` (or the exported
-`PDP11_UNIVERSE`) selects the target runtime — which system headers `cpp`
-reads (`include/<universe>/`), which `crt0.o` and libraries `cc`/`ld` link
-(`lib/<universe>/`), and which personality `apsim` provides.  The universe
+`PDP11_UNIVERSE`) selects the target runtime — and one **universal**
+`libc.a` + `crt0` serve every era from `lib/`, with the universe chosen at
+*link* time: `ld` stamps an absolute `__univ` = the era id into the
+executable, `crt0` records it, and any libc routine whose ABI moved branches
+on it.  So `--universe` picks which system headers `cpp` reads, the `__univ`
+value `ld` stamps, and which personality `apsim` provides.  The universe
 names live in one table, `src/common/universes.tsv`, so a name means the
 same thing everywhere.
 
@@ -59,7 +62,7 @@ and disk-image tooling:
 | role | tools |
 |---|---|
 | compiler chain | `cc` `cpp` `c0` `c1` `c2` `as` `ld` |
-| C libraries | per-universe `libc.a` + `crt0.o` (+ curses, termlib, the 2.9 era-exact `libc-era.a`) |
+| C library | one universal `libc.a` + `crt0.o`, universe selected at link via `__univ` (+ curses, termlib) |
 | object tools | `nm` `size` `strip` `das` (disassembler, V1→2.11BSD) `dcc` (decompile driver) |
 | archives | `ar` `ranlib` (byte-identical 2BSD archive format) |
 | sources | `xstr` (shared-strings extractor) |
@@ -72,7 +75,7 @@ Each tool lives in `src/pdp11-<tool>/` with its own Makefile and tests.
 
 ```sh
 make            # every host tool -> ./bin/pdp11-*
-make libc       # era headers -> ./include/<u>/, target libs -> ./lib/<u>/
+make libc       # matched headers -> ./include/, one universal libc.a -> ./lib/
 make check      # per-tool suites + the end-to-end pipeline suite
                 # (compile/link/run under apsim, both universes, plain and -O)
 ```
@@ -94,8 +97,8 @@ src/
                  universe.h), host-side a.out/ar structs (cross/), the
                  relocatable-path helpers (ucbpath/), shared config.mk
   pdp11-*/       one directory per tool: Makefile, sources, docs/, tests/
-  pdp11-libc/    per-universe target code: bsd28/ and bsd29/ each carry the
-                 era's authentic libc, csu, headers, curses, termlib, fpsim
+  pdp11-libc/    one universal target C library (common/{gen,stdio,sys,csu,
+                 nonfpcrt}, headers, curses, termlib, fpsim); __univ-selected
 bin/ include/ lib/   build products (git-ignored)
 tests/           the end-to-end pipeline suite (make check runs it last)
 oracle/          opt-in native-binary verification (fixtures not committed)
