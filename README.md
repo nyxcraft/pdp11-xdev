@@ -46,7 +46,7 @@ same thing everywhere.
 | `v7` `v6` `v5` | full | Fifth/Sixth/Seventh Edition: the rest of the V7-syscall-convention family the one universal libc compiles and runs |
 | `bsd211` | full | 2.11BSD (porting base): the 4BSD stack-arg convention + 4.x numbers, dispatched on `__univ` by the same libc |
 | `bsd210` | full | 2.10BSD: the same 4BSD-convention personality |
-| `v1` | simulator | First Edition UNIX (1971-72): apsim runs 0405 binaries |
+| `v1` | full | First Edition UNIX (1971-72): the third convention — inline-arg traps; `ld` emits the 0405 format at 040014 and the same libc's `printf` runs on it |
 | `sys3` `ultrix11` … | planned | sources staged in `~/unix` and `~/bsd` |
 
 Independently of the universe, the **assembler** is historically

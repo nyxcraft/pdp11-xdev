@@ -5,7 +5,7 @@
 /* X(name, id, status, desc) for every universe.  status is one of
  * "full", "sim", "planned" -- see universes.tsv. */
 #define PDP11_UNIVERSES(X) \
-	X(v1, 1, "sim", "First Edition UNIX (1971-72); 0405 binaries, KE11-A, 1971 trap conventions") \
+	X(v1, 1, "full", "First Edition UNIX (1971-72); 0405 format at 040014, inline-arg traps; ld+libc target it, apsim runs it") \
 	X(v2, 2, "sim", "Second Edition UNIX (1972); 0405 format, V1 personality; sources in ~/unix/v2") \
 	X(v3, 3, "planned", "Third Edition UNIX (1973); no complete source tree staged") \
 	X(v4, 4, "planned", "Fourth Edition UNIX (1973), first C kernel; sources in ~/unix/v4") \
@@ -59,7 +59,7 @@ enum pdp11_kern {
 
 /* X(name, id, status, kern, desc) -- the full table for apsim. */
 #define PDP11_UNIVERSE_TABLE(X) \
-	X("v1", 1, "sim", PDP11_K_V1, "First Edition UNIX (1971-72); 0405 binaries, KE11-A, 1971 trap conventions") \
+	X("v1", 1, "full", PDP11_K_V1, "First Edition UNIX (1971-72); 0405 format at 040014, inline-arg traps; ld+libc target it, apsim runs it") \
 	X("v2", 2, "sim", PDP11_K_V1, "Second Edition UNIX (1972); 0405 format, V1 personality; sources in ~/unix/v2") \
 	X("v3", 3, "planned", PDP11_K_V56, "Third Edition UNIX (1973); no complete source tree staged") \
 	X("v4", 4, "planned", PDP11_K_V56, "Fourth Edition UNIX (1973), first C kernel; sources in ~/unix/v4") \

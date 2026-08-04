@@ -752,8 +752,11 @@ middle()
 	int nund, corigin;
 	int ttsize;
 
-	torigin=0; 
-	dorigin=0; 
+	/* First Edition (0405) links whole at core 040000 with a 12-byte header,
+	 * so text runs from 040014; every text/data address is that origin + off.
+	 * (v1out is set in setupout from the active universe.) */
+	torigin = (p11_univ_id()==1) ? 040014 : 0;
+	dorigin=0;
 	borigin=0;
 
 	p_etext = *slookup("_etext");
@@ -851,7 +854,7 @@ middle()
 			printf("overlays end before %u.\n", ttsize);
 	}
 /* end wnj added */
-	dorigin = ttsize;
+	dorigin = ttsize + torigin;	/* +torigin: 0 normally, 040014 for First Edition */
 	if (nflag)
 		dorigin = (ttsize+017777) & ~017777;
 	if (iflag)
@@ -917,6 +920,10 @@ struct symbol *asp;
 
 setupout()
 {
+	int v1out = (p11_univ_id()==1);	/* First Edition (0405) output */
+
+	if (v1out)
+		sflag = 1;		/* First Edition exes here carry no symtab */
 	tcreat(&toutb, 0);
 	mktemp(tfname);
 	tcreat(&doutb, 1);
@@ -951,7 +958,16 @@ setupout()
 		filhdr.entry=0;
 	filhdr.pad = 0;
 	filhdr.relflg = (rflag==0);
-	mput(&toutb, (uint16_t *)&filhdr, sizeof filhdr);
+	if (v1out) {
+		/* First Edition 6-word header: word 0 is 0405, which is also the
+		 * instruction `br .+14' that jumps over the 12-byte header to the
+		 * code at 040014.  [magic | 12+text+data | symtab | reloc | bss | 0];
+		 * apsim loads word-1 bytes at core 040000 and enters via the br. */
+		uint16_t h[6];
+		h[0]=0405; h[1]=12+tsize+dsize; h[2]=0; h[3]=0; h[4]=bsize; h[5]=0;
+		mput(&toutb, h, sizeof h);
+	} else
+		mput(&toutb, (uint16_t *)&filhdr, sizeof filhdr);
 /* wnj added */
 	if (numov) {
 		register int i;

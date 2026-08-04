@@ -21,23 +21,32 @@ Products (installed **flat**, not per-universe): `libc.a`, the crt0 flavours
   serve all).  A disagreeing input definition fails the link.
 - **`crt0` records it.**  The first thing `crt0` does is copy `$__univ`
   into a data cell (`extern int __univ;`) the library can read.
-- **Stubs branch on it.**  Each syscall stub is a *dual-convention* stub that
-  tests `__univ` — a run-time `if` on a link-time constant — and serves **two
+- **Stubs branch on it.**  Each syscall stub is a *multi-convention* stub that
+  tests `__univ` — a run-time `if` on a link-time constant — and serves **three
   families from one archive**:
   - the **V7 family (V5, V6, V7, 2.8BSD, 2.9BSD)** — the inline/indirect `sys`
     trap convention, V7-era numbers (the pristine body);
   - the **4BSD family (2.10BSD, 2.11BSD)** — args already on the C stack, the
     4.x numbers (stat 18→38, fstat 28→62, …).  For `__univ >= 210` the stub
-    traps directly with the era number before the V7 frame is ever built.
+    traps directly with the era number before the V7 frame is ever built;
+  - the **First Edition (V1, `__univ==1`)** — the 1972 convention: the fd (if
+    any) in r0 and the remaining args as *inline words after the trap*, which
+    for a C call are run-time values, so the stub patches those words before
+    trapping (self-modifying text; the 11/20 had no split I&D).  `pdp11-ld`
+    emits the 0405 format (12-byte header, code at 040014); apsim emulates the
+    11/20's missing EIS and `setd`, so the same `libc.a` — `printf` and all —
+    runs on 1972 First Edition UNIX.
 
-  The 4BSD half is machine-generated: `tools/mkdual.py` wraps each pristine V7
-  stub, reading the 4.x numbers from `tools/sysnums.tsv` (extracted from the
-  target trees' own `syscall.h`).  The battery and file-I/O programs compile
-  once per universe and run under all seven (`oracle/cross-universe.sh`).
-  Still V7-only under 2.10/2.11 (a documented edge, being closed): `stat`/
-  `fstat`/`lstat` (they also need the 52-byte `struct stat` header) and
-  `fork`/`pipe`/`wait` (two-value returns) — the same `struct stat` layout
-  edge vax11-libc documented.
+  The 4BSD/V1 halves are machine-generated: `tools/mkdual.py` wraps each
+  pristine V7 stub, reading the 4.x numbers from `tools/sysnums.tsv` (extracted
+  from the target trees' own `syscall.h`) and the V1 inline shapes from a small
+  table.  The battery (hello/arith/str/float) compiles once per universe and
+  runs under all **eight** (`oracle/cross-universe.sh`).  Still V7-only under
+  2.10/2.11 (a documented edge, being closed): `stat`/`fstat`/`lstat` (they
+  also need the 52-byte `struct stat` header) and `fork`/`pipe`/`wait`
+  (two-value returns) — the same `struct stat` layout edge vax11-libc
+  documented.  Under V1 the covered set is the common syscalls (write/read/
+  open/close/creat/unlink/lseek/chdir); the rest stay V7-shaped there.
 
 ## Source layout
 

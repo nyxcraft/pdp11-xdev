@@ -57,6 +57,34 @@ def load_sysnums():
     return n210, n211
 
 
+# First Edition (V1, __univ==1) uses a THIRD convention: the syscall number is
+# the trap operand, any fd is in r0, and the remaining args are INLINE words
+# after the trap -- which for a C call are run-time values off the stack, so the
+# stub patches those inline words before trapping (self-modifying text; the
+# 11/20 had no split I&D).  (name: (v1_number, fd_in_r0, n_inline_args)).
+V1SPEC = {
+    "write": (4, 1, 2), "read": (3, 1, 2), "close": (6, 1, 0),
+    "open": (5, 0, 2), "creat": (8, 0, 2), "unlink": (10, 0, 1),
+    "lseek": (19, 1, 2), "chdir": (12, 0, 1),
+}
+
+
+def v1_body(num, fd_in_r0, ninl):
+    """The __univ==1 First Edition inline-arg path for one stub."""
+    out = ["\tcmp\t___univ,$2", "\tbge\tLnv1"]     # >=2: not V1, use dual head
+    if fd_in_r0:
+        out.append("\tmov\t2(sp),r0")              # fd
+    base = 4 if fd_in_r0 else 2                     # first inline arg's stack slot
+    for i in range(ninl):
+        slot = "Lv1a" if i == 0 else "Lv1a+%d" % (2 * i)
+        out.append("\tmov\t%d(sp),%s" % (base + 2 * i, slot))
+    out.append("\tsys\t%d" % num)
+    if ninl:
+        out.append("Lv1a:\t" + "; ".join(["0"] * ninl) + "\t/ inline args (patched above)")
+    out += ["\tbcc\tLv1k", "\tmov\t$-1,r0", "Lv1k:\trts\tpc", "Lnv1:"]
+    return out
+
+
 def norm_body(n210, n211):
     """The 4BSD dispatch head for an ordinary call (norm exit)."""
     out = ["\tcmp\t___univ,$210", "\tblt\tLdv7"]
@@ -80,6 +108,8 @@ def wrap(name, src_lines, n210, n211):
         if not done and re.match(r"^_\w+:\s*$", line):
             out.append("\t.globl\t___univ")
             out.append("\t.comm\t_errno,2")
+            if name in V1SPEC:
+                out += v1_body(*V1SPEC[name])      # __univ==1 First Edition path
             out += norm_body(n210, n211)
             done = True
     if not done:

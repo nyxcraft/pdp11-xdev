@@ -18,7 +18,7 @@
 #   desc    one-line human description
 #
 # name	id	status	kern	aliases	desc
-v1	1	sim	v1	unix72	First Edition UNIX (1971-72); 0405 binaries, KE11-A, 1971 trap conventions
+v1	1	full	v1	unix72	First Edition UNIX (1971-72); 0405 format at 040014, inline-arg traps; ld+libc target it, apsim runs it
 v2	2	sim	v1	-	Second Edition UNIX (1972); 0405 format, V1 personality; sources in ~/unix/v2
 v3	3	planned	v56	-	Third Edition UNIX (1973); no complete source tree staged
 v4	4	planned	v56	-	Fourth Edition UNIX (1973), first C kernel; sources in ~/unix/v4
