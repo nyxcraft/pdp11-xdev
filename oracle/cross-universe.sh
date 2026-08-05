@@ -48,7 +48,7 @@ echo "== A. compiler pipeline (cpp/c0/c1/c2/as/ld + libc) x full universes =="
 #   v3..bsd29       the V7 family (inline/indirect; v3 is a best-guess on V5/V6)
 #   bsd210/bsd211   the 4BSD family (stack args + 4.x numbers)
 # Compile+run the battery under EACH to prove the one library serves all.
-for u in v1 v2 v3 v4 v5 v6 v7 bsd1 bsd2 bsd279 bsd28 bsd29 bsd210 bsd211 sys3 sys5v2 ultrix11v1 ultrix11v2; do
+for u in v1 v2 v3 v4 v5 v6 v7 bsd1 bsd2 bsd279 bsd28 bsd29 bsd210 bsd211 sys3 sys5v2 ultrix11v1 ultrix11v2 ultrix11; do
   [ -f "$here/../lib/libc.a" ] || { skip cc "$u" "no libc"; continue; }
   # plain and -O, for each battery program
   for prog in hello arith str float; do
