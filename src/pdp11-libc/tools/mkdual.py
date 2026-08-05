@@ -8,7 +8,7 @@
 # recorded -- so each stub dispatches on it:
 #
 #     _name:
-#         cmp   ___univ,$210
+#         cmp   ___univ,$210.   / DECIMAL -- `as' reads a bare $210 as octal (=136)
 #         blt   Ldv7            / < 210: fall through to the pristine V7 body
 #         sys   <4.x-number>.   / >= 210: 4BSD -- args are already at 2(sp)
 #         bcc   Ldok            / (the x_norm/x_error exit, inlined: our cerror
@@ -35,10 +35,21 @@ LIBC = os.path.dirname(HERE)
 # Calls given a bespoke 4BSD body below (multi-entry, or a non-trivial trap
 # sequence) rather than the generic wrap.
 SPECIAL = {"sbrk", "exit"}
-# Calls whose 4BSD support needs more than a number and is done in a later pass:
-# stat/fstat/lstat move to the 52-byte struct (era headers); fork/pipe/wait
-# return two values / a status.  Copied through as V7-only for now.
-DEFER = {"stat", "fstat", "lstat", "fork", "pipe", "wait"}
+# The stat trio: under 2.10/2.11 the kernel writes the 52-byte 4.3-shape struct
+# (its "new" stat number, flagged SR_STAT in apsim), but our one universal
+# <sys/stat.h> is the 30-byte V7 shape.  The stub bridges: it traps the 4.x
+# number into a 52-byte scratch and repacks into the caller's V7-layout buffer.
+# name -> 4.x syscall number (same for 2.10 and 2.11; from sysnums.tsv).
+STAT4 = {"stat": 38, "fstat": 62, "lstat": 40}
+# Copied through as V7-only under 2.10/2.11.  fork(2) and pipe(42) keep their
+# numbers across the renumber and their two-value returns already work (apsim's
+# case 2/42), so the pristine V7 stub is correct as-is.  (2.11 needs a bespoke
+# wait -- see WAIT4 below -- but 2.10's wait is still the V7 call.)
+DEFER = {"fork", "pipe"}
+# 2.11BSD pl431 renumbered wait to wait4 (syscall 7 = wait4(pid,*status,opts,
+# *rusage)): the status is written through the pointer arg, not returned in r1.
+# 2.10 kept the V7 wait (7, status in r1), so only __univ==211 takes this path.
+WAIT4 = {"wait"}
 
 
 def load_sysnums():
@@ -87,9 +98,9 @@ def v1_body(num, fd_in_r0, ninl):
 
 def norm_body(n210, n211):
     """The 4BSD dispatch head for an ordinary call (norm exit)."""
-    out = ["\tcmp\t___univ,$210", "\tblt\tLdv7"]
+    out = ["\tcmp\t___univ,$210.", "\tblt\tLdv7"]   # DECIMAL: $210 would be octal
     if n210 is not None and n211 is not None and n210 != n211:
-        out += ["\tcmp\t___univ,$211", "\tblt\tLd210",
+        out += ["\tcmp\t___univ,$211.", "\tblt\tLd210",
                 "\tsys\t%d." % n211, "\tbr\tLdchk",
                 "Ld210:\tsys\t%d." % n210]
     else:
@@ -117,6 +128,103 @@ def wrap(name, src_lines, n210, n211):
     return out
 
 
+def stat_head(name, num):
+    """4BSD stat/fstat/lstat head: trap the 4.x number (args already at 2(sp),
+    so 2(sp)=path/fd, 4(sp)=buf) into a 52-byte scratch with the caller's buf
+    slot redirected, then repack the 4.3 shape into the caller's 30-byte V7
+    struct.  Bytes 0..21 (dev..atime) are identical; the 4.x layout inserts a
+    2-byte spare before st_mtime and before st_ctime, so those two longs shift.
+    mov leaves C untouched, so the restore keeps the syscall's error flag. """
+    head = [
+        "\t.globl\t___univ",
+        "\t.comm\t_errno,2",
+        "\tcmp\t___univ,$210.",       # DECIMAL -- $210 is octal (=136) in as
+        "\tblt\tLv7%s" % name,        # <210: the pristine V7 indirect body
+        "\tmov\t4(sp),Lcb%s" % name,  # save caller buf
+        "\tmov\t$Lsc%s,4(sp)" % name, # redirect buf -> 52-byte scratch
+        "\tsys\t%d." % num,
+        "\tmov\tLcb%s,4(sp)" % name,  # restore caller's arg slot (C preserved)
+        "\tbcc\tLk%s" % name,
+        "\tmov\tr0,_errno",
+        "\tmov\t$-1,r0",
+        "\trts\tpc",
+        "Lk%s:" % name,
+        "\tmov\tLcb%s,r1" % name,     # dst: caller's V7-layout struct
+        "\tmov\t$Lsc%s,r0" % name,    # src: 4.3-layout scratch
+    ]
+    head += ["\tmov\t(r0)+,(r1)+"] * 11   # dev..atime (bytes 0..21, unchanged)
+    head += [
+        "\ttst\t(r0)+",               # skip 4.x spare1
+        "\tmov\t(r0)+,(r1)+",         # st_mtime hi
+        "\tmov\t(r0)+,(r1)+",         # st_mtime lo
+        "\ttst\t(r0)+",               # skip 4.x spare2
+        "\tmov\t(r0)+,(r1)+",         # st_ctime hi
+        "\tmov\t(r0)+,(r1)+",         # st_ctime lo
+        "\tclr\tr0",
+        "\trts\tpc",
+        "Lv7%s:" % name,
+    ]
+    return head
+
+
+def wrap_stat(name, src_lines, num):
+    """Insert the 4BSD stat head after the entry label; keep the V7 body; add
+    the scratch + saved-buf cells."""
+    out, done = [], False
+    for line in src_lines:
+        out.append(line)
+        if not done and re.match(r"^_%s:\s*$" % name, line):
+            out += stat_head(name, num)
+            done = True
+    if not done:
+        sys.stderr.write("mkdual: %s: no entry label found\n" % name)
+    out += ["", ".data",
+            "Lcb%s:\t.=.+2" % name,     # saved caller-buf pointer
+            "Lsc%s:\t.=.+52." % name,   # 52-byte 4.3-shape scratch (decimal!)
+            ".text"]
+    return out
+
+
+def wait_head():
+    """2.11 wait: call wait4(WAIT_ANY, status, 0, 0).  Build the stackargs frame
+    (a leading dummy word stands in for the return-addr slot the kernel skips,
+    so the four args land at 2(sp)..8(sp)); wait4 writes the status through the
+    pointer, so nothing comes back in r1.  <211 (incl 2.10) keeps the V7 wait."""
+    return [
+        "\t.globl\t___univ",
+        "\tcmp\t___univ,$211.",   # DECIMAL -- `as' reads $211 as octal (=137)
+        "\tblt\tLv7wait",
+        "\tmov\tr5,-(sp)",
+        "\tmov\tsp,r5",
+        "\tclr\t-(sp)",          # rusage = 0
+        "\tclr\t-(sp)",          # options = 0
+        "\tmov\t4(r5),-(sp)",    # *status (the caller's arg)
+        "\tmov\t$-1,-(sp)",      # pid = WAIT_ANY
+        "\ttst\t-(sp)",          # dummy return-addr slot -> args at 2(sp)..
+        "\tsys\t7",              # wait4; r0=pid, *status written through the arg
+        "\tmov\tr5,sp",          # pop the frame (mov leaves C = the error flag)
+        "\tbcc\tLwok",
+        "\tjmp\tcerror",
+        "Lwok:",
+        "\tmov\t(sp)+,r5",
+        "\trts\tpc",
+        "Lv7wait:",
+    ]
+
+
+def wrap_wait(src_lines):
+    """Insert the 2.11 wait4 head after the entry label; keep the V7 body."""
+    out, done = [], False
+    for line in src_lines:
+        out.append(line)
+        if not done and re.match(r"^_wait:\s*$", line):
+            out += wait_head()
+            done = True
+    if not done:
+        sys.stderr.write("mkdual: wait: no entry label found\n")
+    return out
+
+
 # --- bespoke 4BSD bodies (authentic 2.11 logic) ---------------------------
 def special_sbrk(n210, n211):
     n = n211 if n211 is not None else n210
@@ -127,7 +235,7 @@ def special_sbrk(n210, n211):
 .comm	_errno,2
 
 _sbrk:
-	cmp	___univ,$210
+	cmp	___univ,$210.
 	blt	Lv7sbrk
 / 4BSD sbrk (2.11): args on the stack; track the break in curbrk
 	mov	2(sp),r0		/ increment
@@ -161,7 +269,7 @@ Lv7sbrk:
 	rts	pc
 
 _brk:
-	cmp	___univ,$210
+	cmp	___univ,$210.
 	blt	Lv7brk
 / 4BSD brk (2.11)
 	sys	%d.
@@ -202,7 +310,7 @@ def special_exit(n210, n211):
 .globl	___univ
 
 __exit:
-	cmp	___univ,$210
+	cmp	___univ,$210.
 	blt	Lv7exit
 	sys	%d.			/ 4BSD: status already at 2(sp); NOTREACHED
 Lv7exit:
@@ -233,6 +341,10 @@ def main():
         a, b = n210.get(name), n211.get(name)
         if name in SPECIAL_FN:
             lines = SPECIAL_FN[name](a, b); wrapped += 1
+        elif name in STAT4:
+            lines = wrap_stat(name, lines, STAT4[name]); wrapped += 1
+        elif name in WAIT4:
+            lines = wrap_wait(lines); wrapped += 1
         elif name in DEFER or (a is None and b is None):
             plain += 1                      # V7-only passthrough
         else:

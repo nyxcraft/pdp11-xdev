@@ -238,6 +238,51 @@ if [ -f "$V2AR" ]; then
     || ok ar v2 "modify of old-format archive declined"
 else skip ar v2 "no First Edition archive"; fi
 
+echo "== G. 4BSD syscall convention under 2.10/2.11 (the closed DEFER set) =="
+# stat/fstat move to the 4.x number + 52-byte struct (repacked to our V7-shape
+# header); wait uses wait4 (status through the pointer, not r1); exit passes the
+# status on the stack.  One program exercises stat+fstat+pipe+fork+wait+exit and
+# must give the SAME answer under the V7 family and the 4BSD family.
+cat > "$tmp/syscov.c" <<'EOF'
+#include <sys/types.h>
+#include <sys/stat.h>
+main(){
+	struct stat sb; int fd,pid,st,p[2]; char b[4];
+	stat("/etc/passwd",&sb);
+	fd=open("/etc/passwd",0); fstat(fd,&sb); close(fd);
+	pipe(p); pid=fork();
+	if(pid==0){ write(p[1],"Z",1); _exit(7); }
+	read(p[0],b,1); b[1]=0; wait(&st);
+	printf("nz=%d pipe=%s wstat=%d\n", sb.st_size>0, b, (st>>8)&0377);
+	exit(9);
+}
+EOF
+for u in v7 bsd29 bsd210 bsd211; do
+	if "$CC" --universe=$u -o "$tmp/syscov.$u" "$tmp/syscov.c" 2>/dev/null; then
+		out=$(timeout 12 "$APSIM" -u $u "$tmp/syscov.$u" 2>&1); ec=$?
+		[ "$out" = "nz=1 pipe=Z wstat=7" ] \
+			&& ok syscov "$u" "stat+fstat+pipe+fork+wait -> $out" \
+			|| bad syscov "$u" "[$out]"
+		# exit(9) must reach apsim's own status (r0 for V7, 2(sp) for 4BSD)
+		[ "$ec" -eq 9 ] && ok exit "$u" "exit(9) status" || bad exit "$u" "exit rc=$ec"
+	else bad syscov "$u" "compile failed"; fi
+done
+# lstat is a 4.x-only call: under 2.10/2.11 it traps the 52-byte struct and
+# repacks; it must return the same size as stat.
+cat > "$tmp/lst.c" <<'EOF'
+#include <sys/types.h>
+#include <sys/stat.h>
+main(){ struct stat a,b; stat("/etc/passwd",&a);
+	if(lstat("/etc/passwd",&b)<0){printf("FAIL\n");exit(1);}
+	printf("%d\n", a.st_size==b.st_size && b.st_size>0); exit(0); }
+EOF
+for u in bsd210 bsd211; do
+	"$CC" --universe=$u -o "$tmp/lst.$u" "$tmp/lst.c" 2>/dev/null
+	out=$(timeout 12 "$APSIM" -u $u "$tmp/lst.$u" 2>&1 | head -1)
+	[ "$out" = "1" ] && ok lstat "$u" "4.x lstat == stat (52-byte repacked)" \
+		|| bad lstat "$u" "[$out]"
+done
+
 echo "------------------------------------------------------------"
 echo "cross-universe: passed $pass   failed $fail"
 [ "$fail" -eq 0 ] || { echo "failing:$failed"; exit 1; }

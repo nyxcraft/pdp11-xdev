@@ -41,12 +41,16 @@ Products (installed **flat**, not per-universe): `libc.a`, the crt0 flavours
   pristine V7 stub, reading the 4.x numbers from `tools/sysnums.tsv` (extracted
   from the target trees' own `syscall.h`) and the V1 inline shapes from a small
   table.  The battery (hello/arith/str/float) compiles once per universe and
-  runs under all **nine** (`oracle/cross-universe.sh`).  Still V7-only under
-  2.10/2.11 (a documented edge, being closed): `stat`/`fstat`/`lstat` (they
-  also need the 52-byte `struct stat` header) and `fork`/`pipe`/`wait`
-  (two-value returns) — the same `struct stat` layout edge vax11-libc
-  documented.  Under V1/V2 the covered set is the common syscalls (write/read/
-  open/close/creat/unlink/lseek/chdir); the rest stay V7-shaped there.
+  runs under all **fourteen** (`oracle/cross-universe.sh`).  The 2.10/2.11
+  calls that diverge from V7 are all handled now: `stat`/`fstat`/`lstat` trap
+  the 4.x number into a 52-byte 4.3-shape scratch and repack it into the one
+  universal V7-shape `struct stat` (so the header stays flat — no per-universe
+  `stat.h`, the edge vax11-libc left open); `wait` becomes `wait4` (status
+  through the pointer, not r1); `exit` hands the status off on the stack.
+  `fork` and `pipe` keep their V7 numbers and two-value returns across the
+  renumber, so the pristine stub is already correct.  Under V1/V2 the covered
+  set is the common syscalls (write/read/open/close/creat/unlink/lseek/chdir);
+  the rest stay V7-shaped there.
 
 ## Source layout
 

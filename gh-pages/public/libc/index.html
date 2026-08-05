@@ -83,12 +83,16 @@ runs on 1972 First AND Second Edition UNIX.</li>
 pristine V7 stub, reading the 4.x numbers from <code>tools/sysnums.tsv</code> (extracted
 from the target trees' own <code>syscall.h</code>) and the V1 inline shapes from a small
 table.  The battery (hello/arith/str/float) compiles once per universe and
-runs under all <strong>nine</strong> (<code>oracle/cross-universe.sh</code>).  Still V7-only under
-2.10/2.11 (a documented edge, being closed): <code>stat</code>/<code>fstat</code>/<code>lstat</code> (they
-also need the 52-byte <code>struct stat</code> header) and <code>fork</code>/<code>pipe</code>/<code>wait</code>
-(two-value returns) — the same <code>struct stat</code> layout edge vax11-libc
-documented.  Under V1/V2 the covered set is the common syscalls (write/read/
-open/close/creat/unlink/lseek/chdir); the rest stay V7-shaped there.</p>
+runs under all <strong>fourteen</strong> (<code>oracle/cross-universe.sh</code>).  The 2.10/2.11
+calls that diverge from V7 are all handled now: <code>stat</code>/<code>fstat</code>/<code>lstat</code> trap
+the 4.x number into a 52-byte 4.3-shape scratch and repack it into the one
+universal V7-shape <code>struct stat</code> (so the header stays flat — no per-universe
+<code>stat.h</code>, the edge vax11-libc left open); <code>wait</code> becomes <code>wait4</code> (status
+through the pointer, not r1); <code>exit</code> hands the status off on the stack.
+<code>fork</code> and <code>pipe</code> keep their V7 numbers and two-value returns across the
+renumber, so the pristine stub is already correct.  Under V1/V2 the covered
+set is the common syscalls (write/read/open/close/creat/unlink/lseek/chdir);
+the rest stay V7-shaped there.</p>
 </li>
 </ul>
 <h2 id="source-layout">Source layout</h2>
