@@ -19,7 +19,7 @@
 	X(bsd29, 29, "full", "2.9BSD (1983), overlays and split I&D; the default universe") \
 	X(bsd210, 210, "full", "2.10BSD (1987), 4.3-style numbering; the universal libc's 4BSD-convention personality serves it (root in ~/bsd/2.10)") \
 	X(bsd211, 211, "full", "2.11BSD pl431 (2000), 4.4-style numbering + stack args; the universal libc's 4BSD personality; porting base for new tools") \
-	X(sys3, 103, "planned", "UNIX System III (1980), PDP-11 line; sources in ~/unix/sys3") \
+	X(sys3, 103, "full", "UNIX System III (1980), the PWB/V7-derived commercial line: V7 inline/indirect syscall convention + 0407/0410/0411 a.out (native bin is 0407..0411); the universal libc's V7-family path compiles+runs here (id 103 is < 210, so the core calls stay V7-numbered), and apsim's System III personality -- the utssys/fcntl/ulimit/nap remaps over the V7 canonical table -- runs the native binaries (root in ~/unix/sys3)") \
 	X(sys5v2, 105, "planned", "System V Release 2 (1984), the last SysV with PDP-11 support; table groundable from ~/unix/svr2 (VAX kit)") \
 	X(ultrix11v2, 21, "planned", "DEC Ultrix-11 2.0 (1984); binary tape staged in ~/unix/ultrix11/2.0; 1.0 survives as docs only (lineage root = V7M)") \
 	X(ultrix11, 31, "planned", "DEC Ultrix-11 3.1 (1986), V7 line + fcntl/ulimit/utssys; staged in ~/unix/ultrix11 (from TUHS)") \
@@ -73,7 +73,7 @@ enum pdp11_kern {
 	X("bsd29", 29, "full", PDP11_K_BSD2X, "2.9BSD (1983), overlays and split I&D; the default universe") \
 	X("bsd210", 210, "full", PDP11_K_BSD210, "2.10BSD (1987), 4.3-style numbering; the universal libc's 4BSD-convention personality serves it (root in ~/bsd/2.10)") \
 	X("bsd211", 211, "full", PDP11_K_BSD211, "2.11BSD pl431 (2000), 4.4-style numbering + stack args; the universal libc's 4BSD personality; porting base for new tools") \
-	X("sys3", 103, "planned", PDP11_K_SYS3, "UNIX System III (1980), PDP-11 line; sources in ~/unix/sys3") \
+	X("sys3", 103, "full", PDP11_K_SYS3, "UNIX System III (1980), the PWB/V7-derived commercial line: V7 inline/indirect syscall convention + 0407/0410/0411 a.out (native bin is 0407..0411); the universal libc's V7-family path compiles+runs here (id 103 is < 210, so the core calls stay V7-numbered), and apsim's System III personality -- the utssys/fcntl/ulimit/nap remaps over the V7 canonical table -- runs the native binaries (root in ~/unix/sys3)") \
 	X("sys5v2", 105, "planned", PDP11_K_SYS3, "System V Release 2 (1984), the last SysV with PDP-11 support; table groundable from ~/unix/svr2 (VAX kit)") \
 	X("ultrix11v2", 21, "planned", PDP11_K_ULTRIX, "DEC Ultrix-11 2.0 (1984); binary tape staged in ~/unix/ultrix11/2.0; 1.0 survives as docs only (lineage root = V7M)") \
 	X("ultrix11", 31, "planned", PDP11_K_ULTRIX, "DEC Ultrix-11 3.1 (1986), V7 line + fcntl/ulimit/utssys; staged in ~/unix/ultrix11 (from TUHS)") \
@@ -94,6 +94,8 @@ enum pdp11_kern {
 	X("2.10bsd", "bsd210") \
 	X("2.11", "bsd211") \
 	X("2.11bsd", "bsd211") \
+	X("sysiii", "sys3") \
+	X("system3", "sys3") \
 	X("svr2", "sys5v2") \
 	X("ultrix-2.0", "ultrix11v2") \
 	X("ultrix", "ultrix11") \

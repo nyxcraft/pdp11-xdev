@@ -129,9 +129,14 @@ same thing everywhere.</p>
 <td>First &amp; Second Edition UNIX (1971-72): the third convention — inline-arg traps; <code>ld</code> emits the 0405 format at 040014 and the same libc's <code>printf</code> runs on it</td>
 </tr>
 <tr>
-<td><code>sys3</code> <code>ultrix11</code> …</td>
+<td><code>sys3</code></td>
+<td>full</td>
+<td>System III (1980): the PWB/V7-derived commercial line — the V7 inline/indirect syscall convention (its <code>utssys</code>/<code>fcntl</code>/<code>ulimit</code>/<code>nap</code> additions remapped in apsim), <code>0407</code>/<code>0410</code>/<code>0411</code> a.out. Our compiler + libc target it; native System III binaries run under apsim</td>
+</tr>
+<tr>
+<td><code>ultrix11</code> <code>sys5v2</code> …</td>
 <td>planned</td>
-<td>sources staged in <code>~/unix</code> and <code>~/bsd</code></td>
+<td>sources staged in <code>~/unix</code></td>
 </tr>
 </tbody>
 </table>

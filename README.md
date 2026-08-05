@@ -51,7 +51,8 @@ same thing everywhere.
 | `bsd211` | full | 2.11BSD (porting base): the 4BSD stack-arg convention + 4.x numbers, dispatched on `__univ` by the same libc |
 | `bsd210` | full | 2.10BSD: the same 4BSD-convention personality |
 | `v1` `v2` | full | First & Second Edition UNIX (1971-72): the third convention — inline-arg traps; `ld` emits the 0405 format at 040014 and the same libc's `printf` runs on it |
-| `sys3` `ultrix11` … | planned | sources staged in `~/unix` and `~/bsd` |
+| `sys3` | full | System III (1980): the PWB/V7-derived commercial line — the V7 inline/indirect syscall convention (its `utssys`/`fcntl`/`ulimit`/`nap` additions remapped in apsim), `0407`/`0410`/`0411` a.out. Our compiler + libc target it; native System III binaries run under apsim |
+| `ultrix11` `sys5v2` … | planned | sources staged in `~/unix` |
 
 Independently of the universe, the **assembler** is historically
 parameterized: `--isa=`, `--sys=`, and `--aout=` select the instruction

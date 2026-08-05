@@ -48,7 +48,7 @@ echo "== A. compiler pipeline (cpp/c0/c1/c2/as/ld + libc) x full universes =="
 #   v3..bsd29       the V7 family (inline/indirect; v3 is a best-guess on V5/V6)
 #   bsd210/bsd211   the 4BSD family (stack args + 4.x numbers)
 # Compile+run the battery under EACH to prove the one library serves all.
-for u in v1 v2 v3 v4 v5 v6 v7 bsd1 bsd2 bsd279 bsd28 bsd29 bsd210 bsd211; do
+for u in v1 v2 v3 v4 v5 v6 v7 bsd1 bsd2 bsd279 bsd28 bsd29 bsd210 bsd211 sys3; do
   [ -f "$here/../lib/libc.a" ] || { skip cc "$u" "no libc"; continue; }
   # plain and -O, for each battery program
   for prog in hello arith str float; do
@@ -115,6 +115,7 @@ das_one v7     "$HOME/unix/v7/bin/ls"
 das_one bsd29  "$HOME/bsd/2.9/usr/bin/ls"
 das_one bsd210 "$HOME/bsd/2.10/root/bin/ls"
 das_one bsd211 "$HOME/bsd/2.11/root/bin/ls"
+das_one sys3   "$HOME/unix/sys3/bin/du"    # System III 0411 (split I&D)
 
 echo "== D. apsim runs each era's native binaries =="
 run_era(){ # universe  root  echo-arg-test
@@ -133,6 +134,7 @@ run_era v4     "$HOME/unix/v4"
 run_era v7     "$HOME/unix/v7"
 run_era bsd210 "$HOME/bsd/2.10/root"
 run_era bsd211 "$HOME/bsd/2.11/root"
+run_era sys3   "$HOME/unix/sys3"
 # 1BSD/2BSD are userland layered on V6/V7 (no kernel of their own), so their
 # personalities ARE v56/v7.  Validate that identity directly: a native V6/V7
 # binary is byte-identical under bsd1/bsd2 and under v6/v7 -- then run a real

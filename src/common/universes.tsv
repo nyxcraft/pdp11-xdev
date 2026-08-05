@@ -32,7 +32,7 @@ bsd28	28	full	bsd2x	2.8,2.8bsd	2.8BSD (1981), Ritchie cc era; FP11 D-format floa
 bsd29	29	full	bsd2x	2.9,2.9bsd	2.9BSD (1983), overlays and split I&D; the default universe
 bsd210	210	full	bsd210	2.10,2.10bsd	2.10BSD (1987), 4.3-style numbering; the universal libc's 4BSD-convention personality serves it (root in ~/bsd/2.10)
 bsd211	211	full	bsd211	2.11,2.11bsd	2.11BSD pl431 (2000), 4.4-style numbering + stack args; the universal libc's 4BSD personality; porting base for new tools
-sys3	103	planned	sys3	-	UNIX System III (1980), PDP-11 line; sources in ~/unix/sys3
+sys3	103	full	sys3	sysiii,system3	UNIX System III (1980), the PWB/V7-derived commercial line: V7 inline/indirect syscall convention + 0407/0410/0411 a.out (native bin is 0407..0411); the universal libc's V7-family path compiles+runs here (id 103 is < 210, so the core calls stay V7-numbered), and apsim's System III personality -- the utssys/fcntl/ulimit/nap remaps over the V7 canonical table -- runs the native binaries (root in ~/unix/sys3)
 sys5v2	105	planned	sys3	svr2	System V Release 2 (1984), the last SysV with PDP-11 support; table groundable from ~/unix/svr2 (VAX kit)
 ultrix11v2	21	planned	ultrix	ultrix-2.0	DEC Ultrix-11 2.0 (1984); binary tape staged in ~/unix/ultrix11/2.0; 1.0 survives as docs only (lineage root = V7M)
 ultrix11	31	planned	ultrix	ultrix,ultrix-3.1	DEC Ultrix-11 3.1 (1986), V7 line + fcntl/ulimit/utssys; staged in ~/unix/ultrix11 (from TUHS)
