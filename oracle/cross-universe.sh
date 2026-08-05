@@ -48,7 +48,7 @@ echo "== A. compiler pipeline (cpp/c0/c1/c2/as/ld + libc) x full universes =="
 #   v3..bsd29       the V7 family (inline/indirect; v3 is a best-guess on V5/V6)
 #   bsd210/bsd211   the 4BSD family (stack args + 4.x numbers)
 # Compile+run the battery under EACH to prove the one library serves all.
-for u in v1 v2 v3 v4 v5 v6 v7 bsd1 bsd2 bsd28 bsd29 bsd210 bsd211; do
+for u in v1 v2 v3 v4 v5 v6 v7 bsd1 bsd2 bsd279 bsd28 bsd29 bsd210 bsd211; do
   [ -f "$here/../lib/libc.a" ] || { skip cc "$u" "no libc"; continue; }
   # plain and -O, for each battery program
   for prog in hello arith str float; do
@@ -158,6 +158,14 @@ if [ -f "$EX1" ]; then
   { [ "$rc" != 124 ] && [ "$rc" -lt 128 ]; } \
     && ok apsim bsd1 "1BSD ex loads+runs (V6 a.out, rc=$rc)" || bad apsim bsd1 "ex hung/crashed rc=$rc"
 else skip apsim bsd1 "no 1BSD ex"; fi
+# 2.79BSD: also V7-personality userland (its csh uses no vfork, so v7 vs bsd2x
+# is moot).  Personality identity vs v7 + its own updated csh running a command.
+equiv bsd279 v7 bsd279 "$HOME/unix/v7/bin/ls"
+CSH279="$HOME/bsd/2.79/bin.v6/csh"
+if [ -f "$CSH279" ]; then
+  out=$(echo 'echo two79-ok' | timeout 8 "$APSIM" -u bsd279 "$CSH279" 2>/dev/null | head -1)
+  [ "$out" = "two79-ok" ] && ok apsim bsd279 "2.79BSD csh runs a command" || bad apsim bsd279 "csh: [$out]"
+else skip apsim bsd279 "no 2.79 csh"; fi
 # First Edition: run a surviving 0405 binary (ar prints usage on no args)
 if [ -f "$HOME/unix/v1/unix72/fs/root/bin/mv" ]; then
   out=$(timeout 12 "$APSIM" -u v1 "$HOME/unix/v1/unix72/fs/root/bin/mv" 2>&1 | head -1)

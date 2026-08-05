@@ -47,6 +47,7 @@ same thing everywhere.
 | `v4` | full | Fourth Edition (1973): the first C kernel; 0407/0410 load-at-0 (V5/V6 personality). apsim runs the rediscovered native binaries, and our compiler + libc target it |
 | `v3` | full | Third Edition (Feb 1973): no native binaries survive, but the manual confirms the 8-word 0407 (load-at-0, entry 0) + FP11 — matching our ld output and the V5/V6 personality; core syscalls match (its mid-range names are a First-Edition/modern hybrid) |
 | `bsd1` `bsd2` | full | 1BSD (1978) & 2BSD (1979): the first two Berkeley distributions — userland layered on Sixth/Seventh Edition (no kernel of their own), so their personalities *are* V6/V7. Our compiler + libc target them; a native V6/V7 binary is byte-identical under `bsd1`/`bsd2` and `v6`/`v7`, and native `ex` (1BSD) / `csh` (2BSD) run under apsim |
+| `bsd279` | full | 2.79BSD (1980): the last pre-kernel Berkeley release — userland for *both* V6 and V7, still the V7 personality. Our compiler + libc target it; a native V7 binary is byte-identical under `bsd279` and `v7`, and 2.79's own updated `csh` runs under apsim |
 | `bsd211` | full | 2.11BSD (porting base): the 4BSD stack-arg convention + 4.x numbers, dispatched on `__univ` by the same libc |
 | `bsd210` | full | 2.10BSD: the same 4BSD-convention personality |
 | `v1` `v2` | full | First & Second Edition UNIX (1971-72): the third convention — inline-arg traps; `ld` emits the 0405 format at 040014 and the same libc's `printf` runs on it |

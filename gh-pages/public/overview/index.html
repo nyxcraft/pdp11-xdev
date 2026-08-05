@@ -109,6 +109,11 @@ same thing everywhere.</p>
 <td>1BSD (1978) &amp; 2BSD (1979): the first two Berkeley distributions — userland layered on Sixth/Seventh Edition (no kernel of their own), so their personalities <em>are</em> V6/V7. Our compiler + libc target them; a native V6/V7 binary is byte-identical under <code>bsd1</code>/<code>bsd2</code> and <code>v6</code>/<code>v7</code>, and native <code>ex</code> (1BSD) / <code>csh</code> (2BSD) run under apsim</td>
 </tr>
 <tr>
+<td><code>bsd279</code></td>
+<td>full</td>
+<td>2.79BSD (1980): the last pre-kernel Berkeley release — userland for <em>both</em> V6 and V7, still the V7 personality. Our compiler + libc target it; a native V7 binary is byte-identical under <code>bsd279</code> and <code>v7</code>, and 2.79's own updated <code>csh</code> runs under apsim</td>
+</tr>
+<tr>
 <td><code>bsd211</code></td>
 <td>full</td>
 <td>2.11BSD (porting base): the 4BSD stack-arg convention + 4.x numbers, dispatched on <code>__univ</code> by the same libc</td>

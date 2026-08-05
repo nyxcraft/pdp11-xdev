@@ -27,7 +27,7 @@ v6	6	full	v56	-	Sixth Edition UNIX (1975); manual + native binaries confirm 8-wo
 v7	7	full	v7	-	Seventh Edition UNIX (1979); the canonical syscall numbering the V7-family libc uses
 bsd1	11	full	v56	1bsd	1BSD (Mar 1978), the first Berkeley distribution: Pascal (pi/px) + the ex editor, userland layered ON Sixth Edition (no kernel of its own); V6 a.out (0407/0410/0411 load-at-0) + V6 syscalls = the V5/V6 personality; universal libc compiles+runs here, native ex-1.1 binaries load+run under apsim -u bsd1 (root in ~/bsd/1bsd)
 bsd2	20	full	v7	2bsd	2BSD (mid-1979), the second Berkeley distribution: csh/vi/more/termcap, userland layered ON Seventh Edition; V7 a.out (0407/0410 load-at-0) + the canonical V7 syscall numbering the libc already uses; universal libc compiles+runs here, native 2BSD binaries run under apsim -u bsd2 (root in ~/bsd/2bsd)
-bsd279	27	planned	v7	2.79	2.79BSD (1980), V7-kernel userland; sources in ~/bsd/2.79
+bsd279	27	full	v7	2.79,2.79bsd	2.79BSD (1980), the last pre-kernel Berkeley release: userland for BOTH V6 (bin.v6) and V7 (bin.v7), no kernel of its own, shipping ex/csh updated over 2BSD; V7 a.out (0407/0410 load-at-0) + V7 syscalls = the V7 personality the libc already uses; universal libc compiles+runs here, native 2.79 csh runs under apsim -u bsd279 (root in ~/bsd/2.79)
 bsd28	28	full	bsd2x	2.8,2.8bsd	2.8BSD (1981), Ritchie cc era; FP11 D-format floating point
 bsd29	29	full	bsd2x	2.9,2.9bsd	2.9BSD (1983), overlays and split I&D; the default universe
 bsd210	210	full	bsd210	2.10,2.10bsd	2.10BSD (1987), 4.3-style numbering; the universal libc's 4BSD-convention personality serves it (root in ~/bsd/2.10)

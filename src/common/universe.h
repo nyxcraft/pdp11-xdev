@@ -14,7 +14,7 @@
 	X(v7, 7, "full", "Seventh Edition UNIX (1979); the canonical syscall numbering the V7-family libc uses") \
 	X(bsd1, 11, "full", "1BSD (Mar 1978), the first Berkeley distribution: Pascal (pi/px) + the ex editor, userland layered ON Sixth Edition (no kernel of its own); V6 a.out (0407/0410/0411 load-at-0) + V6 syscalls = the V5/V6 personality; universal libc compiles+runs here, native ex-1.1 binaries load+run under apsim -u bsd1 (root in ~/bsd/1bsd)") \
 	X(bsd2, 20, "full", "2BSD (mid-1979), the second Berkeley distribution: csh/vi/more/termcap, userland layered ON Seventh Edition; V7 a.out (0407/0410 load-at-0) + the canonical V7 syscall numbering the libc already uses; universal libc compiles+runs here, native 2BSD binaries run under apsim -u bsd2 (root in ~/bsd/2bsd)") \
-	X(bsd279, 27, "planned", "2.79BSD (1980), V7-kernel userland; sources in ~/bsd/2.79") \
+	X(bsd279, 27, "full", "2.79BSD (1980), the last pre-kernel Berkeley release: userland for BOTH V6 (bin.v6) and V7 (bin.v7), no kernel of its own, shipping ex/csh updated over 2BSD; V7 a.out (0407/0410 load-at-0) + V7 syscalls = the V7 personality the libc already uses; universal libc compiles+runs here, native 2.79 csh runs under apsim -u bsd279 (root in ~/bsd/2.79)") \
 	X(bsd28, 28, "full", "2.8BSD (1981), Ritchie cc era; FP11 D-format floating point") \
 	X(bsd29, 29, "full", "2.9BSD (1983), overlays and split I&D; the default universe") \
 	X(bsd210, 210, "full", "2.10BSD (1987), 4.3-style numbering; the universal libc's 4BSD-convention personality serves it (root in ~/bsd/2.10)") \
@@ -68,7 +68,7 @@ enum pdp11_kern {
 	X("v7", 7, "full", PDP11_K_V7, "Seventh Edition UNIX (1979); the canonical syscall numbering the V7-family libc uses") \
 	X("bsd1", 11, "full", PDP11_K_V56, "1BSD (Mar 1978), the first Berkeley distribution: Pascal (pi/px) + the ex editor, userland layered ON Sixth Edition (no kernel of its own); V6 a.out (0407/0410/0411 load-at-0) + V6 syscalls = the V5/V6 personality; universal libc compiles+runs here, native ex-1.1 binaries load+run under apsim -u bsd1 (root in ~/bsd/1bsd)") \
 	X("bsd2", 20, "full", PDP11_K_V7, "2BSD (mid-1979), the second Berkeley distribution: csh/vi/more/termcap, userland layered ON Seventh Edition; V7 a.out (0407/0410 load-at-0) + the canonical V7 syscall numbering the libc already uses; universal libc compiles+runs here, native 2BSD binaries run under apsim -u bsd2 (root in ~/bsd/2bsd)") \
-	X("bsd279", 27, "planned", PDP11_K_V7, "2.79BSD (1980), V7-kernel userland; sources in ~/bsd/2.79") \
+	X("bsd279", 27, "full", PDP11_K_V7, "2.79BSD (1980), the last pre-kernel Berkeley release: userland for BOTH V6 (bin.v6) and V7 (bin.v7), no kernel of its own, shipping ex/csh updated over 2BSD; V7 a.out (0407/0410 load-at-0) + V7 syscalls = the V7 personality the libc already uses; universal libc compiles+runs here, native 2.79 csh runs under apsim -u bsd279 (root in ~/bsd/2.79)") \
 	X("bsd28", 28, "full", PDP11_K_BSD2X, "2.8BSD (1981), Ritchie cc era; FP11 D-format floating point") \
 	X("bsd29", 29, "full", PDP11_K_BSD2X, "2.9BSD (1983), overlays and split I&D; the default universe") \
 	X("bsd210", 210, "full", PDP11_K_BSD210, "2.10BSD (1987), 4.3-style numbering; the universal libc's 4BSD-convention personality serves it (root in ~/bsd/2.10)") \
@@ -85,6 +85,7 @@ enum pdp11_kern {
 	X("1bsd", "bsd1") \
 	X("2bsd", "bsd2") \
 	X("2.79", "bsd279") \
+	X("2.79bsd", "bsd279") \
 	X("2.8", "bsd28") \
 	X("2.8bsd", "bsd28") \
 	X("2.9", "bsd29") \
