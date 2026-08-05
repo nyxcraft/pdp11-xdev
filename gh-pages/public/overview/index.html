@@ -139,7 +139,12 @@ same thing everywhere.</p>
 <td>System V Release 2 (1984): the last System V with PDP-11 support — System III plus the SysV IPC suite, same V7 convention. No PDP-11 SVR2 binaries survive (only the VAX source kit), so best-guess like <code>v3</code>: our compiler + libc target it, and apsim serves it with the System III personality (SVR2's direct ancestor)</td>
 </tr>
 <tr>
-<td><code>ultrix11</code> …</td>
+<td><code>ultrix11v1</code></td>
+<td>full</td>
+<td>Ultrix-11 1.0 (= V7M-11 1.0, 1982/83): DEC's Version 7 for Q-bus PDP-11s (11/23) and the root of the Ultrix line — V7 syscalls + <code>0407</code>/<code>0410</code>/<code>0411</code> a.out, served by apsim's Ultrix personality. No local native binaries (a SIMH image survives at <code>agn453/V7M-11</code>), so best-guess like <code>v3</code> — compiler-validated</td>
+</tr>
+<tr>
+<td><code>ultrix11v2</code> <code>ultrix11</code> …</td>
 <td>planned</td>
 <td>sources staged in <code>~/unix</code></td>
 </tr>

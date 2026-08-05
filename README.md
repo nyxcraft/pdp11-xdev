@@ -53,7 +53,8 @@ same thing everywhere.
 | `v1` `v2` | full | First & Second Edition UNIX (1971-72): the third convention — inline-arg traps; `ld` emits the 0405 format at 040014 and the same libc's `printf` runs on it |
 | `sys3` | full | System III (1980): the PWB/V7-derived commercial line — the V7 inline/indirect syscall convention (its `utssys`/`fcntl`/`ulimit`/`nap` additions remapped in apsim), `0407`/`0410`/`0411` a.out. Our compiler + libc target it; native System III binaries run under apsim |
 | `sys5v2` | full | System V Release 2 (1984): the last System V with PDP-11 support — System III plus the SysV IPC suite, same V7 convention. No PDP-11 SVR2 binaries survive (only the VAX source kit), so best-guess like `v3`: our compiler + libc target it, and apsim serves it with the System III personality (SVR2's direct ancestor) |
-| `ultrix11` … | planned | sources staged in `~/unix` |
+| `ultrix11v1` | full | Ultrix-11 1.0 (= V7M-11 1.0, 1982/83): DEC's Version 7 for Q-bus PDP-11s (11/23) and the root of the Ultrix line — V7 syscalls + `0407`/`0410`/`0411` a.out, served by apsim's Ultrix personality. No local native binaries (a SIMH image survives at `agn453/V7M-11`), so best-guess like `v3` — compiler-validated |
+| `ultrix11v2` `ultrix11` … | planned | sources staged in `~/unix` |
 
 Independently of the universe, the **assembler** is historically
 parameterized: `--isa=`, `--sys=`, and `--aout=` select the instruction
