@@ -10,7 +10,7 @@
 	X(v3, 3, "full", "Third Edition UNIX (Feb 1973); no native binaries, but its manual confirms the 8-word 0407 (load-at-0, magic 407, entry 0) + FP11 -- matches our ld output; core syscalls match, mid-range names are a First-Edition/modern hybrid (makdir=14, +dup/pipe/csw/fpe)") \
 	X(v4, 4, "full", "Fourth Edition UNIX (1973), first C kernel; manual + native binaries both confirm: 8-word 0407/0410 load-at-0 and the modern syscall table (mknod=14, setgid/getgid/signal/times), the V5/V6 personality (root in ~/unix/v4)") \
 	X(v5, 5, "full", "Fifth Edition UNIX (1974); manual + native binaries confirm 8-word 0407/0410 load-at-0 + the modern syscall table (mknod/dup/pipe/gid) -- the V5/V6 personality; universal libc compiles+runs here (root in ~/unix/v5)") \
-	X(v6, 6, "full", "Sixth Edition UNIX (1975); universal libc compiles+runs here (root in ~/unix/v6)") \
+	X(v6, 6, "full", "Sixth Edition UNIX (1975); manual + native binaries confirm 8-word 0407/0410/0411 (first to add split I&D) load-at-0 + the modern syscall table (getpid=20, ptrace=26, signal=48); universal libc compiles+runs here (root in ~/unix/v6)") \
 	X(v7, 7, "full", "Seventh Edition UNIX (1979); the canonical syscall numbering the V7-family libc uses") \
 	X(bsd1, 11, "planned", "1BSD (1978), V6-kernel userland; sources in ~/bsd/1bsd") \
 	X(bsd2, 20, "planned", "2BSD (1979), V7-kernel userland; sources in ~/bsd/2bsd") \
@@ -64,7 +64,7 @@ enum pdp11_kern {
 	X("v3", 3, "full", PDP11_K_V56, "Third Edition UNIX (Feb 1973); no native binaries, but its manual confirms the 8-word 0407 (load-at-0, magic 407, entry 0) + FP11 -- matches our ld output; core syscalls match, mid-range names are a First-Edition/modern hybrid (makdir=14, +dup/pipe/csw/fpe)") \
 	X("v4", 4, "full", PDP11_K_V56, "Fourth Edition UNIX (1973), first C kernel; manual + native binaries both confirm: 8-word 0407/0410 load-at-0 and the modern syscall table (mknod=14, setgid/getgid/signal/times), the V5/V6 personality (root in ~/unix/v4)") \
 	X("v5", 5, "full", PDP11_K_V56, "Fifth Edition UNIX (1974); manual + native binaries confirm 8-word 0407/0410 load-at-0 + the modern syscall table (mknod/dup/pipe/gid) -- the V5/V6 personality; universal libc compiles+runs here (root in ~/unix/v5)") \
-	X("v6", 6, "full", PDP11_K_V56, "Sixth Edition UNIX (1975); universal libc compiles+runs here (root in ~/unix/v6)") \
+	X("v6", 6, "full", PDP11_K_V56, "Sixth Edition UNIX (1975); manual + native binaries confirm 8-word 0407/0410/0411 (first to add split I&D) load-at-0 + the modern syscall table (getpid=20, ptrace=26, signal=48); universal libc compiles+runs here (root in ~/unix/v6)") \
 	X("v7", 7, "full", PDP11_K_V7, "Seventh Edition UNIX (1979); the canonical syscall numbering the V7-family libc uses") \
 	X("bsd1", 11, "planned", PDP11_K_V56, "1BSD (1978), V6-kernel userland; sources in ~/bsd/1bsd") \
 	X("bsd2", 20, "planned", PDP11_K_V7, "2BSD (1979), V7-kernel userland; sources in ~/bsd/2bsd") \
