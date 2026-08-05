@@ -189,6 +189,22 @@ if [ -f "$V1MV" ]; then
     || bad strip v1 "$ns symbols left / out=[$out]"
 else skip nm v1 "no First Edition binary"; fi
 
+# ar reads the First Edition (0177555) archive format: t lists members, x
+# extracts a real 0407 object das can read, and modify ops decline (read-only).
+V2AR="$HOME/unix/v2/usr/lib/libc.a"
+if [ -f "$V2AR" ]; then
+  cp "$V2AR" "$tmp/v2libc.a"
+  nm2=$("$AR" t "$tmp/v2libc.a" 2>/dev/null | grep -c .)
+  [ "${nm2:-0}" -ge 20 ] && ok ar v2 "$nm2 members from 0177555 archive" \
+    || bad ar v2 "only ${nm2:-0} members"
+  ( cd "$tmp" && "$AR" x "$tmp/v2libc.a" exit.o 2>/dev/null )
+  [ "$("$DAS" "$tmp/exit.o" 2>/dev/null | grep -oE 'magic [0-7]+' | awk '{print $2}')" = 0407 ] \
+    && ok ar v2 "extracted 0407 member (das-clean)" || bad ar v2 "extract/das failed"
+  rm -f "$tmp/exit.o"
+  "$AR" r "$tmp/v2libc.a" /dev/null 2>/dev/null && bad ar v2 "modify not declined" \
+    || ok ar v2 "modify of old-format archive declined"
+else skip ar v2 "no First Edition archive"; fi
+
 echo "------------------------------------------------------------"
 echo "cross-universe: passed $pass   failed $fail"
 [ "$fail" -eq 0 ] || { echo "failing:$failed"; exit 1; }

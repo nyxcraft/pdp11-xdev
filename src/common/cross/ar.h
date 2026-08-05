@@ -12,6 +12,16 @@
 #include <stdint.h>
 
 #define	ARMAG	0177545
+
+/*
+ * First Edition archives (Research V1..V4, magic 0177555) predate this format:
+ * a 16-byte per-member header -- ar_name[8], ar_date(long,4), ar_uid(1),
+ * ar_mode(1), ar_size(word,2) -- with no ranlib __.SYMDEF.  We never WRITE this
+ * layout (our archives are modern build-time containers), but the a.out readers
+ * decode every era, so ar reads it too: t/tv/p/x on a native V1/V2 library.
+ */
+#define	OARMAG	0177555
+
 struct	ar_hdr {
 	char	 ar_name[14];
 	int32_t	 ar_date;

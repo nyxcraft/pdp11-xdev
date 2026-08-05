@@ -51,6 +51,7 @@ int	tf1;
 int	tf2;
 int	qf;
 int	bastate;
+int	oldfmt;		/* archive is First Edition (0177555): read-only */
 char	buf[512];
 
 char	*trim();
@@ -160,6 +161,8 @@ rcmd()
 
 	init();
 	getaf();
+	if(oldfmt)
+		cantmod();
 	while(!getdir()) {
 		bamatch();
 		if(namc == 0 || match()) {
@@ -192,6 +195,8 @@ dcmd()
 	init();
 	if(getaf())
 		noar();
+	if(oldfmt)
+		cantmod();
 	while(!getdir()) {
 		if(match()) {
 			mesg('d');
@@ -254,6 +259,8 @@ mcmd()
 	init();
 	if(getaf())
 		noar();
+	if(oldfmt)
+		cantmod();
 	tf2nam = mktemp(tmp2nam);
 	close(creat(tf2nam, 0600));
 	tf2 = open(tf2nam, 2);
@@ -340,10 +347,12 @@ getaf()
 	af = open(arnam, 0);
 	if(af < 0)
 		return(1);
-	if (read(af, (char *)&mbuf, 2) != 2 || mbuf!=ARMAG) {
+	if (read(af, (char *)&mbuf, 2) != 2
+		|| (mbuf!=ARMAG && mbuf!=OARMAG)) {
 		fprintf(stderr, "ar: %s not in archive format\n", arnam);
 		done(1);
 	}
+	oldfmt = (mbuf == OARMAG);
 	return(0);
 }
 
@@ -364,10 +373,12 @@ getqf()
 			wrerr();
 	}
 	else if (read(qf, (char *)&mbuf, 2) != 2
-		|| mbuf!=ARMAG) {
+		|| (mbuf!=ARMAG && mbuf!=OARMAG)) {
 		fprintf(stderr, "ar: %s not in archive format\n", arnam);
 		done(1);
 	}
+	else if (mbuf == OARMAG)
+		cantmod();
 }
 
 usage()
@@ -380,6 +391,16 @@ noar()
 {
 
 	fprintf(stderr, "ar: %s does not exist\n", arnam);
+	done(1);
+}
+
+cantmod()
+{
+	/* We decode the First Edition (V1/V2) format for reading but never
+	 * rewrite it -- our archives are modern build-time containers. */
+	fprintf(stderr,
+		"ar: %s is a First Edition (V1/V2) archive; read-only (t/p/x)\n",
+		arnam);
 	done(1);
 }
 
@@ -561,6 +582,42 @@ getdir()
 {
 	register i;
 
+	if(oldfmt) {
+		/* First Edition (0177555): 16-byte header, 8-char name, a
+		 * middle-endian long date, uid+mode bytes, then the member size
+		 * as a little-endian WORD (members are even-padded on disk).
+		 * Unpack into arbuf so t/p/x and copyfil() work unchanged. */
+		unsigned char oh[16];
+		long d;
+
+		i = read(af, (char *)oh, sizeof oh);
+		if(i != sizeof oh) {
+			if(tf1nam) {
+				i = tf;
+				tf = tf1;
+				tf1 = i;
+			}
+			return(1);
+		}
+		for(i=0; i<8; i++)
+			arbuf.ar_name[i] = oh[i];
+		for(; i<14; i++)
+			arbuf.ar_name[i] = 0;
+		d = (long)oh[8] | ((long)oh[9]<<8)
+		  | ((long)oh[10]<<16) | ((long)oh[11]<<24);
+		arbuf.ar_date = PDPL(d);
+		arbuf.ar_uid = oh[12];
+		arbuf.ar_gid = 0;
+		/* The V1 mode byte is a 2-class (owner/non-owner) model, not
+		 * POSIX rwxrwxrwx; extracting it verbatim yields unreadable
+		 * files.  These members are objects -- give them a sane 0644. */
+		arbuf.ar_mode = 0644;
+		arbuf.ar_size = oh[14] | (oh[15]<<8);
+		for(i=0; i<14; i++)
+			name[i] = arbuf.ar_name[i];
+		file = name;
+		return(0);
+	}
 	i = read(af, (char *)&arbuf, sizeof arbuf);
 	if(i == sizeof arbuf) {	/* PDP-11 middle-endian longs -> host order */
 		arbuf.ar_date = PDPL(arbuf.ar_date);
@@ -676,11 +733,15 @@ char *s;
 longt()
 {
 	register char *cp;
+	time_t t;
 
 	pmode();
 	printf("%3d/%1d", arbuf.ar_uid, arbuf.ar_gid);
-	printf("%7D", arbuf.ar_size);
-	cp = ctime(&arbuf.ar_date);
+	printf("%7ld", (long)arbuf.ar_size);	/* was %D (old BSD long spec) */
+	/* ar_date is a 32-bit on-disk field; ctime() dereferences a 64-bit
+	 * time_t on an LP64 host, so widen through a real time_t first. */
+	t = (time_t)(int32_t)arbuf.ar_date;
+	cp = ctime(&t);
 	printf(" %-12.12s %-4.4s ", cp+4, cp+20);
 }
 
