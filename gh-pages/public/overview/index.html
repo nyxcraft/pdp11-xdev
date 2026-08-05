@@ -141,7 +141,7 @@ same thing everywhere.</p>
 <tr>
 <td><code>ultrix11v1</code> <code>ultrix11v2</code> <code>ultrix11</code></td>
 <td>full</td>
-<td>Ultrix-11 1.0 (= V7M-11 1.0, 1982/83), 2.0 (1984) and 3.x (3.0 1986, which merged 4.2BSD TCP/IP as an Executive-mode driver; 3.1 1987, the last release): DEC's productized Version 7 for the PDP-11. The local 3.1 <code>sysent.c</code> is authoritative — V7 core numbers (1–48) plus DEC/SysV additions (<code>msgsys</code>/<code>utssys</code>/<code>fcntl</code>/<code>ulimit</code>/<code>nap</code>… at 49+, no user-visible sockets), <code>0407</code>/<code>0410</code>/<code>0411</code> a.out — served by apsim's Ultrix personality. Compiler-validated like <code>v3</code> (native disk/tape images survive but aren't carved yet)</td>
+<td>Ultrix-11 1.0 (= V7M-11 1.0, 1982/83), 2.0 (1984) and 3.x (3.0 1986, which merged 4.2BSD TCP/IP as an Executive-mode driver; 3.1 1987, the last release): DEC's productized Version 7 for the PDP-11. The local 3.1 <code>sysent.c</code> is authoritative — V7 core numbers (1–48) plus DEC/SysV additions (<code>msgsys</code>/<code>utssys</code>/<code>fcntl</code>/<code>ulimit</code>/<code>nap</code>… at 49+, no user-visible sockets), <code>0407</code>/<code>0410</code>/<code>0411</code> a.out — served by apsim's Ultrix personality. <strong>Native-validated</strong>: real V7M-11 1.0 <code>/bin</code> (<code>echo</code>/<code>cat</code>/<code>wc</code>/<code>sum</code>/<code>ls</code>/<code>od</code>…), carved from the <code>agn453/V7M-11</code> disk image into <code>~/unix/ultrix11/1.0</code>, runs under <code>-u ultrix11v1</code> and byte-identically across all three Ultrix universes, with <code>wc</code>/<code>sum</code> matching the host</td>
 </tr>
 </tbody>
 </table>

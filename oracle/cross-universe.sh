@@ -135,6 +135,22 @@ run_era v7     "$HOME/unix/v7"
 run_era bsd210 "$HOME/bsd/2.10/root"
 run_era bsd211 "$HOME/bsd/2.11/root"
 run_era sys3   "$HOME/unix/sys3"
+run_era ultrix11v1 "$HOME/unix/ultrix11/1.0"   # native V7M-11 1.0 /bin (echo+cat)
+# The Ultrix line (1.0/2.0/3.x) shares one apsim personality, so a deterministic
+# native V7M-11 binary must give the SAME answer under all three -- proving 2.0
+# and 3.x run real Ultrix binaries too, not just our compiler's output.  The
+# native /bin was carved from the agn453/V7M-11 disk image into ~/unix/ultrix11/
+# 1.0 (V7 s5fs at image block 0); skips cleanly if that tree is absent.
+USUM="$HOME/unix/ultrix11/1.0/bin/sum"
+if [ -f "$USUM" ]; then
+  ref=$(timeout 8 "$APSIM" -u ultrix11v1 "$USUM" /etc/passwd 2>/dev/null | head -1)
+  for u in ultrix11v1 ultrix11v2 ultrix11; do
+    o=$(timeout 8 "$APSIM" -u $u "$USUM" /etc/passwd 2>/dev/null | head -1)
+    { [ -n "$o" ] && [ "$o" = "$ref" ]; } \
+      && ok apsim "$u" "native V7M sum == across Ultrix ($o)" \
+      || bad apsim "$u" "native sum [$o] != [$ref]"
+  done
+else skip apsim ultrix11v1 "no native V7M /bin"; fi
 # 1BSD/2BSD are userland layered on V6/V7 (no kernel of their own), so their
 # personalities ARE v56/v7.  Validate that identity directly: a native V6/V7
 # binary is byte-identical under bsd1/bsd2 and under v6/v7 -- then run a real
