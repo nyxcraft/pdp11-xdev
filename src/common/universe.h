@@ -22,7 +22,7 @@
 	X(sys3, 103, "full", "UNIX System III (1980), the PWB/V7-derived commercial line: V7 inline/indirect syscall convention + 0407/0410/0411 a.out (native bin is 0407..0411); the universal libc's V7-family path compiles+runs here (id 103 is < 210, so the core calls stay V7-numbered), and apsim's System III personality -- the utssys/fcntl/ulimit/nap remaps over the V7 canonical table -- runs the native binaries (root in ~/unix/sys3)") \
 	X(sys5v2, 105, "full", "System V Release 2 (1984), the last System V with PDP-11 support: System III's PWB/V7-derived line + the SysV IPC suite, same V7 inline/indirect convention + 0407/0410/0411 a.out.  No PDP-11 SVR2 binaries survive (only the VAX source kit in ~/unix/svr2), so best-guess like v3: the universal libc's V7-family path compiles+runs here (id 105 < 210, core calls stay V7-numbered) and apsim serves it with the System III personality (SVR2's direct ancestor)") \
 	X(ultrix11v1, 30, "full", "DEC Ultrix-11 1.0 (= V7M-11 1.0, 1982/83), the DEC Systems Engineering Group's Version 7 for Q-bus PDP-11s (11/23) and the ROOT of the Ultrix line: V7 syscall convention (inline/indirect) + 0407/0410/0411 a.out, so the universal libc's V7-family path compiles+runs here (id 30 < 210).  Served by apsim's Ultrix personality (the V7 canonical table + the utssys/nap DEC carried).  No local native binaries -- a SIMH disk image survives at github.com/agn453/V7M-11 -- so best-guess/compiler-validated like v3") \
-	X(ultrix11v2, 21, "planned", "DEC Ultrix-11 2.0 (1984); binary tape staged in ~/unix/ultrix11/2.0; 1.0 is the V7M root, now registered as ultrix11v1") \
+	X(ultrix11v2, 21, "full", "DEC Ultrix-11 2.0 (1984), the productized V7M line: the 3.1 sysent.c (which 2.0 shares for the core) confirms V7 numbers+convention for calls 1-48 (exit=1..sig=48) plus the DEC/SysV additions at 49+ (msgsys=49, utssys=57, fcntl=62, ulimit=63, evntflg/getfp/ttlocl/errlog=64-67), and 0407/0410/0411 a.out.  id 21 < 210 so the universal libc's V7-family path compiles+runs here, served by apsim's Ultrix personality.  A native 16-user BIN install tape is staged (~/unix/ultrix11/2.0/BB-X302B-BC..._1984.tap.gz, DEC boot+archive format, not yet carved), so compiler-validated for now like v3") \
 	X(ultrix11, 31, "planned", "DEC Ultrix-11 3.1 (1986), V7 line + fcntl/ulimit/utssys; staged in ~/unix/ultrix11 (from TUHS)") \
 	/* end */
 
@@ -78,7 +78,7 @@ enum pdp11_kern {
 	X("sys3", 103, "full", PDP11_K_SYS3, "UNIX System III (1980), the PWB/V7-derived commercial line: V7 inline/indirect syscall convention + 0407/0410/0411 a.out (native bin is 0407..0411); the universal libc's V7-family path compiles+runs here (id 103 is < 210, so the core calls stay V7-numbered), and apsim's System III personality -- the utssys/fcntl/ulimit/nap remaps over the V7 canonical table -- runs the native binaries (root in ~/unix/sys3)") \
 	X("sys5v2", 105, "full", PDP11_K_SYS3, "System V Release 2 (1984), the last System V with PDP-11 support: System III's PWB/V7-derived line + the SysV IPC suite, same V7 inline/indirect convention + 0407/0410/0411 a.out.  No PDP-11 SVR2 binaries survive (only the VAX source kit in ~/unix/svr2), so best-guess like v3: the universal libc's V7-family path compiles+runs here (id 105 < 210, core calls stay V7-numbered) and apsim serves it with the System III personality (SVR2's direct ancestor)") \
 	X("ultrix11v1", 30, "full", PDP11_K_ULTRIX, "DEC Ultrix-11 1.0 (= V7M-11 1.0, 1982/83), the DEC Systems Engineering Group's Version 7 for Q-bus PDP-11s (11/23) and the ROOT of the Ultrix line: V7 syscall convention (inline/indirect) + 0407/0410/0411 a.out, so the universal libc's V7-family path compiles+runs here (id 30 < 210).  Served by apsim's Ultrix personality (the V7 canonical table + the utssys/nap DEC carried).  No local native binaries -- a SIMH disk image survives at github.com/agn453/V7M-11 -- so best-guess/compiler-validated like v3") \
-	X("ultrix11v2", 21, "planned", PDP11_K_ULTRIX, "DEC Ultrix-11 2.0 (1984); binary tape staged in ~/unix/ultrix11/2.0; 1.0 is the V7M root, now registered as ultrix11v1") \
+	X("ultrix11v2", 21, "full", PDP11_K_ULTRIX, "DEC Ultrix-11 2.0 (1984), the productized V7M line: the 3.1 sysent.c (which 2.0 shares for the core) confirms V7 numbers+convention for calls 1-48 (exit=1..sig=48) plus the DEC/SysV additions at 49+ (msgsys=49, utssys=57, fcntl=62, ulimit=63, evntflg/getfp/ttlocl/errlog=64-67), and 0407/0410/0411 a.out.  id 21 < 210 so the universal libc's V7-family path compiles+runs here, served by apsim's Ultrix personality.  A native 16-user BIN install tape is staged (~/unix/ultrix11/2.0/BB-X302B-BC..._1984.tap.gz, DEC boot+archive format, not yet carved), so compiler-validated for now like v3") \
 	X("ultrix11", 31, "planned", PDP11_K_ULTRIX, "DEC Ultrix-11 3.1 (1986), V7 line + fcntl/ulimit/utssys; staged in ~/unix/ultrix11 (from TUHS)") \
 	/* end */
 
@@ -104,6 +104,7 @@ enum pdp11_kern {
 	X("ultrix1", "ultrix11v1") \
 	X("ultrix-1.0", "ultrix11v1") \
 	X("v7m11", "ultrix11v1") \
+	X("ultrix2", "ultrix11v2") \
 	X("ultrix-2.0", "ultrix11v2") \
 	X("ultrix", "ultrix11") \
 	X("ultrix-3.1", "ultrix11") \
