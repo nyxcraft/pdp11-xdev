@@ -116,6 +116,17 @@ char **argv;
 			fread((char *)&exp, 1, sizeof(struct exec), fi);
 			if (N_BADMAG(exp))		/* archive element not in  */
 				continue;	/* proper format - skip it */
+			if (exp.a_magic == 0405) {
+				/* First Edition a.out(V): a 6-word header that
+				 * a_text INCLUDES, so the symbol table (12-byte
+				 * entries) begins at file offset a_text and its
+				 * SIZE is in a_data; the a_syms slot holds the bss.
+				 * Seek relative to here (after the 16-byte exec
+				 * read) so this works for archive members too. */
+				fseek(fi, (long)(unsigned short)exp.a_text
+					   - (long)sizeof(struct exec), 1);
+				n = (unsigned short)exp.a_data / sizeof(struct nlist);
+			} else {
 #ifdef	MENLO_OVLY
 			if (exp.a_magic == A_MAGIC5 || exp.a_magic == A_MAGIC6) {
 				fread((char *)ovsizes, 1, sizeof ovsizes, fi);
@@ -130,6 +141,7 @@ char **argv;
 				o *= 2;
 			fseek(fi, o, 1);
 			n = exp.a_syms / sizeof(struct nlist);
+			}
 			if (n == 0) {
 				fprintf(stderr, "nm: %s-- no name list\n", SELECT);
 				continue;
@@ -137,6 +149,25 @@ char **argv;
 			i = 0;
 			while (--n >= 0) {
 				fread((char *)&sym, 1, sizeof(sym), fi);
+				if (exp.a_magic == 0405) {
+					/* V1 symbol flag: 00 undef, 01 abs, 02 register,
+					 * 03 relocatable, |40 global -- map to the later
+					 * type/N_EXT encoding the switch below reads. */
+#ifdef	MENLO_OVLY
+					unsigned vf = (unsigned char)sym.nn_type;
+#else
+					unsigned vf = (unsigned char)sym.n_type;
+#endif
+					int bt = vf & 037, nt;
+					nt = bt==0 ? N_UNDF : bt==1 ? N_ABS
+					   : bt==2 ? N_REG : N_TEXT;
+					if (vf & 040) nt |= N_EXT;
+#ifdef	MENLO_OVLY
+					sym.nn_type = nt;
+#else
+					sym.n_type = nt;
+#endif
+				}
 #ifndef MENLO_OVLY
 				if (globl_flg && (sym.n_type&N_EXT)==0)
 #else MENLO_OVLY

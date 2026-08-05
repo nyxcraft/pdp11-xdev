@@ -1,0 +1,10 @@
+; cuexit.o  --  pdp11-bsd29-das disassembly
+; magic 0407  text 14  data 0  bss 0  (850 symbols)
+
+.text
+_exit:
+	000132:  010546                 mov	r5,-(sp)
+	000134:  010605                 mov	sp,r5
+	000136:  004767 000722          jsr	pc,__cleanu
+	000142:  016500 000004          mov	4(r5),r0
+	000146:  104401                 sys	1 / exit

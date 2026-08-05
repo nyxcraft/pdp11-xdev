@@ -158,6 +158,37 @@ printf 'mfpt\nspl 7\n' > "$tmp/ext.s"
 printf 'sys 1\n' > "$tmp/v1.s"
 "$AS" --aout=v1 -o "$tmp/v1.o" "$tmp/v1.s" 2>/dev/null && ok as v1-aout "--aout=v1 (First Edition obj)" || bad as v1-aout "failed"
 
+echo "== F. binutils read every a.out era (0405 First Edition .. 0411 split I&D) =="
+# size's text must agree with das's independent read, across the header formats.
+bin_size(){ # name  path
+  [ -f "$2" ] || { skip size "$1" "no binary"; return; }
+  st=$("$SIZE" "$2" 2>/dev/null | sed -n '2p' | awk '{print $1}')
+  dt=$("$DAS" "$2" 2>/dev/null | grep -oE 'text [0-9]+' | head -1 | awk '{print $2}')
+  [ -n "$st" ] && [ "$st" = "$dt" ] && ok size "$1" "text=$st (== das)" || bad size "$1" "size=$st das=$dt"
+}
+bin_size v1 "$HOME/unix/v1/unix72/fs/root/bin/mv"   # 0405 (6-word header)
+bin_size v5 "$HOME/unix/v5/bin/ls"                  # 0407
+bin_size v6 "$HOME/unix/v6/bin/ls"                  # 0410
+bin_size v7 "$HOME/unix/v7/bin/ls"                  # 0410
+# size on a 0431 overlay reports "N total text, overlays:(...)" (its own form)
+CSH211="$HOME/bsd/2.11/root/bin/csh"
+if [ -f "$CSH211" ]; then
+  "$SIZE" "$CSH211" 2>/dev/null | grep -q "overlays:" && ok size b211 "0431 overlay breakdown" || bad size b211 "no overlay report"
+fi
+# nm reads the First Edition (0405) symbol table
+V1MV="$HOME/unix/v1/unix72/fs/root/bin/mv"
+if [ -f "$V1MV" ]; then
+  n=$("$NM" "$V1MV" 2>/dev/null | grep -c .)
+  [ "${n:-0}" -ge 5 ] && ok nm v1 "$n First Edition (0405) symbols" || bad nm v1 "only ${n:-0} symbols"
+  # strip a copy: symbols gone, still runs under -u v1
+  cp "$V1MV" "$tmp/mv405"
+  "$STRIP" "$tmp/mv405" 2>/dev/null
+  ns=$("$NM" "$tmp/mv405" 2>/dev/null | grep -c .)   # stderr "no name list" excluded
+  out=$("$APSIM" -u v1 "$tmp/mv405" 2>&1 | head -1)
+  [ "${ns:-1}" -eq 0 ] && [ -n "$out" ] && ok strip v1 "0405 stripped clean, still runs" \
+    || bad strip v1 "$ns symbols left / out=[$out]"
+else skip nm v1 "no First Edition binary"; fi
+
 echo "------------------------------------------------------------"
 echo "cross-universe: passed $pass   failed $fail"
 [ "$fail" -eq 0 ] || { echo "failing:$failed"; exit 1; }

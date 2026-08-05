@@ -61,6 +61,30 @@ char **av;
 			errs++;
 			goto err;
 		}
+		if (exec.a_magic == 0405) {
+			/* First Edition a.out(V): a 6-word header that a_text
+			 * INCLUDES; the symbol table (a_data bytes) and V1
+			 * relocation bits (a_bss bytes) follow the text.  Strip =
+			 * keep the 12-byte header + text, zero the symtab/reloc
+			 * sizes, preserve the data-area word (a_syms, the bss). */
+			unsigned short h[6];
+			if (exec.a_data == 0 && exec.a_bss == 0) {
+				printf("%s:  already stripped\n", *av);
+				errs++;
+				goto err;
+			}
+			h[0] = exec.a_magic; h[1] = exec.a_text;
+			h[2] = 0;            h[3] = 0;
+			h[4] = exec.a_syms;  h[5] = exec.a_entry;
+			if (copyout(*av, out, (char *) h, sizeof h) < 0)
+				goto err;
+			filesize = (off_t) sizeof h;
+			(void) lseek(in, (off_t) 12, FSEEK_ABSOLUTE);
+			if (copy(*av, in, out, (off_t)(exec.a_text - 12)) < 0)
+				goto err;
+			filesize += (off_t)(exec.a_text - 12);
+			goto recreate;
+		}
 		if(ISSTRIPPED(exec)) {
 			printf("%s:  already stripped\n", *av);
 			errs++;
@@ -136,6 +160,7 @@ char **av;
 			else
 				filesize += (off_t) exec.a_syms;
 		}
+recreate:
 		(void) close(in);
 		(void) close(out);
 		if ((out = creat(*av, 0666)) < 0) {

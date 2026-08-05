@@ -1,0 +1,10 @@
+; cerror.o  --  pdp11-bsd29-das disassembly
+; magic 0407  text 14  data 0  bss 0  (850 symbols)
+
+.text
+cerror:
+	003260:  010067 006144          mov	r0,_errno
+	003264:  012700 177777          mov	$177777,r0
+	003270:  010506                 mov	r5,sp
+	003272:  012605                 mov	(sp)+,r5
+	003274:  000207                 rts	pc

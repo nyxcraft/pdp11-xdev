@@ -42,8 +42,18 @@ register char **argv;
 			fclose(f);
 			continue;
 		}
-		printf("%u +\t%u +\t%u =\t", buf.a_text,buf.a_data,buf.a_bss);
-		sum = (long) buf.a_text + (long) buf.a_data + (long) buf.a_bss;
+		if (buf.a_magic == 0405) {
+			/* First Edition a.out(V): a 6-word header that a_text
+			 * INCLUDES (real text = a_text-12); word 5 (the a_syms
+			 * slot) is the data area, i.e. the era's bss; no data
+			 * segment.  Words 3,4 are the symtab/reloc sizes. */
+			unsigned t = buf.a_text - 12, b = buf.a_syms;
+			printf("%u +\t%u +\t%u =\t", t, 0, b);
+			sum = (long) t + (long) b;
+		} else {
+			printf("%u +\t%u +\t%u =\t", buf.a_text,buf.a_data,buf.a_bss);
+			sum = (long) buf.a_text + (long) buf.a_data + (long) buf.a_bss;
+		}
 		printf("%ld =\t%lo", sum, sum);
 		printf("\t%s\n", *argv);
 #ifdef MENLO_OVLY
