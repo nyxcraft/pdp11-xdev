@@ -160,6 +160,20 @@ if [ -f "$U2" ]; then
   h=$(wc /etc/passwd | awk '{print $1,$2,$3}')
   [ -n "$o" ] && [ "$o" = "$h" ] && ok apsim ultrix2 "native 2.0 tape wc == host ($o)" \
     || bad apsim ultrix2 "2.0 wc [$o] != host [$h]"
+  # factor leans hard on FP11 ($literal FP operands + FT chop in its Newton
+  # sqrt); ls needs sys time to keep its hands off the text after the trap.
+  U2F="$HOME/unix/ultrix11/2.0/bin/factor"
+  if [ -f "$U2F" ]; then
+    o=$(echo 3600 | timeout 8 "$APSIM" -u ultrix2 "$U2F" 2>/dev/null | tr -s ' \n' ' ')
+    [ "$o" = " 2 2 2 2 3 3 5 5 " ] && ok apsim ultrix2 "native 2.0 factor 3600 (FP11 FT/\$imm)" \
+      || bad apsim ultrix2 "2.0 factor [$o]"
+  fi
+  U2LS="$HOME/unix/ultrix11/2.0/bin/ls"
+  if [ -f "$U2LS" ]; then
+    o=$(APSIM_ROOT="$HOME/unix/ultrix11/2.0" timeout 8 "$APSIM" -u ultrix2 "$U2LS" /bin 2>/dev/null | grep -c .)
+    [ "$o" -ge 100 ] && ok apsim ultrix2 "native 2.0 ls lists /bin ($o entries)" \
+      || bad apsim ultrix2 "2.0 ls listed only [$o] entries"
+  fi
 else skip apsim ultrix2 "no carved 2.0 /bin"; fi
 # 1BSD/2BSD are userland layered on V6/V7 (no kernel of their own), so their
 # personalities ARE v56/v7.  Validate that identity directly: a native V6/V7

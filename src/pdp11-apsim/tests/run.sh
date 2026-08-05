@@ -49,6 +49,20 @@ else
 	bad univ-gate 'probe did not assemble'
 fi
 
+# ---- 3b: FP11 $literal operands + FT chop mode --------------------------
+if "$AS" -j -o "$tmp/fpimm" "$here/fpimm.s" && "$APSIM" "$tmp/fpimm"; then
+	ok fpimm 'ldfps/movif/ldexp $literal + FT chop (factor regression)'
+else
+	bad fpimm "first failing case: exit $?"
+fi
+
+# ---- 3c: sys time must not write memory ----------------------------------
+if "$AS" -o "$tmp/timetext" "$here/timetext.s" && "$APSIM" "$tmp/timetext"; then
+	ok timetext 'direct sys time leaves the text after the trap intact'
+else
+	bad timetext "first failing case: exit $?"
+fi
+
 # ---- 4: real era binaries (need the distribution trees) ----------------
 for era in v5 v6; do
 	R="$HOME/unix/$era"

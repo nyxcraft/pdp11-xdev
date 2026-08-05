@@ -287,6 +287,7 @@ static struct fpv AC[6];
 static int FPS = 0200;			/* bit 0200 = double mode, 0100 = long int */
 #define FPD 0200
 #define FPL 0100
+#define FPT 0040	/* FT: chop (truncate) results instead of rounding */
 static int fN, fZ, fV, fC;		/* FP condition codes (cfcc copies to CPU) */
 
 /* ---- First Edition (V1/V2, magic 0405) personality --------------------
@@ -404,7 +405,8 @@ static struct fpv fp_norm128(int sign, int exp, u128fp v, int bits){
 	while(!(v>>119)){ v<<=1; exp--; }
 	sh=120-bits;
 	frac=(unsigned long long)(v>>sh);
-	if((unsigned long long)(v>>(sh-1))&1){		/* first discarded bit */
+	if(!(FPS&FPT) && ((unsigned long long)(v>>(sh-1))&1)){	/* first discarded bit;
+							 * FT set = chop, no round */
 		frac++;
 		if(frac>>bits){ frac>>=1; exp++; }
 	}
@@ -1369,12 +1371,20 @@ static void do_syscall(int num, int argaddr)
 	case 20:			/* getpid -> pid in r0, ppid in r1 (V7).  Real host
 					 * pids so fork/wait have consistent identities. */
 		R[1]=getppid()&0x7fff; r = guest_pid(); break;
-	case 13:			/* time(a1=*tloc) -> seconds (low word r0, high r1).
-					 * Deterministic: 2 by default, or $APSIM_TIME
-					 * (decimal epoch seconds) for date-bearing
-					 * output (nroff "Printed" footers etc). */
+	case 13:			/* time -> seconds in r0:r1 (high:low).
+					 * The kernel NEVER writes memory for sys
+					 * time (V6/V7/2BSD/Ultrix gtime() all just
+					 * return in r0/r1; the C library stores
+					 * through tloc itself).  An earlier apsim
+					 * treated the word after the trap as an
+					 * optional tloc -- but on a DIRECT `sys
+					 * time' (Ultrix-11 2.0 libc) that word is
+					 * the next INSTRUCTION, and the "store"
+					 * shredded 4 bytes of text with the time.
+					 * Deterministic: 2 by default, or
+					 * $APSIM_TIME (decimal epoch seconds). */
 		{ long t=2; char *e=getenv("APSIM_TIME"); if(e) t=atol(e);
-		  if(a1){ st2(a1,(int)(t>>16)); st2(a1+2,(int)(t&0xffff)); } R[1]=t&0xffff; r=(t>>16)&0xffff; }
+		  R[1]=t&0xffff; r=(t>>16)&0xffff; }
 		break;
 	case 17:			/* break(a1=new break addr).  apsim's 64KB is
 					 * flat-mapped, so the heap memory already
@@ -2286,10 +2296,23 @@ static int fpi_addr(int spec){
 }
 static void fp_setcc(struct fpv v){ fN=(v.frac!=0)&&v.sign; fZ=(v.frac==0); fV=0; fC=0; }
 
+/* $APSIM_FPTRACE: print each FP11 operation (pc, op, values, NZCV) in the
+ * same shape as Apout's FP debug trace, so the two engines' streams diff
+ * line for line when hunting an arithmetic divergence. */
+static int fptrace=-1;
+static double fpv2d(struct fpv v){	/* trace only -- no libm */
+	double d=(double)v.frac; int e=v.exp-56;
+	while(e>0){ d*=2; e--; } while(e<0){ d*=0.5; e++; }
+	return v.sign?-d:d;
+}
+#define FPTR(...) do{ if(fptrace>0) fprintf(stderr,__VA_ARGS__); }while(0)
+
 static void do_fp(int instr){
 	int op=instr&0177400, ac=(instr>>6)&3, spec=instr&077;
 	int isreg=((spec>>3)&7)==0, reg=spec&7, dbl=(FPS&FPD)?1:0;
 	struct fpv sv; int addr; long iv;
+	int pc0=(PC-2)&0xffff;
+	if(fptrace<0) fptrace=(getenv("APSIM_FPTRACE")!=0);
 
 	switch(instr){				/* no-operand / mode control */
 	case 0170000: FN=fN; FZ=fZ; FV=fV; FC=fC; return;	/* cfcc */
@@ -2302,18 +2325,23 @@ static void do_fp(int instr){
 	 * field), so they must be matched with the 0177700 mask -- clrf/tstf/
 	 * absf/negf differ only in bits 7-6, which 0177400 would drop. */
 	switch(instr&0177700){
-	case 0170100: FPS=isreg?R[reg]:ld2(operand(spec,0)); return;	/* ldfps */
+	case 0170100: FPS=isreg?R[reg]:getv(operand(spec,0),0);
+		FPTR("%06o: ldfps 0x%x\n",pc0,FPS); return;	/* ldfps */
 	case 0170300:	/* stst: FEC -> dst (+FEA if memory).  The lenient
 			 * engine (div0 -> 0, no traps) never latches an
 			 * error, so both read as zero. */
 		if(isreg) R[reg]=0;
-		else { addr=operand(spec,0); st2(addr,0); st2((addr+2)&0xffff,0); }
+		else { addr=operand(spec,0);
+		       if(!(addr&(ISIMM|ISREG))){ st2(addr,0); st2((addr+2)&0xffff,0); }
+		       else putv(addr,0,0); }
 		return;
-	case 0170200: if(isreg)R[reg]=FPS; else st2(operand(spec,0),FPS); return; /* stfps */
+	case 0170200: if(isreg)R[reg]=FPS; else putv(operand(spec,0),FPS,0); return; /* stfps */
 	case 0170400:	/* clrf */
-		fp_put(spec,fp_zero(),dbl); fN=0; fZ=1; fV=0; fC=0; return;
+		fp_put(spec,fp_zero(),dbl); fN=0; fZ=1; fV=0; fC=0;
+		FPTR("%06o: clrf NZCV %d%d%d%d\n",pc0,fN,fZ,fC,fV); return;
 	case 0170500:	/* tstf */
-		fp_setcc(fp_get(spec,dbl)); return;
+		fp_setcc(fp_get(spec,dbl));
+		FPTR("%06o: tstf NZCV %d%d%d%d\n",pc0,fN,fZ,fC,fV); return;
 	case 0170600:	/* absf */
 		sv=fp_get(spec,dbl); sv.sign=0; fp_put(spec,sv,dbl); fp_setcc(sv); return;
 	case 0170700:	/* negf */
@@ -2331,18 +2359,30 @@ static void do_fp(int instr){
 			ip = ifr ? fp_norm128(p.sign,p.exp,(u128fp)ifr<<64,56) : fp_zero();
 			fr = ffr ? fp_norm128(p.sign,p.exp,(u128fp)ffr<<64,56) : fp_zero();
 		  }
-		  AC[ac|1]=ip; AC[ac]=fr; fp_setcc(AC[ac]); }
+		  AC[ac|1]=ip; AC[ac]=fr; fp_setcc(AC[ac]);
+		  FPTR("%06o: modf -> int %f frac %f NZCV %d%d%d%d\n",pc0,fpv2d(ip),fpv2d(fr),fN,fZ,fC,fV); }
 		return;
-	case 0171000: AC[ac]=fp_mulv(AC[ac],fp_get(spec,dbl)); fp_setcc(AC[ac]); return;	/* mulf */
-	case 0172000: AC[ac]=fp_addv(AC[ac],fp_get(spec,dbl)); fp_setcc(AC[ac]); return;	/* addf */
-	case 0173000: AC[ac]=fp_addv(AC[ac],fp_negv(fp_get(spec,dbl))); fp_setcc(AC[ac]); return;	/* subf */
-	case 0174400: AC[ac]=fp_divv(AC[ac],fp_get(spec,dbl)); fp_setcc(AC[ac]); return;	/* divf */
+	case 0171000: sv=fp_get(spec,dbl); FPTR("%06o: mulf %f %f",pc0,fpv2d(AC[ac]),fpv2d(sv));
+		AC[ac]=fp_mulv(AC[ac],sv); fp_setcc(AC[ac]);
+		FPTR(" -> %f NZCV %d%d%d%d\n",fpv2d(AC[ac]),fN,fZ,fC,fV); return;	/* mulf */
+	case 0172000: sv=fp_get(spec,dbl); FPTR("%06o: addf %f %f",pc0,fpv2d(AC[ac]),fpv2d(sv));
+		AC[ac]=fp_addv(AC[ac],sv); fp_setcc(AC[ac]);
+		FPTR(" -> %f NZCV %d%d%d%d\n",fpv2d(AC[ac]),fN,fZ,fC,fV); return;	/* addf */
+	case 0173000: sv=fp_get(spec,dbl); FPTR("%06o: subf %f %f",pc0,fpv2d(AC[ac]),fpv2d(sv));
+		AC[ac]=fp_addv(AC[ac],fp_negv(sv)); fp_setcc(AC[ac]);
+		FPTR(" -> %f NZCV %d%d%d%d\n",fpv2d(AC[ac]),fN,fZ,fC,fV); return;	/* subf */
+	case 0174400: sv=fp_get(spec,dbl); FPTR("%06o: divf %f %f",pc0,fpv2d(AC[ac]),fpv2d(sv));
+		AC[ac]=fp_divv(AC[ac],sv); fp_setcc(AC[ac]);
+		FPTR(" -> %f NZCV %d%d%d%d\n",fpv2d(AC[ac]),fN,fZ,fC,fV); return;	/* divf */
 	case 0173400:	/* cmpf: CC from (fsrc-AC), compared exactly */
-		{ int c=fp_cmpv(fp_get(spec,dbl),AC[ac]);
-		  fN=(c<0); fZ=(c==0); fV=0; fC=0; }
+		{ struct fpv fs=fp_get(spec,dbl); int c=fp_cmpv(fs,AC[ac]);
+		  fN=(c<0); fZ=(c==0); fV=0; fC=0;
+		  FPTR("%06o: cmpf %f %f NZCV %d%d%d%d\n",pc0,fpv2d(AC[ac]),fpv2d(fs),fN,fZ,fC,fV); }
 		return;
-	case 0172400: AC[ac]=fp_get(spec,dbl); fp_setcc(AC[ac]); return;	/* movf LDF */
-	case 0174000: fp_put(spec,AC[ac],dbl); fp_setcc(AC[ac]); return;	/* movf STF */
+	case 0172400: AC[ac]=fp_get(spec,dbl); fp_setcc(AC[ac]);
+		FPTR("%06o: ldf %f\n",pc0,fpv2d(AC[ac])); return;	/* movf LDF */
+	case 0174000: fp_put(spec,AC[ac],dbl); fp_setcc(AC[ac]);
+		FPTR("%06o: stf %f\n",pc0,fpv2d(AC[ac])); return;	/* movf STF */
 	case 0177400: AC[ac]=fp_get(spec,!dbl); fp_setcc(AC[ac]); return;	/* movof (load cvt) */
 	case 0176000:	/* movfo (store cvt): D->F rounds at 24 bits */
 		sv=AC[ac];
@@ -2351,27 +2391,33 @@ static void do_fp(int instr){
 		fp_put(spec,sv,!dbl); fp_setcc(AC[ac]); return;
 	case 0175000:	/* movei (STEXP): dst = unbiased exponent of AC[ac] */
 		{ int e=(AC[ac].frac==0)?0:AC[ac].exp;
-		  if(isreg) R[reg]=e&0xffff; else st2(operand(spec,0),e&0xffff); }
+		  if(isreg) R[reg]=e&0xffff; else putv(operand(spec,0),e&0xffff,0);
+		  FPTR("%06o: stexp %f -> %d\n",pc0,fpv2d(AC[ac]),e); }
 		return;
 	case 0176400:	/* movie (LDEXP): AC[ac] = mantissa(AC[ac]) * 2^(int src) */
-		{ int n=isreg?(short)R[reg]:(short)ld2(operand(spec,0));
+		{ int n=isreg?(short)R[reg]:(short)getv(operand(spec,0),0);
 		  if(AC[ac].frac) AC[ac].exp=n;
 		  fN=(AC[ac].frac!=0)&&AC[ac].sign; fZ=(AC[ac].frac==0);
-		  fV=(n>127||n<-127); fC=0; }
+		  fV=(n>127||n<-127); fC=0;
+		  FPTR("%06o: ldexp %d -> %f\n",pc0,n,fpv2d(AC[ac])); }
 		return;
 	case 0177000:	/* movif: int -> float (rounds at mode width) */
 		if(isreg) iv=(short)R[reg];
 		else { addr=fpi_addr(spec);
-		       iv=(FPS&FPL)? (int)((ld2(addr)<<16)|ld2((addr+2)&0xffff))
+		       if(addr&ISIMM) iv=(short)immv;	/* $literal: one word */
+		       else iv=(FPS&FPL)? (int)((ld2(addr)<<16)|ld2((addr+2)&0xffff))
 				   : (short)ld2(addr); }
-		AC[ac]=fp_fromlong(iv); fp_setcc(AC[ac]); return;
+		AC[ac]=fp_fromlong(iv); fp_setcc(AC[ac]);
+		FPTR("%06o: ldcif int%d %ld -> %f\n",pc0,(FPS&FPL)?32:16,iv,fpv2d(AC[ac])); return;
 	case 0175400:	/* movfi: float -> int (truncate toward zero) */
 		iv=fp_tolong(AC[ac]);
 		if(isreg) R[reg]=iv&0xffff;
 		else { addr=fpi_addr(spec);
-		       if(FPS&FPL){ st2(addr,(iv>>16)&0xffff); st2((addr+2)&0xffff,iv&0xffff); }
+		       if(addr&ISIMM) ;			/* $literal dest: discard */
+		       else if(FPS&FPL){ st2(addr,(iv>>16)&0xffff); st2((addr+2)&0xffff,iv&0xffff); }
 		       else st2(addr,iv&0xffff); }
-		fN=(AC[ac].frac!=0)&&AC[ac].sign; fZ=(AC[ac].frac==0); fV=0; fC=0; return;
+		fN=(AC[ac].frac!=0)&&AC[ac].sign; fZ=(AC[ac].frac==0); fV=0; fC=0;
+		FPTR("%06o: stcfi %f -> %ld\n",pc0,fpv2d(AC[ac]),iv); return;
 	}
 	fprintf(stderr,"apsim: unhandled fp instr %06o at %06o\n", instr, (PC-2)&0xffff);
 	halted=1; ecode=127;
@@ -2915,7 +2961,17 @@ static void step(void)
 
 	/* trap-family + misc instructions */
 	switch(instr){
-	case 0000000: halted=1; ecode=0; return;	/* HALT */
+	case 0000000:					/* HALT: privileged -- in user mode
+						 * the CPU traps (UNIX -> SIGILL family).
+						 * Almost always a wild jump into zeroed
+						 * memory (word 0 IS the HALT opcode), so
+						 * never a silent success: report like an
+						 * illegal instruction, keeping the fault
+						 * visible. */
+		if(raise_fault(4)) return;
+		fprintf(stderr,"apsim: HALT at %06o (wild jump into zeroed memory?)\n",(PC-2)&0xffff);
+		{ int k; fprintf(stderr,"  recent pcs:"); for(k=0;k<16;k++) fprintf(stderr," %06o",pcring[(pcri+k)&15]); fprintf(stderr,"\n"); }
+		halted=1; ecode=128+4; return;
 	case 0000002:					/* RTI */
 	case 0000006: {					/* RTT: pop PC then PS (signal */
 		int npc=ld2(SP), ps=ld2((SP+2)&0xffff);	/* return -- sendsig's frame) */
