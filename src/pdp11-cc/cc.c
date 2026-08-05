@@ -136,6 +136,13 @@ resolve_universe()
 		universe = getenv("PDP11_UNIVERSE");
 	if (universe == 0 || universe[0] == 0)
 		universe = PDP11_UNIV_DEFAULT_NAME;
+	/* Accept the same alias spellings apsim does (1bsd->bsd1, 2.9->bsd29,
+	 * ...) and normalize to the canonical name, so the exported
+	 * PDP11_UNIVERSE cpp/ld read is always canonical. */
+#define X(alias, canon) \
+	if (strcmp(universe, alias) == 0) universe = canon;
+	PDP11_UNIVERSE_ALIASES(X)
+#undef X
 #define X(nm, id, status, desc) \
 	if (strcmp(universe, #nm) == 0 && status[0] == 'f') ok = 1;
 	PDP11_UNIVERSES(X)

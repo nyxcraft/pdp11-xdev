@@ -48,7 +48,7 @@ echo "== A. compiler pipeline (cpp/c0/c1/c2/as/ld + libc) x full universes =="
 #   v3..bsd29       the V7 family (inline/indirect; v3 is a best-guess on V5/V6)
 #   bsd210/bsd211   the 4BSD family (stack args + 4.x numbers)
 # Compile+run the battery under EACH to prove the one library serves all.
-for u in v1 v2 v3 v4 v5 v6 v7 bsd28 bsd29 bsd210 bsd211; do
+for u in v1 v2 v3 v4 v5 v6 v7 bsd1 bsd2 bsd28 bsd29 bsd210 bsd211; do
   [ -f "$here/../lib/libc.a" ] || { skip cc "$u" "no libc"; continue; }
   # plain and -O, for each battery program
   for prog in hello arith str float; do
@@ -133,6 +133,31 @@ run_era v4     "$HOME/unix/v4"
 run_era v7     "$HOME/unix/v7"
 run_era bsd210 "$HOME/bsd/2.10/root"
 run_era bsd211 "$HOME/bsd/2.11/root"
+# 1BSD/2BSD are userland layered on V6/V7 (no kernel of their own), so their
+# personalities ARE v56/v7.  Validate that identity directly: a native V6/V7
+# binary is byte-identical under bsd1/bsd2 and under v6/v7 -- then run a real
+# Berkeley binary (2BSD csh, 1BSD ex) under its universe.
+equiv(){ # label  base-universe  bsd-universe  native-binary
+  [ -f "$4" ] || { skip apsim "$3" "no $2 binary"; return; }
+  a=$("$APSIM" -u "$2" "$4" /etc/passwd 2>/dev/null | md5sum)
+  b=$("$APSIM" -u "$3" "$4" /etc/passwd 2>/dev/null | md5sum)
+  [ "$a" = "$b" ] && ok apsim "$3" "$2 native == under $3 (personality identity)" \
+    || bad apsim "$3" "output differs from $2"
+}
+equiv bsd1 v6 bsd1 "$HOME/unix/v6/bin/ls"
+equiv bsd2 v7 bsd2 "$HOME/unix/v7/bin/ls"
+CSH2="$HOME/bsd/2bsd/bin/csh"
+if [ -f "$CSH2" ]; then
+  out=$(echo 'echo csh-ok' | timeout 8 "$APSIM" -u bsd2 "$CSH2" 2>/dev/null | head -1)
+  [ "$out" = "csh-ok" ] && ok apsim bsd2 "2BSD csh runs a command" || bad apsim bsd2 "csh: [$out]"
+else skip apsim bsd2 "no 2BSD csh"; fi
+EX1="$HOME/bsd/1bsd/ex-1.1/a.outNOID"
+if [ -f "$EX1" ]; then
+  printf 'q\n' | timeout 8 "$APSIM" -u bsd1 "$EX1" >/dev/null 2>&1
+  rc=$?
+  { [ "$rc" != 124 ] && [ "$rc" -lt 128 ]; } \
+    && ok apsim bsd1 "1BSD ex loads+runs (V6 a.out, rc=$rc)" || bad apsim bsd1 "ex hung/crashed rc=$rc"
+else skip apsim bsd1 "no 1BSD ex"; fi
 # First Edition: run a surviving 0405 binary (ar prints usage on no args)
 if [ -f "$HOME/unix/v1/unix72/fs/root/bin/mv" ]; then
   out=$(timeout 12 "$APSIM" -u v1 "$HOME/unix/v1/unix72/fs/root/bin/mv" 2>&1 | head -1)

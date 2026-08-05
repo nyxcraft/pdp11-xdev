@@ -104,6 +104,11 @@ same thing everywhere.</p>
 <td>Third Edition (Feb 1973): no native binaries survive, but the manual confirms the 8-word 0407 (load-at-0, entry 0) + FP11 — matching our ld output and the V5/V6 personality; core syscalls match (its mid-range names are a First-Edition/modern hybrid)</td>
 </tr>
 <tr>
+<td><code>bsd1</code> <code>bsd2</code></td>
+<td>full</td>
+<td>1BSD (1978) &amp; 2BSD (1979): the first two Berkeley distributions — userland layered on Sixth/Seventh Edition (no kernel of their own), so their personalities <em>are</em> V6/V7. Our compiler + libc target them; a native V6/V7 binary is byte-identical under <code>bsd1</code>/<code>bsd2</code> and <code>v6</code>/<code>v7</code>, and native <code>ex</code> (1BSD) / <code>csh</code> (2BSD) run under apsim</td>
+</tr>
+<tr>
 <td><code>bsd211</code></td>
 <td>full</td>
 <td>2.11BSD (porting base): the 4BSD stack-arg convention + 4.x numbers, dispatched on <code>__univ</code> by the same libc</td>

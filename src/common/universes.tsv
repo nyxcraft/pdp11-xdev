@@ -25,8 +25,8 @@ v4	4	full	v56	-	Fourth Edition UNIX (1973), first C kernel; manual + native bina
 v5	5	full	v56	-	Fifth Edition UNIX (1974); manual + native binaries confirm 8-word 0407/0410 load-at-0 + the modern syscall table (mknod/dup/pipe/gid) -- the V5/V6 personality; universal libc compiles+runs here (root in ~/unix/v5)
 v6	6	full	v56	-	Sixth Edition UNIX (1975); manual + native binaries confirm 8-word 0407/0410/0411 (first to add split I&D) load-at-0 + the modern syscall table (getpid=20, ptrace=26, signal=48); universal libc compiles+runs here (root in ~/unix/v6)
 v7	7	full	v7	-	Seventh Edition UNIX (1979); the canonical syscall numbering the V7-family libc uses
-bsd1	11	planned	v56	1bsd	1BSD (1978), V6-kernel userland; sources in ~/bsd/1bsd
-bsd2	20	planned	v7	2bsd	2BSD (1979), V7-kernel userland; sources in ~/bsd/2bsd
+bsd1	11	full	v56	1bsd	1BSD (Mar 1978), the first Berkeley distribution: Pascal (pi/px) + the ex editor, userland layered ON Sixth Edition (no kernel of its own); V6 a.out (0407/0410/0411 load-at-0) + V6 syscalls = the V5/V6 personality; universal libc compiles+runs here, native ex-1.1 binaries load+run under apsim -u bsd1 (root in ~/bsd/1bsd)
+bsd2	20	full	v7	2bsd	2BSD (mid-1979), the second Berkeley distribution: csh/vi/more/termcap, userland layered ON Seventh Edition; V7 a.out (0407/0410 load-at-0) + the canonical V7 syscall numbering the libc already uses; universal libc compiles+runs here, native 2BSD binaries run under apsim -u bsd2 (root in ~/bsd/2bsd)
 bsd279	27	planned	v7	2.79	2.79BSD (1980), V7-kernel userland; sources in ~/bsd/2.79
 bsd28	28	full	bsd2x	2.8,2.8bsd	2.8BSD (1981), Ritchie cc era; FP11 D-format floating point
 bsd29	29	full	bsd2x	2.9,2.9bsd	2.9BSD (1983), overlays and split I&D; the default universe
