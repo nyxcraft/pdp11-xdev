@@ -2199,6 +2199,16 @@ static void do_sys(int instr)
 		int blk=ifetch(PC); PC=(PC+2)&0xffff;
 		num=ld2(blk)&0377;	/* the real sys instruction's number */
 		argaddr=blk+2;
+	} else if(Kern==PDP11_K_ULTRIX && (n & 0200)){
+		/* Ultrix-11 stack-argument variant: the kernel takes the call
+		 * number from the low 7 bits (sysent[i&0177]) and, when bit 0200
+		 * is set, reads the non-register args off the C stack instead of
+		 * from inline words (trap.c: `if (i & 0200) a = sp').  The DEC
+		 * FP-less /bin (2.0's 16USR set) is compiled this way -- e.g.
+		 * `sys 204' = write|0200, `sys 266' = ioctl|0200.  fd-style first
+		 * args still ride in R0 (sy_nrarg), which apsim already reads, so
+		 * pointing argaddr at SP lines the rest up at SP, SP+2, ... */
+		num=n&0177; argaddr=SP;
 	} else {			/* direct: inline args follow the trap.  Under the
 					 * stack-args convention (2.10/2.11) a bare `sys N'
 					 * has NO inline words -- skipping would eat real

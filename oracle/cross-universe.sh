@@ -151,13 +151,15 @@ if [ -f "$USUM" ]; then
       || bad apsim "$u" "native sum [$o] != [$ref]"
   done
 else skip apsim ultrix1 "no native V7M /bin"; fi
-# 2.0's OWN /bin carved from its install tape (a UNIX dump): most are FP-simulator
-# builds apsim's FP11 model can't run, but a non-FP one (sync) runs under -u ultrix2.
-U2="$HOME/unix/ultrix11/2.0/bin/sync"
+# 2.0's OWN /bin, carved from its install tape (a UNIX dump), runs under -u
+# ultrix2: these use Ultrix's stack-argument syscall variant (sys N|0200) that
+# apsim decodes.  A native `wc' must byte-match the host's count of /etc/passwd.
+U2="$HOME/unix/ultrix11/2.0/bin/wc"
 if [ -f "$U2" ]; then
-  timeout 8 "$APSIM" -u ultrix2 "$U2" >/dev/null 2>&1; rc=$?
-  [ "$rc" -eq 0 ] && ok apsim ultrix2 "native 2.0 tape binary (sync) runs" \
-    || bad apsim ultrix2 "2.0 sync rc=$rc"
+  o=$(timeout 8 "$APSIM" -u ultrix2 "$U2" /etc/passwd 2>/dev/null | awk '{print $1,$2,$3}')
+  h=$(wc /etc/passwd | awk '{print $1,$2,$3}')
+  [ -n "$o" ] && [ "$o" = "$h" ] && ok apsim ultrix2 "native 2.0 tape wc == host ($o)" \
+    || bad apsim ultrix2 "2.0 wc [$o] != host [$h]"
 else skip apsim ultrix2 "no carved 2.0 /bin"; fi
 # 1BSD/2BSD are userland layered on V6/V7 (no kernel of their own), so their
 # personalities ARE v56/v7.  Validate that identity directly: a native V6/V7
