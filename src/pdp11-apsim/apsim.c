@@ -869,6 +869,33 @@ static const struct sremap Sys3Remap[] = {
 	{79,C_NOSYS,0} /* semsys */,
 	{ 0, 0, 0 }
 };
+/* Ultrix-11 3.x only: the "Berkeley 2.9 compatable" block -- the 2.9BSD
+ * local sub-calls flattened onto direct numbers 80+ (3.1src sysent.c:
+ * "Indir's through #58 an offset to this point"; 80+n = 2.9 local #n).
+ * 3.0 and 3.1 share it; 1.0/2.0 predate it, so the gate is the universe,
+ * not the kern.  Slots the 3.1 sysent leaves nosys stay unmapped or map
+ * to C_NOSYS so a wrong-era probe still fails.  The UCB_NET socket
+ * numbers (101-106, 113-119) are deliberately unmapped: the distributed
+ * 3.x kernel carries TCP/IP as an Executive-mode driver, not the socket
+ * ABI. */
+static const struct sremap Ultrix3Remap[] = {
+	{80,C_NOSYS,0}, {81,C_NOSYS,0} /* login */,
+	{82,C_LSTAT,0} /* UCB_SYMLINKS lstat, V7 stat shape */,
+	{83,C_NOSYS,0} /* submit */, {84,C_OK,0} /* nostk */,
+	{85,C_NOSYS,0} /* killbkg */, {86,C_NOSYS,0} /* killpg (nosys in 3.1) */,
+	{87,C_OK,0} /* renice: accepted, no scheduler */,
+	{88,C_NOSYS,0} /* fetchi */, {89,C_NOSYS,0} /* ucall */,
+	{90,C_NOSYS,0} /* quota */, {91,C_NOSYS,0} /* qfstat */,
+	{92,C_NOSYS,0} /* qstat */, {93,C_SETPGRP,0},
+	{94,C_NOSYS,0} /* gldav (nosys in 3.1) */,
+	{95,C_OK,0} /* fperr: no pending FP fault to report */,
+	{96,C_NOSYS,0} /* vhangup (nosys in 3.1) */,
+	{98,C_SELECT,0}, {99,C_GETHOSTNAME,0}, {100,C_OK,0} /* sethostname */,
+	{107,C_OK,0}, {108,C_OK,0} /* setre[ug]id: identity model */,
+	{109,C_SYMLINK,0}, {110,C_READLINK,0},
+	{111,C_OK,0}, {112,C_OK,0} /* get/sethostid */,
+	{ 0, 0, 0 }
+};
 static int sremap_apply(const struct sremap *t, int code, int *stat211){
 	for(; t->guest; t++)
 		if(t->guest==code){
@@ -1067,8 +1094,12 @@ static void do_syscall(int num, int argaddr)
 	/* per-era renumbering: map the guest number onto the canonical table */
 	if(Kern==PDP11_K_BSD210)      num = sremap_apply(Bsd210Remap, num, &stat211);
 	else if(Kern==PDP11_K_BSD211) num = sremap_apply(Bsd211Remap, num, &stat211);
-	else if(Kern==PDP11_K_SYS3 || Kern==PDP11_K_ULTRIX)
+	else if(Kern==PDP11_K_SYS3 || Kern==PDP11_K_ULTRIX){
 	                              num = sremap_apply(Sys3Remap, num, &stat211);
+		if(Kern==PDP11_K_ULTRIX &&
+		   (!strcmp(Univ,"ultrix3") || !strcmp(Univ,"ultrix31")))
+			num = sremap_apply(Ultrix3Remap, num, &stat211);
+	}
 	else if(Kern==PDP11_K_V56 && v56_nosys(num)){
 		if(systrace) fprintf(stderr, "sys %d: nosys in this era\n", num);
 		FC=1; R[0]=EINVAL; return;

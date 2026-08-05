@@ -175,6 +175,36 @@ if [ -f "$U2" ]; then
       || bad apsim ultrix2 "2.0 ls listed only [$o] entries"
   fi
 else skip apsim ultrix2 "no carved 2.0 /bin"; fi
+# ultrix3/ultrix31: native 3.x /bin carved from the TUHS boot tapes (root
+# dumps, oracle/native/v7dump.py).  3.x adds the "Berkeley 2.9 compatable"
+# syscall block at 80+ (the 2.9 local sub-calls flattened: 82=lstat,
+# 93=setpgrp, 99=gethostname...), which its ls needs -- and which must NOT
+# answer under the pre-3.x universes (the negative half of the gate).
+for uv in ultrix3:3.0 ultrix31:3.1; do
+  u=${uv%:*}; d="$HOME/unix/ultrix11/${uv#*:}"
+  if [ -f "$d/bin/wc" ]; then
+    o=$(timeout 8 "$APSIM" -u $u "$d/bin/wc" /etc/passwd 2>/dev/null | awk '{print $1,$2,$3}')
+    h=$(wc /etc/passwd | awk '{print $1,$2,$3}')
+    [ -n "$o" ] && [ "$o" = "$h" ] && ok apsim $u "native ${uv#*:} wc == host ($o)" \
+      || bad apsim $u "${uv#*:} wc [$o] != host [$h]"
+    o=$(APSIM_ROOT="$d" timeout 8 "$APSIM" -u $u "$d/bin/ls" /bin 2>/dev/null | grep -c .)
+    [ "$o" -ge 100 ] && ok apsim $u "native ${uv#*:} ls via the 80+ block ($o entries)" \
+      || bad apsim $u "${uv#*:} ls listed only [$o] entries"
+    o=$(echo 3600 | timeout 8 "$APSIM" -u $u "$d/bin/factor" 2>/dev/null | tr -s ' \n' ' ')
+    [ "$o" = " 2 2 2 2 3 3 5 5 " ] && ok apsim $u "native ${uv#*:} factor 3600" \
+      || bad apsim $u "${uv#*:} factor [$o]"
+  else skip apsim $u "no carved ${uv#*:} /bin"; fi
+done
+# negative gate: a 3.x binary's sys 82 (lstat) must stay ENOSYS under the
+# 2.0 universe -- era numbering must not leak backward down the Ultrix line.
+U31LS="$HOME/unix/ultrix11/3.1/bin/ls"
+if [ -f "$U31LS" ]; then
+  o=$(APSIM_ROOT="$HOME/unix/ultrix11/3.1" timeout 8 "$APSIM" -u ultrix2 "$U31LS" /bin 2>/dev/null | grep -c .)
+  # lstat(82) must be ENOSYS there, so ls reports "not found" (1 line)
+  # rather than producing a listing -- a real listing is the era leak.
+  [ "$o" -lt 100 ] && ok apsim ultrix2 "3.x lstat(82) correctly dead under ultrix2" \
+    || bad apsim ultrix2 "3.x ls WORKED under ultrix2 (era leak)"
+fi
 # 1BSD/2BSD are userland layered on V6/V7 (no kernel of their own), so their
 # personalities ARE v56/v7.  Validate that identity directly: a native V6/V7
 # binary is byte-identical under bsd1/bsd2 and under v6/v7 -- then run a real
