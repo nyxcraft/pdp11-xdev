@@ -193,8 +193,29 @@ for uv in ultrix3:3.0 ultrix31:3.1; do
     o=$(echo 3600 | timeout 8 "$APSIM" -u $u "$d/bin/factor" 2>/dev/null | tr -s ' \n' ' ')
     [ "$o" = " 2 2 2 2 3 3 5 5 " ] && ok apsim $u "native ${uv#*:} factor 3600" \
       || bad apsim $u "${uv#*:} factor [$o]"
+    # awk40 is a 0430 auto-overlay binary with an ODD a_entry (the V7-lineage
+    # start-address marker bit): one check covers the overlay loader, the
+    # entry&~1 mask, and the xstr string pool (/usr/lib/awk_strings).
+    if [ -f "$d/usr/bin/awk40" ]; then
+      o=$(echo "7 6" | APSIM_ROOT="$d" timeout 8 "$APSIM" -u $u "$d/usr/bin/awk40" '{ print $1 * $2 }' 2>&1)
+      [ "$o" = "42" ] && ok apsim $u "native ${uv#*:} awk40 (0430 overlays, odd entry)" \
+        || bad apsim $u "${uv#*:} awk40 [$o]"
+    fi
+    if [ -f "$d/bin/units" ] && [ -f "$d/usr/lib/units" ]; then
+      o=$(printf '1ft\nin\n' | APSIM_ROOT="$d" timeout 8 "$APSIM" -u $u "$d/bin/units" 2>/dev/null | grep -c '1.200000e+01')
+      [ "$o" = "1" ] && ok apsim $u "native ${uv#*:} units reads its table" \
+        || bad apsim $u "${uv#*:} units failed"
+    fi
   else skip apsim $u "no carved ${uv#*:} /bin"; fi
 done
+# 2.0's /usr dump (tape file 13) carves too; its awk40 is the same overlay
+# + odd-entry + stack-args combination under the 2.0 universe.
+if [ -f "$HOME/unix/ultrix11/2.0/usr/bin/awk40" ]; then
+  o=$(echo "7 6" | APSIM_ROOT="$HOME/unix/ultrix11/2.0" timeout 8 "$APSIM" -u ultrix2 \
+      "$HOME/unix/ultrix11/2.0/usr/bin/awk40" '{ print $1 * $2 }' 2>&1)
+  [ "$o" = "42" ] && ok apsim ultrix2 "native 2.0 awk40 (overlays + stack args)" \
+    || bad apsim ultrix2 "2.0 awk40 [$o]"
+fi
 # negative gate: a 3.x binary's sys 82 (lstat) must stay ENOSYS under the
 # 2.0 universe -- era numbering must not leak backward down the Ultrix line.
 U31LS="$HOME/unix/ultrix11/3.1/bin/ls"

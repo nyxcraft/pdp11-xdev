@@ -3271,7 +3271,10 @@ static int load_aout_env(const char *path, int nargs, char **args, int nenv, cha
 	if(hdr[0]==0411) gbrk=(dsize+hdr[3])&0xffff;
 	fclose(f);
 	setup_stack(nargs,args,nenv,env);
-	PC=entry;
+	PC=entry&~1;	/* the V7-lineage kernels all mask the low bit
+			 * (setregs: `u.u_ar0[PC] = ux_entloc & ~01') -- an
+			 * ODD a_entry is a marker, not an address.  Ultrix
+			 * overlaid binaries (awk40: entry 3) start at 2. */
 	return 0;
 }
 static int load_aout(const char *path, int nargs, char **args){

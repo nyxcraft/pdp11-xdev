@@ -9,9 +9,10 @@
 #   status  full = a compile target: the universal libc + headers serve it and
 #           tests pass; sim = apsim runs this era's native binaries (verified)
 #           but it is not a compile target; planned = registered, not yet proven.
-#           The "full" set is the V7-syscall-convention family (V5..2.9BSD),
-#           which the one universal libc serves; 2.10/2.11 use the 4BSD stack-
-#           arg convention and remain sim until the libc dispatches it.
+#           All three syscall-convention families are served by the one
+#           universal libc: First Edition inline-arg traps (v1/v2), the V7
+#           family (v3..2.9BSD, sys3/sys5v2/ultrix*), and the 4BSD stack-arg
+#           convention (bsd210/bsd211, dual-convention stubs via mkdual.py).
 #   kern    apsim kernel personality (era-ascending: v1 v56 v7 sys3 ultrix
 #           bsd2x bsd210 bsd211); the syscall table/shapes apsim presents
 #   aliases comma-separated accepted spellings, or - for none
