@@ -23,6 +23,11 @@
 #include "a.out.h"
 #include "ar.h"
 
+/* POSIX/GNU entry points ISO C99 (-std=c99) hides from the headers;
+ * declared explicitly so no feature-test macro is needed. */
+char	*strdup(const char *);
+FILE	*open_memstream(char **, size_t *);
+
 /* ---- the file being disassembled ---------------------------------------- */
 static unsigned char *F;	/* whole input file */
 static long FLEN;

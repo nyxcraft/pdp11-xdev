@@ -3,15 +3,15 @@
 # (src/pdp11-<tool>/).
 #
 # HOSTCC is the host C compiler used to build the tools themselves.  The host
-# tools have been modernized to clean C99 (ANSI prototypes, explicit types,
-# proper headers; libc stays K&R, since it is target code for our own cc), so
-# COMPAT no longer carries any -Wno-* suppressions -- every tool compiles
-# warning-free.  Three semantic flags remain because they are CORRECTNESS for
+# tools have been modernized to clean, STRICT ISO C99 (ANSI prototypes,
+# explicit types, no BSD types, POSIX/XSI entry points declared explicitly in
+# the sources rather than via a feature-test macro) -- so COMPAT is plain
+# `-std=c99' with NO _DEFAULT_SOURCE / _GNU_SOURCE and NO -Wno-* suppressions:
+# the whole tree builds warning-free.  (libc stays K&R -- it is target code for
+# our own cc.)  Three semantic flags remain because they are CORRECTNESS for
 # this code, not dialect:
 #
-#   -std=gnu99                 C99 with the traditional Unix feature macros, so
-#                              the BSD types (u_short/u_char/u_int) and mktemp
-#                              resolve without a _DEFAULT_SOURCE define
+#   -std=c99                   strict ISO C99
 #   -fno-strict-aliasing       the code type-puns through unions and int/char*
 #                              casts (the on-disk a.out/ar word access); TBAA
 #                              would miscompile it
@@ -28,7 +28,7 @@ HOSTCC ?= cc
 OPT    ?= -O
 YACC   ?= yacc -Wno-yacc -Wno-other -Wno-conflicts-sr
 
-COMPAT = -std=gnu99 -fno-strict-aliasing -fwrapv -fcommon
+COMPAT = -std=c99 -fno-strict-aliasing -fwrapv -fcommon
 
 # Locations, relative to a tool directory
 COMMON = ../common

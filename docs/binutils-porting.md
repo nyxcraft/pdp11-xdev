@@ -19,11 +19,12 @@ ${HOSTCC} ${O} ${COMPAT} -Icross -o ${BIN}/${PREFIX}-strip strip/strip.c
 ```
 
 `-Icross` makes them use the fixed-width on-disk structs.  `COMPAT` is now
-just `-std=gnu99` plus the three correctness flags (`-fno-strict-aliasing`,
-`-fwrapv`, `-fcommon`) — the host tools have been modernized to clean C99
-(ANSI prototypes, explicit types), so there are no warning suppressions
-left to carry.  (The target C library stays K&R; it is compiled by our own
-`cc`, not the host compiler.)
+just `-std=c99` plus the three correctness flags (`-fno-strict-aliasing`,
+`-fwrapv`, `-fcommon`) — the host tools were modernized to clean, strict
+ISO C99 (ANSI prototypes, explicit types, no BSD types; the few POSIX/XSI
+entry points are declared in the sources, so no feature-test macro is
+needed), leaving no warning suppressions to carry.  (The target C library
+stays K&R; it is compiled by our own `cc`, not the host compiler.)
 
 ## Porting fixes
 

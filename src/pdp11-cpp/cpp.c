@@ -12,6 +12,8 @@
 # include <sys/stat.h>
 # include <fcntl.h>
 # include "universe.h"
+/* POSIX readlink is hidden under strict -std=c99; declare it (no macro). */
+ssize_t	readlink(const char *, char *, size_t);
 /* C command
 /* written by John F. Reiser
 /* July/August 1978

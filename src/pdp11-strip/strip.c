@@ -24,7 +24,7 @@ struct	ovlhdr	ovlhdr, novlhdr;
 #define	ISSTRIPPED(x)	(((x).a_syms == 0) && (((x).a_flag & 1) != 0))
 
 int copy(char *name, int fromfd, int tofd, off_t size);
-int copyout(char *name, int tofd, char *buf, u_short nbytes);
+int copyout(char *name, int tofd, char *buf, unsigned short nbytes);
 
 int
 main(int ac, char **av)
@@ -211,7 +211,7 @@ copy(char *name, int fromfd, int tofd, off_t size)
 			errs++;
 			return (-1);
 		}
-		n = write(tofd, buf, (u_short) s);
+		n = write(tofd, buf, (unsigned short) s);
 		if (n != s) {
 			perror(name);
 			errs++;
@@ -223,7 +223,7 @@ copy(char *name, int fromfd, int tofd, off_t size)
 }
 
 int
-copyout (char *name, int tofd, char *buf, u_short nbytes)
+copyout (char *name, int tofd, char *buf, unsigned short nbytes)
 {
 	if (write(tofd, buf, nbytes) != nbytes) {
 		perror(name);
