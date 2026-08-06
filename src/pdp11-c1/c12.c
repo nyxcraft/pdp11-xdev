@@ -6,12 +6,22 @@
  */
 
 #include "c1.h"
+#include <stdlib.h>
+#include <stdarg.h>
+
+/* c12-local forward declarations (functions used before their definitions).
+ * struct acl is defined further down; forward-declare the tag so the
+ * pointer-parameter prototypes below do not create a new parameter-scope tag. */
+struct acl;
+void	constfold(int op, int *vp, int av);
+void	distrib(struct acl *list);
+void	squash(struct tnode **p, struct tnode **maxp);
+void	insert(int op, struct tnode *atree, struct acl *alist);
 
 struct tnode *
-optim(atree)
-struct tnode *atree;
+optim(struct tnode *atree)
 {
-	register op, dope;
+	register int op, dope;
 	int d1, d2;
 	struct tnode *t;
 	register struct tnode *tree;
@@ -273,8 +283,7 @@ struct tnode *atree;
 }
 
 struct tnode *
-unoptim(atree)
-struct tnode *atree;
+unoptim(struct tnode *atree)
 {
 	register struct tnode *subtre, *tree;
 	register struct tnode *p;
@@ -580,8 +589,7 @@ struct tnode *atree;
  */
 
 struct tnode *
-lvfield(at)
-struct tnode *at;
+lvfield(struct tnode *at)
 {
 	register struct tnode *t, *t1;
 	register struct fasgn *t2;
@@ -590,14 +598,14 @@ struct tnode *at;
 	switch (t->op) {
 
 	case ASSIGN:
-		t2 = getblk(sizeof(*t2));
+		t2 = (struct fasgn *)getblk(sizeof(*t2));
 		t2->op = FSELA;
 		t2->type = UNSIGN;
 		t1 = t->tr1->tr2;
 		t2->mask = ((1<<t1->tr1->value)-1)<<t1->tr2->value;
 		t2->tr1 = t->tr1;
 		t2->tr2 = t->tr2;
-		t = t2;
+		t = (struct tnode *)t2;
 
 	case ASANDN:
 	case ASPLUS:
@@ -632,8 +640,7 @@ struct acl {
 };
 
 struct tnode *
-acommute(atree)
-struct tnode *atree;
+acommute(struct tnode *atree)
 {
 	struct acl acl;
 	int d, i, op, flt, d1;
@@ -734,8 +741,8 @@ struct tnode *atree;
 	return(tree);
 }
 
-distrib(list)
-struct acl *list;
+void
+distrib(struct acl *list)
 {
 /*
  * Find a list member of the form c1c2*x such
@@ -807,8 +814,8 @@ struct acl *list;
 	goto loop;
 }
 
-squash(p, maxp)
-struct tnode **p, **maxp;
+void
+squash(struct tnode **p, struct tnode **maxp)
 {
 	register struct tnode **np;
 
@@ -816,8 +823,8 @@ struct tnode **p, **maxp;
 		*np = *(np+1);
 }
 
-constfold(op, vp, av)
-int *vp;
+void
+constfold(int op, int *vp, int av)
 {
 	register int v;
 
@@ -875,8 +882,7 @@ int *vp;
 }
 
 struct tnode *
-lconst(op, lp, rp)
-register struct tnode *lp, *rp;
+lconst(int op, register struct tnode *lp, register struct tnode *rp)
 {
 	long l, r;
 
@@ -967,11 +973,10 @@ register struct tnode *lp, *rp;
 	return(lp);
 }
 
-insert(op, atree, alist)
-struct tnode *atree;
-struct acl *alist;
+void
+insert(int op, struct tnode *atree, struct acl *alist)
 {
-	register d;
+	register int d;
 	register struct acl *list;
 	register struct tnode *tree;
 	int d1, i;
@@ -1018,9 +1023,12 @@ ins:
 	list->llist[list->nextl++] = tree;
 }
 
+/* Called with three args for a unary node, four for a binary one.  The fourth
+ * (tr2) is read only when opdope[op]&BINARY, exactly the condition under which
+ * the K&R callers supplied it; a variadic prototype leaves every call site
+ * unchanged (cf. error). */
 struct tnode *
-tnode(op, type, tr1, tr2)
-struct tnode *tr1, *tr2;
+tnode(int op, int type, struct tnode *tr1, ...)
 {
 	register struct tnode *p;
 
@@ -1029,27 +1037,30 @@ struct tnode *tr1, *tr2;
 	p->type = type;
 	p->degree = 0;
 	p->tr1 = tr1;
-	if (opdope[op]&BINARY)
-		p->tr2 = tr2;
-	else
+	if (opdope[op]&BINARY) {
+		va_list ap;
+		va_start(ap, tr1);
+		p->tr2 = va_arg(ap, struct tnode *);
+		va_end(ap);
+	} else
 		p->tr2 = NULL;
 	return(p);
 }
 
 struct tnode *
-tconst(val, type)
+tconst(int val, int type)
 {
 	register struct tconst *p;
 
-	p = getblk(sizeof(*p));
+	p = (struct tconst *)getblk(sizeof(*p));
 	p->op = CON;
 	p->type = type;
 	p->value = val;
-	return(p);
+	return((struct tnode *)p);
 }
 
 struct tnode *
-getblk(size)
+getblk(int size)
 {
 	register struct tnode *p;
 
@@ -1061,7 +1072,7 @@ getblk(size)
 	 * its block.  Always allocate a full tnode. */
 	if (size < sizeof(struct tnode))
 		size = sizeof(struct tnode);
-	p = curbase;
+	p = (struct tnode *)curbase;
 	if ((curbase += size) >= coremax) {
 		/* Grow the node arena.  The PDP-11 grew it with raw sbrk(), but
 		 * on the host that collides with libc malloc (which c1 itself
@@ -1077,7 +1088,8 @@ getblk(size)
 	return(p);
 }
 
-islong(t)
+int
+islong(int t)
 {
 	if (t==LONG)
 		return(2);
@@ -1085,8 +1097,7 @@ islong(t)
 }
 
 struct tnode *
-isconstant(at)
-struct tnode *at;
+isconstant(struct tnode *at)
 {
 	register struct tnode *t;
 
@@ -1099,8 +1110,7 @@ struct tnode *at;
 }
 
 struct tnode *
-hardlongs(at)
-struct tnode *at;
+hardlongs(struct tnode *at)
 {
 	register struct tnode *t;
 

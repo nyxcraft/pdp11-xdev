@@ -3,13 +3,41 @@ static	char	sccsid[] = "@(#)cc.c	2.6";	/*	SCCS id keyword	*/
 # include <stdio.h>
 # include <ctype.h>
 # include <signal.h>
+# include <stdlib.h>
+# include <string.h>
+# include <fcntl.h>
+# include <sys/types.h>
+# include <sys/wait.h>
 # include <whoami.h>
 # include "universe.h"
 
-/* declared here, not via <string.h>/<unistd.h>, which clash with cc's own
- * exec* wrappers; the pointer returns must be declared so LP64 does not
- * truncate them */
-char	*strchr(), *strstr(), *strncpy();
+/* OS entry points that live in <unistd.h>, declared individually: cc supplies
+ * its own execvp/execlp below whose signatures are incompatible with libc's,
+ * so <unistd.h> (which would prototype those) cannot be included.  Real
+ * prototypes here keep the pointer returns from being truncated under LP64. */
+ssize_t	readlink(const char *, char *, size_t);
+int	close(int);
+pid_t	fork(void);
+int	execv(const char *, char *const *);
+unsigned int sleep(unsigned int);
+int	unlink(const char *);
+
+/* forward prototypes for the file-local helpers; cc's own execvp/execlp keep
+ * external linkage so they shadow libc. */
+static char	*tmpdir_(void);
+static void	setup_tools(char *av0);
+static void	resolve_universe(void);
+static void	idexit(int sig);
+static void	dexit(void);
+static void	error(char *s, char *x);
+static int	getsuf(char as[]);
+static char	*setsuf(char *as, int ch);
+static int	callsys(char f[], char *v[]);
+static char	*copy(char *as);
+static int	nodup(char **l, char *os);
+static void	cunlink(char *f);
+static char	*execat(char *s1, char *s2, char *si);
+int	execvp(char *name, char **argv);
 
 /* cc command */
 
@@ -36,7 +64,7 @@ char	*outfile;
  * TMPDIR lets the build avoid a flaky/namespaced /tmp (WSL drvfs, systemd
  * PrivateTmp).  Only the compiler-pass scratch files live here -- it does not
  * affect the emitted object. */
-char	*tmpdir_(){ char *getenv(); char *t=getenv("TMPDIR"); return (t&&*t)?t:"/tmp"; }
+static char	*tmpdir_(void){ char *t=getenv("TMPDIR"); return (t&&*t)?t:"/tmp"; }
 # define CHSPACE 1000
 char	ts[CHSPACE+50];
 char	*tsa = ts;
@@ -54,25 +82,22 @@ int	oflag;
 int	proflag;
 #ifdef MENLO_OVLY
 int	ovlyflag;
-#endif MENLO_OVLY
+#endif /* MENLO_OVLY */
 int	noflflag;
 char	*chpass ;
 char	*npassname ;
-char	pass0[1024] = "../lib/c0";
-char	pass1[1024] = "../lib/c1";
-char	pass2[1024] = "../lib/c2";
-char	passp[1024] = "../lib/cpp";
-char	asname[1024] = "as";	/* resolved by setup_tools() */
-char	ldname[1024] = "ld";	/* resolved by setup_tools() */
+char	pass0[2048] = "../lib/c0";
+char	pass1[2048] = "../lib/c1";
+char	pass2[2048] = "../lib/c2";
+char	passp[2048] = "../lib/cpp";
+char	asname[2048] = "as";	/* resolved by setup_tools() */
+char	ldname[2048] = "ld";	/* resolved by setup_tools() */
 char	prefbuf[1024];
 char	*pref = "/lib/crt0.o";
 char	*crtname = "crt0.o";	/* which startup file; composed into pref */
 char	libroot[1024];		/* ".../lib/" next to the bin dir, or "" */
 char	*universe;		/* resolved universe name (--universe / -u /
 				 * $PDP11_UNIVERSE, default bsd29) */
-char	*copy();
-char	*setsuf();
-char	*strcat();
 
 /*
  * Resolve the compiler-pass binaries relative to this cc's own location,
@@ -80,8 +105,8 @@ char	*strcat();
  * passes are .../usr/bin/<prefix>-{cpp,c0,c1,c2,as,ld} and crt0.o is in
  * .../usr/lib/.  Mirrors the VAX project's scheme.
  */
-setup_tools(av0)
-char *av0;
+static void
+setup_tools(char *av0)
 {
 	static char self[1024], base[1024], prefix[64];
 	char *p, *last, *name, *dash, *bin;
@@ -127,9 +152,9 @@ char *av0;
  * against.  The resolved name is exported so cpp (include dir) and ld
  * (library dir) pick the same era without their own flags.
  */
-resolve_universe()
+static void
+resolve_universe(void)
 {
-	char *getenv();
 	int ok = 0;
 
 	if (universe == 0 || universe[0] == 0)
@@ -166,17 +191,13 @@ resolve_universe()
 		sprintf(prefbuf, "/lib/%s", crtname);
 	pref = prefbuf;
 }
-char	*strcpy();
-
-main(argc, argv)
-char *argv[]; 
+int main(int argc, char **argv)
 {
 	char *t;
 	char *savetsp;
 	char *assource;
 	char **pv, *ptemp[MAXOPT], **pvt;
 	int nc, nl, i, j, c, f20, nxo, na;
-	int idexit();
 
 	i = nc = nl = f20 = nxo = 0;
 	setup_tools(argv[0]);
@@ -218,7 +239,7 @@ char *argv[];
 		case 'V':
 			ovlyflag++;
 			break;
-#endif MENLO_OVLY
+#endif /* MENLO_OVLY */
 		case 'E':
 			exflag++;
 		case 'P':
@@ -502,7 +523,7 @@ assemble:
 #ifdef MENLO_OVLY
 				/* our as IS the overlay as (no separate ovas) */
 				ovlyflag ? asname :
-#endif MENLO_OVLY
+#endif /* MENLO_OVLY */
 				asname, av) > 1) {
 			cflag++;
 			eflag++;
@@ -532,7 +553,7 @@ nocom:
 			av[j++] =
 #ifdef MENLO_OVLY
 				ovlyflag ? "-lovc" :
-#endif MENLO_OVLY
+#endif /* MENLO_OVLY */
 				"-lc";
 		}
 		av[j++] = 0;
@@ -544,7 +565,7 @@ nocom:
 #ifdef MENLO_OVLY
 				/* our ld IS the overlay ld (no separate ovld) */
 				ovlyflag ? ldname :
-#endif MENLO_OVLY
+#endif /* MENLO_OVLY */
 				ldname, av);
 		if (nc==1 && nxo==1 && eflag==0)
 			cunlink(setsuf(clist[0], 'o'));
@@ -552,13 +573,15 @@ nocom:
 	dexit();
 }
 
-idexit()
+static void
+idexit(int sig)
 {
 	eflag = 100;
 	dexit();
 }
 
-dexit()
+static void
+dexit(void)
 {
 	if (!pflag) {
 		cunlink(tmp1);
@@ -572,8 +595,8 @@ dexit()
 	exit(eflag);
 }
 
-error(s, x)
-char *s, *x;
+static void
+error(char *s, char *x)
 {
 	fprintf(exflag?stderr:stdout, s, x);
 	putc('\n', exflag? stderr : stdout);
@@ -584,8 +607,8 @@ char *s, *x;
 
 
 
-getsuf(as)
-char as[];
+static int
+getsuf(char as[])
 {
 	register int c;
 	register char *s;
@@ -604,9 +627,8 @@ char as[];
 	return(0);
 }
 
-char *
-setsuf(as, ch)
-char *as;
+static char *
+setsuf(char *as, int ch)
 {
 	register char *s, *s1;
 
@@ -618,8 +640,8 @@ char *as;
 	return(s1);
 }
 
-callsys(f, v)
-char f[], *v[]; 
+static int
+callsys(char f[], char *v[])
 {
 	int t, status;
 
@@ -644,11 +666,9 @@ char f[], *v[];
 	return((status>>8) & 0377);
 }
 
-char *
-copy(as)
-char *as;
+static char *
+copy(char *as)
 {
-	char *malloc();
 	register char *otsp, *s;
 
 	otsp = tsp;
@@ -665,8 +685,8 @@ char *as;
 	return(otsp);
 }
 
-nodup(l, os)
-char **l, *os;
+static int
+nodup(char **l, char *os)
 {
 	register char *t, *s;
 	register int c;
@@ -685,8 +705,8 @@ char **l, *os;
 	return(1);
 }
 
-cunlink(f)
-char *f;
+static void
+cunlink(char *f)
 {
 	if (f==NULL)
 		return;
@@ -703,17 +723,19 @@ char *f;
 #include <errno.h>
 
 static	char shell[] =	"/bin/sh";
-char	*execat(), *getenv();
-extern	errno;
 
-execlp(name, argv)
-char *name, *argv;
+/* deliberately K&R-simple, forwarding to execvp; its two fixed args cannot
+ * match libc's variadic execlp builtin, so the builtin-mismatch warning is
+ * suppressed only around this definition. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wbuiltin-declaration-mismatch"
+int execlp(char *name, char *argv)
 {
 	return(execvp(name, &argv));
 }
+#pragma GCC diagnostic pop
 
-execvp(name, argv)
-char *name, **argv;
+int execvp(char *name, char **argv)
 {
 	char *pathstr;
 	register char *cp;
@@ -721,7 +743,7 @@ char *name, **argv;
 	char *newargs[256];
 	int i;
 	register unsigned etxtbsy = 1;
-	register eacces = 0;
+	register int eacces = 0;
 
 	/* a name containing '/' is used directly -- no $PATH search.  cc now
 	 * passes absolute pass paths, and searching PATH would both be wrong
@@ -768,10 +790,8 @@ char *name, **argv;
 	return(-1);
 }
 
-char *
-execat(s1, s2, si)
-register char *s1, *s2;
-char *si;
+static char *
+execat(register char *s1, register char *s2, char *si)
 {
 	register char *s;
 

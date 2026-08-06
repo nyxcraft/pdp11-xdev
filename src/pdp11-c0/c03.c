@@ -14,9 +14,9 @@
 /*
  * Process a sequence of declaration statements
  */
-declist(sclass)
+int declist(int sclass)
 {
-	register sc, offset;
+	register int sc, offset;
 	struct hshtab typer;
 
 	offset = 0;
@@ -33,11 +33,9 @@ declist(sclass)
  * Store back the storage class, and fill in the type
  * entry, which looks like a hash table entry.
  */
-getkeywords(scptr, tptr)
-int *scptr;
-struct hshtab *tptr;
+int getkeywords(int *scptr, struct hshtab *tptr)
 {
-	register skw, tkw, longf;
+	register int skw, tkw, longf;
 	int o, isadecl, ismos, unsignf;
 
 	isadecl = 0;
@@ -136,9 +134,9 @@ struct hshtab *tptr;
  * of getkeywords.
  */
 struct str *
-strdec(mosf, kind)
+strdec(int mosf, int kind)
 {
-	register elsize, o;
+	register int elsize, o;
 	register struct hshtab *ssym;
 	int savebits;
 	struct hshtab **savememlist;
@@ -160,10 +158,10 @@ strdec(mosf, kind)
 		mosflg = mosf;
 		o = symbol();
 		if (o==LBRACE && ssym->hblklev<blklev)
-			pushdecl(ssym);
+			pushdecl((struct phshtab *)ssym);
 		if (ssym->hclass==0) {
 			ssym->hclass = tagkind;
-			ssym->hstrp = gblock(sizeof(*strp));
+			ssym->hstrp = (struct str *)gblock(sizeof(*strp));
 			funcbase = curbase;
 			ssym->hstrp->ssize = 0;
 			ssym->hstrp->memlist = NULL;
@@ -172,7 +170,7 @@ strdec(mosf, kind)
 			redec();
 		strp = ssym->hstrp;
 	} else {
-		strp = gblock(sizeof(*strp));
+		strp = (struct str *)gblock(sizeof(*strp));
 		funcbase = curbase;
 		strp->ssize = 0;
 		strp->memlist = NULL;
@@ -205,7 +203,7 @@ strdec(mosf, kind)
 			error("%.8s redeclared", ssym->name);
 		strp->ssize = elsize;
 		*memlist++ = NULL;
-		strp->memlist = gblock((memlist-mems)*sizeof(*memlist));
+		strp->memlist = (struct hshtab **)gblock((memlist-mems)*sizeof(*memlist));
 		funcbase = curbase;
 		for (o=0; &mems[o] != memlist; o++)
 			strp->memlist[o] = mems[o];
@@ -223,8 +221,7 @@ strdec(mosf, kind)
 /*
  * Process a comma-separated list of declarators
  */
-declare(askw, tptr, offset)
-struct hshtab *tptr;
+int declare(int askw, struct hshtab *tptr, int offset)
 {
 	register int o;
 	register int skw, isunion;
@@ -236,7 +233,7 @@ struct hshtab *tptr;
 		isunion++;
 		mosflg = 1;
 		if ((peeksym=symbol()) == SEMI) {
-			o = length(tptr);
+			o = length((struct tnode *)tptr);
 			if (o>offset)
 				offset = o;
 		}
@@ -267,8 +264,7 @@ struct hshtab *tptr;
 /*
  * Process a single declarator
  */
-decl1(askw, atptr, offset, absname)
-struct hshtab *atptr, *absname;
+int decl1(int askw, struct hshtab *atptr, int offset, struct hshtab *absname)
 {
 	int t1, chkoff, a, elsize;
 	register int skw;
@@ -322,11 +318,11 @@ struct hshtab *atptr, *absname;
 		defsym = absname;
 	dsym = defsym;
 	if (dsym->hblklev < blklev)
-		pushdecl(dsym);
+		pushdecl((struct phshtab *)dsym);
 	if (dim.rank == 0)
 		dsym->hsubsp = NULL;
 	else {
-		dp = gblock(dim.rank*sizeof(dim.rank));
+		dp = (int *)gblock(dim.rank*sizeof(dim.rank));
 		funcbase = curbase;
 		if (skw==EXTERN)
 			maxdecl = curbase;
@@ -378,7 +374,7 @@ struct hshtab *atptr, *absname;
 	}
 	elsize = 0;
 	if (skw==MOS) {
-		elsize = length(dsym);
+		elsize = length((struct tnode *)dsym);
 		if ((peeksym = symbol())==COLON) {
 			elsize = 0;
 			peeksym = -1;
@@ -389,7 +385,7 @@ struct hshtab *atptr, *absname;
 			 	 || ((struct field *)dsym->hstrp)->flen!=t1)
 					redec();
 			} else {
-				dsym->hstrp = gblock(sizeof(*fldp));
+				dsym->hstrp = (struct str *)gblock(sizeof(*fldp));
 				funcbase = curbase;
 			}
 			dsym->hflag |= FFIELD;
@@ -423,7 +419,7 @@ struct hshtab *atptr, *absname;
 		peeksym = a;
 	if (skw==AUTO) {
 	/*	if (STAUTO < 0) {	*/
-			autolen -= rlength(dsym);
+			autolen -= rlength((struct tnode *)dsym);
 			dsym->hoffset = autolen;
 			if (autolen < maxauto)
 				maxauto = autolen;
@@ -442,7 +438,7 @@ struct hshtab *atptr, *absname;
 			if (cinit(dsym, 1, STATIC) & ALIGN)
 				outcode("B", EVEN);
 		} else
-			outcode("BBNBN", BSS, LABEL, isn++, SSPACE, rlength(dsym));
+			outcode("BBNBN", BSS, LABEL, isn++, SSPACE, rlength((struct tnode *)dsym));
 		outcode("B", PROG);
 	} else if (skw==REG && isinit)
 		cinit(dsym, 0, REG);
@@ -464,13 +460,12 @@ syntax:
  * Push down an outer-block declaration
  * after redeclaration in an inner block.
  */
-pushdecl(asp)
-struct phshtab *asp;
+void pushdecl(struct phshtab *asp)
 {
 	register struct phshtab *sp, *nsp;
 
 	sp = asp;
-	nsp = gblock(sizeof(*nsp));
+	nsp = (struct phshtab *)gblock(sizeof(*nsp));
 	maxdecl = funcbase = curbase;
 	cpysymb(nsp, sp);
 	sp->hclass = 0;
@@ -484,8 +479,7 @@ struct phshtab *asp;
 /*
  * Copy the non-name part of a symbol
  */
-cpysymb(s1, s2)
-struct phshtab *s1, *s2;
+void cpysymb(struct phshtab *s1, struct phshtab *s2)
 {
 	register struct phshtab *rs1, *rs2;
 
@@ -505,9 +499,7 @@ struct phshtab *s1, *s2;
 /*
  * Read a declarator and get the implied type
  */
-getype(adimp, absname)
-struct tdim *adimp;
-struct hshtab *absname;
+int getype(struct tdim *adimp, struct hshtab *absname)
 {
 	static struct hshtab argtype;
 	int type;
@@ -607,7 +599,7 @@ syntax:
 /*
  * More bits required for type than allowed.
  */
-typov()
+void typov(void)
 {
 	error("Type is too complicated");
 }
@@ -616,9 +608,9 @@ typov()
  * Enforce alignment restrictions in structures,
  * including bit-field considerations.
  */
-align(type, offset, aflen)
+int align(int type, int offset, int aflen)
 {
-	register a, t, flen;
+	register int a, t, flen;
 	char *ftl;
 
 	flen = aflen;
@@ -660,7 +652,7 @@ align(type, offset, aflen)
 /*
  * Complain about syntax error in declaration
  */
-decsyn(o)
+void decsyn(int o)
 {
 	error("Declaration syntax");
 	errflush(o);
@@ -669,7 +661,7 @@ decsyn(o)
 /*
  * Complain about a redeclaration
  */
-redec()
+void redec(void)
 {
 	error("%.8s redeclared", defsym->name);
 }
@@ -678,8 +670,7 @@ redec()
  * Determine if a variable is suitable for storage in
  * a register; if so return the register number
  */
-goodreg(hp)
-struct hshtab *hp;
+int goodreg(struct hshtab *hp)
 {
 	int type;
 
@@ -687,7 +678,7 @@ struct hshtab *hp;
 	/*
 	 * Special dispensation for unions
 	 */
-	if (type==STRUCT && length(hp)<=SZINT)
+	if (type==STRUCT && length((struct tnode *)hp)<=SZINT)
 		type = INT;
 	if ((type!=INT && type!=CHAR && type!=UNSIGN && (type&XTYPE)==0)
 	 || (type&XTYPE)>PTR || regvar<3)

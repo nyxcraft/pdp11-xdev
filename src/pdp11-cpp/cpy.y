@@ -1,4 +1,8 @@
 /*	@(#)cpy.y	2.1	SCCS id keyword	*/
+%{
+int yylex(void);
+int yyerror(char *s, ...);
+%}
 %token number stop DEFINED
 %token EQ NE LE GE LS RS
 %token ANDAND OROR

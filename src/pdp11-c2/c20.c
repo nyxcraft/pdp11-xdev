@@ -8,6 +8,23 @@ static	char	sccsid[] = "@(#)c20.c	2.1";	/*	SCCS id keyword	*/
 #include <stdarg.h>
 #include <stdlib.h>
 
+/* Forward prototypes for this file's own functions (use-before-def).
+ * Original K&R return/param types are preserved: an implicit-int return
+ * that never yields a value becomes void; every declared param keeps its
+ * original type (no declarator == int). */
+int	input(void);
+int	getlin(void);
+int	getnum(char *ap);
+void	output(void);
+void	reducelit(struct node *at);
+void	opsetup(void);
+int	oplook(void);
+void	refcount(void);
+void	iterate(void);
+void	xjump(struct node *p1);
+void	comjump(void);
+void	backjmp(struct node *ap1, struct node *ap2);
+
 struct optab optab[] = {
 	"jbr",	JBR,
 	"jeq",	CBR | JEQ<<8,
@@ -66,11 +83,11 @@ char	revbr[] = { JNE, JEQ, JGT, JLT, JGE, JLE, JHIS, JLOS, JHI, JLO };
 int	isn	= 20000;
 int	lastseg	= -1;
 
-main(argc, argv)
-char **argv;
+int
+main(int argc, char **argv)
 {
 	register int niter, maxiter, isend;
-	extern end;
+	extern int end;
 	int nflag;
 
 	if (argc>1 && argv[1][0]=='+') {
@@ -143,12 +160,19 @@ char **argv;
 		fprintf(stderr, "%d sob's added\n", nsob);
 		fprintf(stderr, "%d redundant tst's\n", nrtst);
 		fprintf(stderr, "%d literals eliminated\n", nlit);
+/* Diagnostic-only core estimate emitted under -n to stderr, never the
+ * byte-compared stdout.  The (int) cast is original (PDP-11: int==pointer==
+ * 16 bits); keep it verbatim and silence the host's wider-pointer note. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
 		fprintf(stderr, "%dK core\n", (((int)lastr+01777)>>10)&077);
+#pragma GCC diagnostic pop
 	}
 	exit(0);
 }
 
-input()
+int
+input(void)
 {
 	register struct node *p, *lastp;
 	register int oper;
@@ -209,10 +233,11 @@ input()
 	}
 }
 
-getlin()
+int
+getlin(void)
 {
 	register char *lp;
-	register c;
+	register int c;
 
 	lp = line;
 	while ((c = getchar())==' ' || c=='\t')
@@ -242,11 +267,11 @@ getlin()
 	return(END);
 }
 
-getnum(ap)
-char *ap;
+int
+getnum(char *ap)
 {
 	register char *p;
-	register n, c;
+	register int n, c;
 
 	p = ap;
 	n = 0;
@@ -257,7 +282,8 @@ char *ap;
 	return(n);
 }
 
-output()
+void
+output(void)
 {
 	register struct node *t;
 	register struct optab *oper;
@@ -327,8 +353,8 @@ output()
  * and replace them with (pc),xx(r)
  *     -- Thanx and a tip of the Hatlo hat to Bliss-11.
  */
-reducelit(at)
-struct node *at;
+void
+reducelit(struct node *at)
 {
 	register char *c1, *c2;
 	char *c2s;
@@ -365,7 +391,7 @@ copy(int na, ...)
 {
 	register char *p, *np;
 	char *onp, *ap, *ap2;
-	register n;
+	register int n;
 	va_list args;
 
 	va_start(args, na);
@@ -397,7 +423,8 @@ copy(int na, ...)
 	return(onp);
 }
 
-opsetup()
+void
+opsetup(void)
 {
 	register struct optab *optp, **ophp;
 	register char *p;
@@ -411,7 +438,8 @@ opsetup()
 	}
 }
 
-oplook()
+int
+oplook(void)
 {
 	register struct optab *optp;
 	register char *lp, *np;
@@ -454,7 +482,8 @@ oplook()
 	return(0);
 }
 
-refcount()
+void
+refcount(void)
 {
 	register struct node *p, *lp;
 	static struct node *labhash[LABHS];
@@ -493,7 +522,8 @@ refcount()
 			decref(p);
 }
 
-iterate()
+void
+iterate(void)
 {
 	register struct node *p, *rp, *p1;
 
@@ -559,8 +589,8 @@ iterate()
 	}
 }
 
-xjump(p1)
-register struct node *p1;
+void
+xjump(register struct node *p1)
 {
 	register struct node *p2, *p3;
 
@@ -583,8 +613,7 @@ register struct node *p1;
 }
 
 struct node *
-insertl(oldp)
-register struct node *oldp;
+insertl(register struct node *oldp)
 {
 	register struct node *lp;
 
@@ -612,8 +641,7 @@ register struct node *oldp;
 }
 
 struct node *
-codemove(p)
-struct node *p;
+codemove(struct node *p)
 {
 	register struct node *p1, *p2, *p3;
 	struct node *t, *tl;
@@ -685,7 +713,8 @@ ivloop:
 	return(p3);
 }
 
-comjump()
+void
+comjump(void)
 {
 	register struct node *p1, *p2, *p3;
 
@@ -696,8 +725,8 @@ comjump()
 					backjmp(p1, p3);
 }
 
-backjmp(ap1, ap2)
-struct node *ap1, *ap2;
+void
+backjmp(struct node *ap1, struct node *ap2)
 {
 	register struct node *p1, *p2, *p3;
 

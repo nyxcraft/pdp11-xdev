@@ -1,13 +1,18 @@
 static	char	sccsid[] = "@(#)cvopt.c	2.1";	/*	SCCS id keyword	*/
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 int	tabflg;
 int	labno	= 1;
 FILE	*curbuf;
 FILE	*obuf;
 
-main(argc, argv)
-char **argv;
+void	put(int c);
+int	flag(void);
+
+int
+main(int argc, char **argv)
 {
 /*
 	A1 -> A
@@ -307,8 +312,9 @@ pf:
 	goto loop;
 }
 
-flag() {
-	register c, f;
+int
+flag(void) {
+	register int c, f;
 
 	f = 0;
 l1:
@@ -354,7 +360,8 @@ l1:
 	return(f);
 }
 
-put(c)
+void
+put(int c)
 {
 	if (tabflg) {
 		tabflg = 0;

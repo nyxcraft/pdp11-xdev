@@ -10,9 +10,9 @@
 /*
  * Process a single external definition
  */
-extdef()
+void extdef(void)
 {
-	register o;
+	register int o;
 	int sclass, scflag, *cb;
 	struct hshtab typer;
 	register struct hshtab *ds;
@@ -60,7 +60,7 @@ extdef()
 				error("Inappropriate parameters");
 		} else if ((o=symbol())==COMMA || o==SEMI) {
 			peeksym = o;
-			o = (length(ds)+ALIGN) & ~ALIGN;
+			o = (length((struct tnode *)ds)+ALIGN) & ~ALIGN;
 			if (sclass==STATIC) {
 				setinit(ds);
 				outcode("BSBBSBN", SYMDEF, "", BSS, NLABEL, ds->name, SSPACE, o);
@@ -73,12 +73,12 @@ extdef()
 			if (sclass==EXTERN)
 				outcode("BS", SYMDEF, ds->name);
 			outcode("BBS", DATA, NLABEL, ds->name);
-			cb = funcbase;
+			cb = (int *)funcbase;
 			if (cinit(ds, 1, sclass) & ALIGN)
 				outcode("B", EVEN);
-			if (maxdecl > cb)
-				cb = maxdecl;
-			funcbase = cb;
+			if (maxdecl > (char *)cb)
+				cb = (int *)maxdecl;
+			funcbase = (char *)cb;
 		}
 	} while ((o=symbol())==COMMA);
 	if (o==SEMI)
@@ -97,17 +97,17 @@ syntax:
 /*
  * Process a function definition.
  */
-cfunc()
+void cfunc(void)
 {
 	register int *cb;
-	register sloc;
+	register int sloc;
 
 	sloc = isn;
 	isn += 2;
 	outcode("BBS", PROG, RLABEL, funcsym->name);
 	if (proflg)
 		outcode("BN", PROFIL, isn++);
-	cb = curbase;
+	cb = (int *)curbase;
 	regvar = 5;
 	autolen = STAUTO;
 	maxauto = STAUTO;
@@ -126,33 +126,32 @@ cfunc()
 	label(sloc);
 	outcode("BN", SETSTK, -maxauto+STAUTO);	/* MENLO_OVLY bug fix */
 	branch(sloc+1);
-	if (cb < maxdecl)
-		cb = maxdecl;
-	curbase = funcbase = cb;
+	if ((char *)cb < maxdecl)
+		cb = (int *)maxdecl;
+	curbase = funcbase = (char *)cb;
 }
 
 /*
  * Process the initializers for an external definition.
  */
-cinit(anp, flex, sclass)
-struct hshtab *anp;
+int cinit(struct hshtab *anp, int flex, int sclass)
 {
 	register struct phshtab *np;
-	register nel, ninit;
+	register int nel, ninit;
 	int width, isarray, o, brace, realtype, *cb;
 	struct tnode *s;
 
-	cb = funcbase;
-	np = gblock(sizeof(*np));
+	cb = (int *)funcbase;
+	np = (struct phshtab *)gblock(sizeof(*np));
 	funcbase = curbase;
-	cpysymb(np, anp);
+	cpysymb(np, (struct phshtab *)anp);
 	realtype = np->htype;
 	isarray = 0;
 	if ((realtype&XTYPE) == ARRAY)
 		isarray++;
 	else
 		flex = 0;
-	width = length(np);
+	width = length((struct tnode *)np);
 	nel = 1;
 	/*
 	 * If it's an array, find the number of elements.
@@ -167,7 +166,7 @@ struct hshtab *anp;
 		np->hsubsp++;
 		if (width==0 && flex==0)
 			error("0-length row: %.8s", anp->name);
-		o = length(np);
+		o = length((struct tnode *)np);
 		/* nel = ldiv(0, width, o); */
 		nel = (unsigned)width/o;
 		width = o;
@@ -191,16 +190,16 @@ struct hshtab *anp;
 			o = symbol();
 			break;
 		} else if (np->htype==STRUCT) {
-			strinit(np, sclass);
+			strinit((struct tnode *)np, sclass);
 		} else if ((np->htype&ARRAY)==ARRAY || peeksym==LBRACE)
-			cinit(np, 0, sclass);
+			cinit((struct hshtab *)np, 0, sclass);
 		else {
 			initflg++;
 			s = tree();
 			initflg = 0;
 			if (np->hflag&FFIELD)
 				error("No field initialization");
-			*cp++ = nblock(np);
+			*cp++ = nblock((struct hshtab *)np);
 			*cp++ = s;
 			build(ASSIGN);
 			if (sclass==AUTO||sclass==REG)
@@ -210,7 +209,7 @@ struct hshtab *anp;
 					error("Illegal enum constant for %.8s", anp->name);
 				anp->hoffset = s->value;
 			} else
-				rcexpr(block(INIT,np->htype,NULL,NULL,(*--cp)->tr2));
+				rcexpr(block(INIT,np->htype,NULL,NULL,(*--cp)->tr2, NULL));
 		}
 		ninit++;
 		if ((ninit&077)==0 && sclass==EXTERN)
@@ -233,22 +232,21 @@ struct hshtab *anp;
 			error("Too many initializers: %.8s", anp->name);
 		nel = ninit;
 	}
-	curbase = funcbase = cb;
+	curbase = funcbase = (char *)cb;
 	return(nel*width);
 }
 
 /*
  * Initialize a structure
  */
-strinit(np, sclass)
-struct tnode *np;
+void strinit(struct tnode *np, int sclass)
 {
 	register struct hshtab **mlp;
-	static zerloc;
+	static int zerloc;
 	register int o, brace;
 
 	if ((mlp = np->strp->memlist)==NULL) {
-		mlp = &zerloc;
+		mlp = (struct hshtab **)&zerloc;
 		error("Undefined structure initialization");
 	}
 	brace = 0;
@@ -262,7 +260,7 @@ struct tnode *np;
 		peeksym = o;
 		if (*mlp==0) {
 			error("Too many structure initializers");
-			cinit(&funcblk, 0, sclass);
+			cinit((struct hshtab *)&funcblk, 0, sclass);
 		} else
 			cinit(*mlp++, 0, sclass);
 		if (*mlp ==  &structhole) {
@@ -282,8 +280,7 @@ struct tnode *np;
 /*
  * Mark already initialized
  */
-setinit(anp)
-struct hshtab *anp;
+void setinit(struct hshtab *anp)
 {
 	register struct hshtab *np;
 
@@ -296,9 +293,19 @@ struct hshtab *anp;
 /*
  * Process one statement in a function.
  */
-statement()
+/* statement() reuses o1 (declared struct hshtab *) as an int label holder in
+ * the keyword branches -- the original PDP-11 "everything is a 16-bit word"
+ * idiom, where a symbol pointer and a small label number occupy one register
+ * interchangeably.  On an LP64 host that mixes int and pointer widths; the
+ * value always round-trips (labels are small and never alias the pointer
+ * uses), so the emitted intermediate code is byte-identical.  Scope the
+ * int<->pointer diagnostic off for this one function rather than double-cast
+ * every use. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wint-conversion"
+void statement(void)
 {
-	register o, o2;
+	register int o, o2;
 	register struct hshtab *o1;
 	int o3;
 	struct tnode *np;
@@ -348,7 +355,7 @@ stmt:
 		case IF:
 			np = pexpr();
 			o2 = 0;
-			if ((o1=symbol())==KEYW) switch (cval) {
+			if ((int)(long)(o1=symbol())==KEYW) switch (cval) {
 			case GOTO:
 				if (o2=simplegoto())
 					goto simpif;
@@ -380,7 +387,7 @@ stmt:
 			hardif:
 				if ((o=symbol())!=SEMI)
 					goto syntax;
-				if ((o1=symbol())==KEYW && cval==ELSE) 
+				if ((int)(long)(o1=symbol())==KEYW && cval==ELSE)
 					goto stmt;
 				peeksym = o1;
 				return;
@@ -461,7 +468,7 @@ stmt:
 			brklab = isn++;
 			np = pexpr();
 			chkw(np, -1);
-			rcexpr(block(RFORCE,0,NULL,NULL,np));
+			rcexpr(block(RFORCE,0,NULL,NULL,np, NULL));
 			pswitch();
 			brklab = o1;
 			return;
@@ -502,7 +509,7 @@ stmt:
 			o1 = csym;
 			if (o1->hclass>0) {
 				if (o1->hblklev==0) {
-					pushdecl(o1);
+					pushdecl((struct phshtab *)o1);
 					o1->hoffset = 0;
 				} else {
 					defsym = o1;
@@ -529,11 +536,12 @@ syntax:
 	error("Statement syntax");
 	errflush(o);
 }
+#pragma GCC diagnostic pop
 
 /*
  * Process a for statement.
  */
-forstmt()
+int forstmt(void)
 {
 	register int l, o, sline;
 	int sline1, *ss;
@@ -566,7 +574,7 @@ forstmt()
 	sline = line;
 	if ((o=symbol()) != RPARN)
 		return(o);
-	ss = funcbase;
+	ss = (int *)funcbase;
 	funcbase = curbase;
 	statement();
 	sline1 = line;
@@ -574,9 +582,9 @@ forstmt()
 	label(contlab);
 	rcexpr(st);
 	line = sline1;
-	if (ss < maxdecl)
-		ss = maxdecl;
-	curbase = funcbase = ss;
+	if ((char *)ss < maxdecl)
+		ss = (int *)maxdecl;
+	curbase = funcbase = (char *)ss;
 	branch(l);
 	return(0);
 }
@@ -586,9 +594,9 @@ forstmt()
  * as after "if".
  */
 struct tnode *
-pexpr()
+pexpr(void)
 {
-	register o;
+	register int o;
 	register struct tnode *t;	/* tree() returns a pointer, not int */
 
 	if ((o=symbol())!=LPARN)
@@ -607,7 +615,7 @@ syntax:
  * The switch statement, which involves collecting the
  * constants and labels for the cases.
  */
-pswitch()
+void pswitch(void)
 {
 	register struct swtab *cswp, *sswp;
 	int dl, swlab;
@@ -643,10 +651,10 @@ pswitch()
  * Structure resembling a block for a register variable.
  */
 struct	hshtab	hreg = { REG, 0, 0, NULL, NULL, 0 };
-struct	tnode	areg = { NAME, 0, NULL, NULL, &hreg};
-funchead()
+struct	tnode	areg = { NAME, 0, NULL, NULL, (struct tnode *)&hreg};
+void funchead(void)
 {
-	register pl;
+	register int pl;
 	register struct hshtab *cs;
 	struct tnode *bstack[2];
 
@@ -662,7 +670,7 @@ funchead()
 			cs->htype -= (ARRAY-PTR);	/* set ptr */
 			cs->hsubsp++;		/* pop dims */
 		}
-		pl += rlength(cs);
+		pl += rlength((struct tnode *)cs);
 		if (cs->hclass==AREG && (hreg.hoffset=goodreg(cs))>=0) {
 			bstack[0] = &areg;
 			bstack[1] = nblock(cs);
@@ -686,9 +694,9 @@ funchead()
 	outcode("BN", SETREG, regvar);
 }
 
-blockhead()
+void blockhead(void)
 {
-	register r;
+	register int r;
 
 	r = regvar;
 	blklev++;
@@ -702,11 +710,11 @@ blockhead()
  * symbols; save those that are external.
  * Also complain about undefined labels.
  */
-blkend()
+void blkend(void)
 {
 	register struct hshtab *cs, *ncs;
 	struct hshtab *endcs;
-	register i;
+	register int i;
 
 	blklev--;
 	for (cs=hshtab; cs->name[0] && cs<hshtab+HSHSIZ-1; ++cs)
@@ -719,12 +727,12 @@ blkend()
 		 && ((cs->hflag&FLABL)==0 || blklev==0)) {
 			if (cs->hclass==0)
 				error("%.8s undefined", cs->name);
-			if ((ncs = cs->hpdown)==NULL) {
+			if ((ncs = (struct hshtab *)cs->hpdown)==NULL) {
 				cs->name[0] = '\0';
 				hshused--;
 				cs->hflag &= FKEYW;
 			} else {
-				cpysymb(cs, ncs);
+				cpysymb((struct phshtab *)cs, (struct phshtab *)ncs);
 			}
 			continue;
 		}
@@ -739,7 +747,7 @@ blkend()
 			cs->name[0] = '\0';
 			hshused--;
 			i = ncs->hflag;
-			cpysymb(ncs, cs);
+			cpysymb((struct phshtab *)ncs, (struct phshtab *)cs);
 			ncs->hflag |= i&FKEYW;
 			cs->hflag &= FKEYW;
 		}
@@ -753,11 +761,10 @@ blkend()
  * benefit of the debugger.  None of these are used
  * by the assembler except to save them.
  */
-prste(acs)
-struct hshtab *acs;
+void prste(struct hshtab *acs)
 {
 	register struct hshtab *cs;
-	register nkind;
+	register int nkind;
 
 	cs = acs;
 	switch (cs->hclass) {
@@ -784,9 +791,9 @@ struct hshtab *acs;
  * In case of error, skip to the next
  * statement delimiter.
  */
-errflush(ao)
+void errflush(int ao)
 {
-	register o;
+	register int o;
 
 	o = ao;
 	while(o>RBRACE)	/* ; { } */

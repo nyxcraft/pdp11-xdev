@@ -53,11 +53,10 @@ struct kwtab {
 	0,		0,
 };
 
-main(argc, argv)
-char *argv[];
+int main(int argc, char **argv)
 {
 	register char *sp;
-	register i;
+	register int i;
 	register struct kwtab *ip;
 
 	if(argc<4) {
@@ -78,7 +77,7 @@ char *argv[];
 #ifdef MENLO_OVLY
 		switch (argv[4][1]) {
 		case 'P':
-#endif MENLO_OVLY
+#endif	/* MENLO_OVLY */
 			proflg++;
 #ifdef MENLO_OVLY
 			break;
@@ -90,7 +89,7 @@ char *argv[];
 			STAUTO = -8;
 			break;
 		}
-#endif MENLO_OVLY
+#endif	/* MENLO_OVLY */
 		argc--; argv++;
 	}
 	/*
@@ -125,7 +124,7 @@ char *argv[];
  * first.  An initial "." is ignored in the hash.
  * Return is a ptr to the symbol table entry.
  */
-lookup()
+int lookup(void)
 {
 	int ihash;
 	register struct hshtab *rp;
@@ -175,7 +174,7 @@ lookup()
  * Ignore initial "." to avoid member-of-structure
  * problems.
  */
-findkw()
+int findkw(void)
 {
 	register struct kwtab *kp;
 	register char *p1, *p2;
@@ -206,10 +205,10 @@ findkw()
  * gets a "." prepended to it to distinguish
  * it from other identifiers.
  */
-symbol() {
-	register c;
+int symbol(void) {
+	register int c;
 	register char *sp;
-	register tline;
+	register int tline;
 
 	if (peeksym>=0) {
 		c = peeksym;
@@ -393,10 +392,10 @@ loop:
 /*
  * Read a number.  Return kind.
  */
-getnum()
+int getnum(void)
 {
 	register char *np;
-	register c, base;
+	register int c, base;
 	int expseen, sym, ndigit;
 	char *nsyn;
 	int maxdigit;
@@ -482,7 +481,7 @@ getnum()
  * If the next input character is c, return b and advance.
  * Otherwise push back the character and return a.
  */
-subseq(c,a,b)
+int subseq(int c, int a, int b)
 {
 	if (spnextchar() != c)
 		return(a);
@@ -495,7 +494,7 @@ subseq(c,a,b)
  * or in the string temp file labelled by
  * lab.
  */
-putstr(lab, amax)
+void putstr(int lab, int amax)
 {
 	register int c, max;
 
@@ -528,14 +527,14 @@ putstr(lab, amax)
  * The routine is sensitive to the layout of
  * characters in a word.
  */
-getcc()
+int getcc(void)
 {
 	register int c, cc;
 	register char *ccp;
 	char realc;
 
 	cval = 0;
-	ccp = &cval;
+	ccp = (char *)&cval;	/* read the int constant byte-by-byte */
 	cc = 0;
 	while((c=mapch('\'')) >= 0)
 		if(cc++ < LNCPW)
@@ -554,10 +553,10 @@ getcc()
  * detecting the end of the string.
  * It implements the escape sequences.
  */
-mapch(ac)
+int mapch(int ac)
 {
 	register int a, c, n;
-	static mpeek;
+	static int mpeek;
 
 	c = ac;
 	if (a = mpeek)
@@ -642,7 +641,7 @@ loop:
 static struct tnode *cmst[CMSIZ];
 
 struct tnode *
-tree()
+tree(void)
 {
 	int *op, opst[SSIZE], *pp, prst[SSIZE];
 	register int andflg, o;
@@ -666,7 +665,7 @@ advanc:
 		if (cs->hclass==TYPEDEF)
 			goto atype;
 		if (cs->hclass==ENUMCON) {
-			*cp++ = cblock(cs->hoffset);
+			*cp++ = (struct tnode *)cblock(cs->hoffset);
 			goto tand;
 		}
 		if (cs->hclass==0 && cs->htype==0)
@@ -687,29 +686,29 @@ advanc:
 		goto tand;
 
 	case FCON:
-		*cp++ = fblock(DOUBLE, copnum(cval));
+		*cp++ = (struct tnode *)fblock(DOUBLE, copnum(cval));
 		goto tand;
 
 	case LCON:
-		cs = gblock(sizeof(*lcp));
+		cs = (struct hshtab *)gblock(sizeof(*lcp));
 		/* cs is reused here as an lnode, not a symbol-table entry */
 		((struct lnode *)cs)->op = LCON;
 		((struct lnode *)cs)->type = LONG;
 		((struct lnode *)cs)->lvalue = lcval;
-		*cp++ = cs;
+		*cp++ = (struct tnode *)cs;
 		goto tand;
 
 	case CON:
-		*cp++ = cblock(cval);
+		*cp++ = (struct tnode *)cblock(cval);
 		goto tand;
 
 	/* fake a static char array */
 	case STRING:
 		putstr(cval, 0);
-		cs = gblock(sizeof(*cs));
+		cs = (struct hshtab *)gblock(sizeof(*cs));
 		cs->hclass = STATIC;
 		cs->hoffset = cval;
-		*cp++ = block(NAME, ARRAY+CHAR, &nchstr, NULL, cs);
+		*cp++ = block(NAME, ARRAY+CHAR, &nchstr, NULL, (struct tnode *)cs, NULL);
 
 	tand:
 		if(cp>=cmst+CMSIZ) {
@@ -726,7 +725,7 @@ advanc:
 		if (*op != LPARN || andflg)
 			goto syntax;
 		peeksym = o;
-		*cp++ = xprtype(gblock(sizeof(*xprtype())));
+		*cp++ = (struct tnode *)xprtype((struct hshtab *)gblock(sizeof(*xprtype(NULL))));
 		if ((o=symbol()) != RPARN)
 			goto syntax;
 		o = CAST;
@@ -865,7 +864,7 @@ opon1:
 	case INCAFT:
 	case DECBEF:
 	case DECAFT:
-		*cp++ = cblock(1);
+		*cp++ = (struct tnode *)cblock(1);
 		break;
 
 	case LPARN:
@@ -889,8 +888,7 @@ syntax:
 }
 
 struct hshtab *
-xprtype(atyb)
-struct hshtab *atyb;
+xprtype(struct hshtab *atyb)
 {
 	register struct hshtab *tyb;
 	struct hshtab typer;
@@ -901,22 +899,25 @@ struct hshtab *atyb;
 	tyb = atyb;
 	fb = funcbase;
 	md = maxdecl;
-	scp = cp;
+	scp = (struct tnode *)cp;
 	funcbase = curbase;
 	sc = DEFXTRN;		/* will cause error if class mentioned */
 	getkeywords(&sc, &typer);
 	tyb->hclass = 0;
 	tyb->hblklev = 0;
-	decl1(&sc, &typer, 0, tyb);
+	/* decl1's first arg is the storage class (int); the original passes
+	 * &sc here, a benign quirk since decl1 returns via the absname path
+	 * without using the value.  Preserve it, cast to quiet the prototype. */
+	decl1((int)(long)&sc, &typer, 0, tyb);
 	funcbase = fb;
 	maxdecl = md;
-	cp = scp;
+	cp = (struct tnode **)scp;
 	((struct tnode *)tyb)->op = ETYPE;	/* tyb reused as a tree node */
 	return(tyb);
 }
 
 char *
-copnum(len)
+copnum(int len)
 {
 	register char *s1, *s2, *s3;
 

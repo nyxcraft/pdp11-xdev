@@ -13,9 +13,9 @@
  * Reduce the degree-of-reference by one.
  * e.g. turn "ptr-to-int" into "int".
  */
-decref(at)
+int decref(int at)
 {
-	register t;
+	register int t;
 
 	t = at;
 	if ((t & ~TYPE) == 0) {
@@ -29,7 +29,7 @@ decref(at)
  * Increase the degree of reference by
  * one; e.g. turn "int" to "ptr-to-int".
  */
-incref(t)
+int incref(int t)
 {
 	return(((t&~TYPE)<<TYLEN) | (t&TYPE) | PTR);
 }
@@ -38,8 +38,7 @@ incref(t)
  * Make a tree that causes a branch to lbl
  * if the tree's value is non-zero together with the cond.
  */
-cbranch(t, lbl, cond)
-struct tnode *t;
+void cbranch(struct tnode *t, int lbl, int cond)
 {
 	treeout(t, 0);
 	outcode("BNNN", CBRANCH, lbl, cond, line);
@@ -48,8 +47,7 @@ struct tnode *t;
 /*
  * Write out a tree.
  */
-rcexpr(atp)
-struct tnode *atp;
+void rcexpr(struct tnode *atp)
 {
 	register struct tnode *tp;
 
@@ -69,12 +67,11 @@ struct tnode *atp;
 	outcode("BN", EXPR, line);
 }
 
-treeout(atp, isstruct)
-struct tnode *atp;
+void treeout(struct tnode *atp, int isstruct)
 {
 	register struct tnode *tp;
 	register struct hshtab *hp;
-	register nextisstruct;
+	register int nextisstruct;
 
 	if ((tp = atp) == 0) {
 		outcode("B", NULLOP);
@@ -84,7 +81,7 @@ struct tnode *atp;
 	switch(tp->op) {
 
 	case NAME:
-		hp = tp->tr1;
+		hp = (struct hshtab *)tp->tr1;
 		if (hp->hclass==TYPEDEF)
 			error("Illegal use of type name");
 		outcode("BNN", NAME, hp->hclass==0?STATIC:hp->hclass, tp->type);
@@ -145,7 +142,7 @@ struct tnode *atp;
 /*
  * Generate a branch
  */
-branch(lab)
+void branch(int lab)
 {
 	outcode("BN", BRANCH, lab);
 }
@@ -153,7 +150,7 @@ branch(lab)
 /*
  * Generate a label
  */
-label(l)
+void label(int l)
 {
 	outcode("BN", LABEL, l);
 }
@@ -163,10 +160,9 @@ label(l)
  * is some kind of pointer; return the size of the object
  * to which the pointer points.
  */
-plength(ap)
-struct tname *ap;
+int plength(struct tnode *ap)
 {
-	register t, l;
+	register int t, l;
 	register struct tnode *p;
 
 	p = ap;
@@ -182,10 +178,9 @@ struct tname *ap;
  * return the number of bytes in the object
  * whose tree node is acs.
  */
-length(acs)
-struct tnode *acs;
+int length(struct tnode *acs)
 {
-	register t, elsz;
+	register int t, elsz;
 	long n;
 	register struct tnode *cs;
 	int nd;
@@ -244,8 +239,7 @@ struct tnode *acs;
 /*
  * The number of bytes in an object, rounded up to a word.
  */
-rlength(cs)
-struct tnode *cs;
+int rlength(struct tnode *cs)
 {
 	return((length(cs)+ALIGN) & ~ALIGN);
 }
@@ -254,14 +248,14 @@ struct tnode *cs;
  * After an "if (...) goto", look to see if the transfer
  * is to a simple label.
  */
-simplegoto()
+int simplegoto(void)
 {
 	register struct hshtab *csp;
 
 	if ((peeksym=symbol())==NAME && nextchar()==';') {
 		csp = csym;
 		if (csp->hblklev == 0)
-			pushdecl(csp);
+			pushdecl((struct phshtab *)csp);
 		if (csp->hclass==0 && csp->htype==0) {
 			csp->htype = ARRAY;
 			csp->hflag |= FLABL;
@@ -280,7 +274,7 @@ simplegoto()
 /*
  * Return the next non-white-space character
  */
-nextchar()
+int nextchar(void)
 {
 	while (spnextchar()==' ')
 		peekc = 0;
@@ -291,9 +285,9 @@ nextchar()
  * Return the next character, translating all white space
  * to blank and handling line-ends.
  */
-spnextchar()
+int spnextchar(void)
 {
-	register c;
+	register int c;
 
 	if ((c = peekc)==0)
 		c = getchar();
@@ -315,7 +309,7 @@ spnextchar()
 /*
  * is a break or continue legal?
  */
-chconbrk(l)
+void chconbrk(int l)
 {
 	if (l==0)
 		error("Break/continue error");
@@ -324,21 +318,21 @@ chconbrk(l)
 /*
  * The goto statement.
  */
-dogoto()
+void dogoto(void)
 {
 	register struct tnode *np;
 
 	*cp++ = tree();
 	build(STAR);
 	chkw(np = *--cp, -1);
-	rcexpr(block(JUMP,0,NULL,NULL,np));
+	rcexpr(block(JUMP,0,NULL,NULL,np, NULL));
 }
 
 /*
  * The return statement, which has to convert
  * the returned object to the function's type.
  */
-doret()
+void doret(void)
 {
 	register struct tnode *t;
 
@@ -349,7 +343,7 @@ doret()
 		build(ASSIGN);
 		cp[-1] = cp[-1]->tr2;
 		if (funcblk.type==CHAR)
-			cp[-1] = block(ITOC, INT, NULL, NULL, cp[-1]);
+			cp[-1] = block(ITOC, INT, NULL, NULL, cp[-1], NULL);
 		build(RFORCE);
 		rcexpr(*--cp);
 	}

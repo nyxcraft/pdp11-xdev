@@ -5,17 +5,19 @@
  */
 
 #include "c1.h"
+#include <stdlib.h>
 #include <stdarg.h>
 
-max(a, b)
+int
+max(int a, int b)
 {
 	if (a>b)
 		return(a);
 	return(b);
 }
 
-degree(at)
-struct tnode *at;
+int
+degree(struct tnode *at)
 {
 	register struct tnode *t, *t1;
 
@@ -39,10 +41,10 @@ struct tnode *at;
 	return(t->degree);
 }
 
-pname(ap, flag)
-struct tnode *ap;
+void
+pname(struct tnode *ap, int flag)
 {
-	register i;
+	register int i;
 	register struct tnode *p;
 
 	p = ap;
@@ -126,13 +128,14 @@ loop:
 	error("pname called illegally");
 }
 
-regerr()
+void
+regerr(void)
 {
 	error("Illegal use of register");
 }
 
-pbase(ap)
-struct tnode *ap;
+void
+pbase(struct tnode *ap)
 {
 	register struct tnode *p;
 
@@ -140,14 +143,14 @@ struct tnode *ap;
 	if (p->class==SOFFS || p->class==STATIC)
 		printf("L%d", p->nloc);
 	else
-		printf("%.8s", &(p->nloc));
+		printf("%.8s", (char *)&(p->nloc));
 }
 
-xdcalc(ap, nrleft)
-struct tnode *ap;
+int
+xdcalc(struct tnode *ap, int nrleft)
 {
 	register struct tnode *p;
-	register d;
+	register int d;
 
 	p = ap;
 	d = dcalc(p, nrleft);
@@ -162,8 +165,8 @@ struct tnode *ap;
 	return(d);
 }
 
-dcalc(ap, nrleft)
-struct tnode *ap;
+int
+dcalc(struct tnode *ap, int nrleft)
 {
 	register struct tnode *p, *p1;
 
@@ -203,10 +206,10 @@ struct tnode *ap;
 	return(p->degree <= nrleft? 20: 24);
 }
 
-notcompat(ap, ast, op)
-struct tnode *ap;
+int
+notcompat(struct tnode *ap, int ast, int op)
 {
-	register at, st;
+	register int at, st;
 	register struct tnode *p;
 
 	p = ap;
@@ -230,8 +233,8 @@ struct tnode *ap;
 	return(st != at);
 }
 
-prins(op, c, itable)
-struct instab *itable;
+void
+prins(int op, int c, struct instab *itable)
 {
 	register struct instab *insp;
 	register char *ip;
@@ -248,10 +251,10 @@ struct instab *itable;
 	error("No match' for op %d", op);
 }
 
-collcon(ap)
-struct tnode *ap;
+int
+collcon(struct tnode *ap)
 {
-	register op;
+	register int op;
 	register struct tnode *p;
 
 	p = ap;
@@ -268,8 +271,8 @@ struct tnode *ap;
 	return(0);
 }
 
-isfloat(at)
-struct tnode *at;
+int
+isfloat(struct tnode *at)
 {
 	register struct tnode *t;
 
@@ -283,10 +286,10 @@ struct tnode *at;
 	return(0);
 }
 
-oddreg(t, areg)
-struct tnode *t;
+int
+oddreg(struct tnode *t, int areg)
 {
-	register reg;
+	register int reg;
 
 	reg = areg;
 	if (!isfloat(t)) {
@@ -317,7 +320,8 @@ struct tnode *t;
 	return(reg);
 }
 
-arlength(t)
+int
+arlength(int t)
 {
 	if (t>=PTR)
 		return(2);
@@ -393,8 +397,8 @@ L%d:\
  * try using the calls to lrem and ldiv.
  */
 
-pswitch(afp, alp, deflab)
-struct swtab *afp, *alp;
+void
+pswitch(struct swtab *afp, struct swtab *alp, int deflab)
 {
 	int ncase, i, j, tabs, worst, best, range;
 	register struct swtab *swp, *fp, *lp;
@@ -439,7 +443,7 @@ struct swtab *afp, *alp;
 	}
 	/* hash switch */
 	best = 077777;
-	poctab = getblk(((ncase+2)/2) * sizeof(*poctab));
+	poctab = (int *)getblk(((ncase+2)/2) * sizeof(*poctab));
 	for (i=ncase/4; i<=ncase/2; i++) {
 		for (j=0; j<i; j++)
 			poctab[j] = 0;
@@ -474,7 +478,8 @@ struct swtab *afp, *alp;
 	}
 }
 
-breq(v, l)
+void
+breq(int v, int l)
 {
 	if (v==0)
 		printf("tst	r0\n");
@@ -483,8 +488,8 @@ breq(v, l)
 	printf("jeq	L%d\n", l);
 }
 
-sort(afp, alp)
-struct swtab *afp, *alp;
+int
+sort(struct swtab *afp, struct swtab *alp)
 {
 	register struct swtab *cp, *fp, *lp;
 	int intch, t;
@@ -514,8 +519,8 @@ struct swtab *afp, *alp;
 	return(0);
 }
 
-ispow2(atree)
-struct tnode *atree;
+int
+ispow2(struct tnode *atree)
 {
 	register int d;
 	register struct tnode *tree;
@@ -530,8 +535,7 @@ struct tnode *atree;
 }
 
 struct tnode *
-pow2(atree)
-struct tnode *atree;
+pow2(struct tnode *atree)
 {
 	register int d, i;
 	register struct tnode *tree;
@@ -578,11 +582,11 @@ struct tnode *atree;
 	return(tree);
 }
 
-cbranch(atree, albl, cond, areg)
-struct tnode *atree;
+void
+cbranch(struct tnode *atree, int albl, int cond, int areg)
 {
 	int l1, op;
-	register lbl, reg;
+	register int lbl, reg;
 	register struct tnode *tree;
 
 	lbl = albl;
@@ -657,19 +661,28 @@ again:
 	branch(lbl, op, !cond);
 }
 
-branch(lbl, aop, c)
+/* Called with either two or three arguments: the third (c) is read only when
+ * aop is nonzero, which the K&R callers guaranteed by passing it exactly then.
+ * A variadic prototype preserves every call site unchanged (cf. error). */
+void
+branch(int lbl, int aop, ...)
 {
-	register op;
+	register int op;
 
-	if(op=aop)
+	if(op=aop) {
+		va_list ap;
+		int c;
+		va_start(ap, aop);
+		c = va_arg(ap, int);
+		va_end(ap);
 		prins(op, c, branchtab);
-	else
+	} else
 		printf("jbr");
 	printf("\tL%d\n", lbl);
 }
 
-longrel(atree, lbl, cond, reg)
-struct tnode *atree;
+void
+longrel(struct tnode *atree, int lbl, int cond, int reg)
 {
 	int xl1, xl2, xo, xz;
 	register int op, isrel;
@@ -733,7 +746,8 @@ char	lrtab[2][3][6] = {
 	EQUAL,	NEQUAL,	EQUAL,	0,	0,	NEQUAL,
 };
 
-xlongrel(f)
+int
+xlongrel(int f)
 {
 	register int op, bno;
 
@@ -755,12 +769,14 @@ xlongrel(f)
 	return(0);
 }
 
-label(l)
+void
+label(int l)
 {
 	printf("L%d:", l);
 }
 
-popstk(a)
+void
+popstk(int a)
 {
 	switch(a) {
 
@@ -791,7 +807,8 @@ void error(char *s, ...)
 	putc('\n', stderr);
 }
 
-psoct(an)
+void
+psoct(int an)
 {
 	register int n, sign;
 
@@ -809,14 +826,14 @@ psoct(an)
  * Read in an intermediate file.
  */
 #define	STKS	100
-getree()
+void
+getree(void)
 {
 	struct tnode *expstack[STKS];
 	register struct tnode **sp;
-	register t, op;
+	register int t, op;
 	static char s[9];
 	struct swtab *swp;
-	double atof();
 	char numbuf[64];
 	struct tnode *np;	/* superset: reaches xtname.name and tname.nloc */
 	struct xtname *xnp;
@@ -1044,19 +1061,19 @@ getree()
 			*sp++ = tnode(ITOL, LONG, tconst((short)op, INT));
 			break;
 		}
-		lp = getblk(sizeof(*lp));
+		lp = (struct lconst *)getblk(sizeof(*lp));
 		lp->op = LCON;
 		lp->type = LONG;
 		/* t = high word, op = low word -> canonical numeric value
 		 * (high<<16)|low. */
 		lp->lvalue = ((long)t<<16) | (op & 0177777);
-		*sp++ = lp;
+		*sp++ = (struct tnode *)lp;
 		break;
 
 	case FCON:
 		t = geti();
 		outname(numbuf);
-		fp = getblk(sizeof(*fp));
+		fp = (struct ftconst *)getblk(sizeof(*fp));
 		fp->op = FCON;
 		fp->type = t;
 		fp->value = isn++;
@@ -1065,7 +1082,7 @@ getree()
 		void softfp_atof(char *, unsigned short *);
 		softfp_atof(numbuf, fp->fwords);
 		}
-		*sp++ = fp;
+		*sp++ = (struct tnode *)fp;
 		break;
 
 	case FSEL:
@@ -1075,13 +1092,13 @@ getree()
 		break;
 
 	case STRASG:
-		sap = getblk(sizeof(*sap));
+		sap = (struct fasgn *)getblk(sizeof(*sap));
 		sap->op = STRASG;
 		sap->type = geti();
 		sap->mask = geti();
 		sap->tr1 = *--sp;
 		sap->tr2 = NULL;
-		*sp++ = sap;
+		*sp++ = (struct tnode *)sap;
 		break;
 
 	case NULLOP:
@@ -1094,7 +1111,7 @@ getree()
 
 	case NLABEL:
 		outname(s);
-		printf("%.8s:\n", s, s);
+		printf("%.8s:\n", s);
 		break;
 
 	case RLABEL:
@@ -1133,9 +1150,10 @@ getree()
 	}
 }
 
-geti()
+int
+geti(void)
 {
-	register i;
+	register int i;
 
 	i = getchar();
 	i += getchar()<<8;
@@ -1146,11 +1164,10 @@ geti()
 }
 
 char *
-outname(s)
-char *s;		/* LP64: parameter and return are char*, not int */
+outname(char *s)	/* LP64: parameter and return are char*, not int */
 {
 	register char *p, c;
-	register n;
+	register int n;
 
 	p = s;
 	n = 0;
@@ -1164,11 +1181,11 @@ char *s;		/* LP64: parameter and return are char*, not int */
 	return(s);
 }
 
-strasg(atp)
-struct fasgn *atp;
+void
+strasg(struct fasgn *atp)
 {
 	register struct tnode *tp;
-	register nwords, i;
+	register int nwords, i;
 
 	nwords = atp->mask/SZINT;
 	tp = atp->tr1;
@@ -1224,9 +1241,8 @@ struct fasgn *atp;
 	rcexpr(tp, efftab, 0);
 }
 
-setype(p, t)
-register struct tnode *p;
-register t;
+void
+setype(register struct tnode *p, register int t)
 {
 
 	for (;; p = p->tr1) {
@@ -1246,9 +1262,10 @@ register t;
  * Reduce the degree-of-reference by one.
  * e.g. turn "ptr-to-int" into "int".
  */
-decref(at)
+int
+decref(int at)
 {
-	register t;
+	register int t;
 
 	t = at;
 	if ((t & ~TYPE) == 0) {
@@ -1262,7 +1279,8 @@ decref(at)
  * Increase the degree of reference by
  * one; e.g. turn "int" to "ptr-to-int".
  */
-incref(t)
+int
+incref(int t)
 {
 	return(((t&~TYPE)<<TYLEN) | (t&TYPE) | PTR);
 }

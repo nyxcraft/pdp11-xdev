@@ -16,7 +16,7 @@
  * Essentially all the work is in inserting
  * appropriate conversions.
  */
-build(op)
+void build(int op)
 {
 	register int t1;
 	int t2, t;
@@ -44,7 +44,7 @@ build(op)
 	if (op==SIZEOF) {
 		/* t1 is an int here; cblock() returns a node pointer, which
 		 * would be truncated by t1 on LP64 -- use the spare p3 */
-		p3 = cblock(length(p1));
+		p3 = (struct tnode *)cblock(length(p1));
 		p3->type = UNSIGN;
 		*cp++ = p3;
 		return;
@@ -64,7 +64,7 @@ build(op)
 			error("Disallowed conversion");
 		if (t1==UNSIGN && t2==CHAR) {
 			t2 = INT;
-			p2 = block(AND,INT,NULL,NULL,p2,cblock(0377));
+			p2 = block(AND,INT,NULL,NULL,p2,(struct tnode *)cblock(0377));
 		}
 		break;
 
@@ -109,12 +109,12 @@ build(op)
 	case STAR:
 		if ((t1&XTYPE) == FUNC)
 			error("Illegal indirection");
-		*cp++ = block(STAR, decref(t1), p1->subsp, p1->strp, p1);
+		*cp++ = block(STAR, decref(t1), p1->subsp, p1->strp, p1, NULL);
 		return;
 
 	case AMPER:
 		if (p1->op==NAME || p1->op==STAR) {
-			*cp++ = block(op,incref(t1),p1->subsp,p1->strp,p1);
+			*cp++ = block(op,incref(t1),p1->subsp,p1->strp,p1, NULL);
 			return;
 		}
 		error("Illegal lvalue");
@@ -149,10 +149,10 @@ build(op)
 		t = incref(t2);
 		chkw(p1, -1);
 		setype(p1, t, p2);
-		*cp++ = block(PLUS,t,p2->subsp,p2->strp,p1,cblock(((struct hshtab *)p2->tr1)->hoffset));
+		*cp++ = block(PLUS,t,p2->subsp,p2->strp,p1,(struct tnode *)cblock(((struct hshtab *)p2->tr1)->hoffset));
 		build(STAR);
 		if (((struct hshtab *)p2->tr1)->hflag&FFIELD)
-			*cp++ = block(FSEL,UNSIGN,NULL,NULL,*--cp,((struct hshtab *)p2->tr1)->hstrp);
+			*cp++ = block(FSEL,UNSIGN,NULL,NULL,*--cp,(struct tnode *)((struct hshtab *)p2->tr1)->hstrp);
 		return;
 	}
 	if ((dope&LVALUE)!=0)
@@ -167,7 +167,7 @@ build(op)
 		else if (op==FTOI)
 			t1 = INT;
 		if (!fold(op, p1, 0))
-			*cp++ = block(op,t1,p1->subsp,p1->strp,p1);
+			*cp++ = block(op,t1,p1->subsp,p1->strp,p1, NULL);
 		return;
 	}
 	cvn = 0;
@@ -244,7 +244,7 @@ build(op)
 			p2->strp = p1->strp;
 		}
 		if (t==INT && p1->type==CHAR)
-			p2 = block(ITOC, INT, NULL, NULL, p2);
+			p2 = block(ITOC, INT, NULL, NULL, p2, NULL);
 		*cp++ = p2;
 		return;
 	}
@@ -262,8 +262,7 @@ build(op)
  * Generate the appropriate conversion operator.
  */
 struct tnode *
-convert(p, t, cvn, len)
-struct tnode *p;
+convert(struct tnode *p, int t, int cvn, int len)
 {
 	register int op;
 
@@ -271,9 +270,9 @@ struct tnode *p;
 	if (opdope[op]&BINARY) {
 		if (len==0)
 			error("Illegal conversion");
-		return(block(op, t, NULL, NULL, p, cblock(len)));
+		return(block(op, t, NULL, NULL, p, (struct tnode *)cblock(len)));
 	}
-	return(block(op, t, NULL, NULL, p));
+	return(block(op, t, NULL, NULL, p, NULL));
 }
 
 /*
@@ -283,11 +282,10 @@ struct tnode *p;
  * type at.
  * Used with structure references.
  */
-setype(ap, at, anewp)
-struct tnode *ap, *anewp;
+void setype(struct tnode *ap, int at, struct tnode *anewp)
 {
 	register struct tnode *p, *newp;
-	register t;
+	register int t;
 
 	p = ap;
 	t = at;
@@ -310,8 +308,7 @@ struct tnode *ap, *anewp;
  * a pointer to that function.
  */
 struct tnode *
-chkfun(ap)
-struct tnode *ap;
+chkfun(struct tnode *ap)
 {
 	register struct tnode *p;
 	register int t;
@@ -322,7 +319,7 @@ struct tnode *ap;
 		return(0);
 	p = ap;
 	if (((t = p->type)&XTYPE)==FUNC && p->op!=ETYPE)
-		return(block(AMPER,incref(t),p->subsp,p->strp,p));
+		return(block(AMPER,incref(t),p->subsp,p->strp,p, NULL));
 	return(p);
 }
 
@@ -331,8 +328,7 @@ struct tnode *ap;
  * a pointer to the base of the array.
  */
 struct tnode *
-disarray(ap)
-struct tnode *ap;
+disarray(struct tnode *ap)
 {
 	register int t;
 	register struct tnode *p;
@@ -357,8 +353,7 @@ struct tnode *ap;
  * okt might be nonexistent or 'long'
  * (e.g. for <<).
  */
-chkw(p, okt)
-struct tnode *p;
+void chkw(struct tnode *p, int okt)
 {
 	register int t;
 
@@ -371,7 +366,7 @@ struct tnode *p;
  *'linearize' a type for looking up in the
  * conversion table
  */
-lintyp(t)
+int lintyp(int t)
 {
 	switch(t) {
 
@@ -415,14 +410,11 @@ void error(char *s, ...)
  * and the operands.
  */
 struct tnode *
-block(op, t, subs, str, p1,p2)
-int *subs;
-struct str *str;
-struct tnode *p1, *p2;
+block(int op, int t, int *subs, struct str *str, struct tnode *p1, struct tnode *p2)
 {
 	register struct tnode *p;
 
-	p = gblock(sizeof(*p));
+	p = (struct tnode *)gblock(sizeof(*p));
 	p->op = op;
 	p->type = t;
 	p->subsp = subs;
@@ -436,24 +428,23 @@ struct tnode *p1, *p2;
 }
 
 struct tnode *
-nblock(ads)
-struct hshtab *ads;
+nblock(struct hshtab *ads)
 {
 	register struct hshtab *ds;
 
 	ds = ads;
-	return(block(NAME, ds->htype, ds->hsubsp, ds->hstrp, ds));
+	return(block(NAME, ds->htype, ds->hsubsp, ds->hstrp, (struct tnode *)ds, NULL));
 }
 
 /*
  * Generate a block for a constant
  */
 struct cnode *
-cblock(v)
+cblock(int v)
 {
 	register struct cnode *p;
 
-	p = gblock(sizeof(*p));
+	p = (struct cnode *)gblock(sizeof(*p));
 	p->op = CON;
 	p->type = INT;
 	p->subsp = NULL;
@@ -466,12 +457,11 @@ cblock(v)
  * A block for a float or long constant
  */
 struct fnode *
-fblock(t, string)
-char *string;
+fblock(int t, char *string)
 {
 	register struct fnode *p;
 
-	p = gblock(sizeof(*p));
+	p = (struct fnode *)gblock(sizeof(*p));
 	p->op = FCON;
 	p->type = t;
 	p->subsp = NULL;
@@ -485,7 +475,7 @@ char *string;
  * expression tree.
  */
 char *
-gblock(n)
+gblock(int n)
 {
 	register char *p;
 
@@ -510,8 +500,7 @@ gblock(n)
 /*
  * Check that a tree can be used as an lvalue.
  */
-chklval(ap)
-struct tnode *ap;
+void chklval(struct tnode *ap)
 {
 	register struct tnode *p;
 
@@ -528,8 +517,7 @@ struct tnode *ap;
  * but this is used to allow constant expressions
  * to be used in switches and array bounds.
  */
-fold(op, ap1, ap2)
-struct tnode *ap1, *ap2;
+int fold(int op, struct tnode *ap1, struct tnode *ap2)
 {
 	register struct tnode *p1;
 	register int v1, v2;
@@ -658,7 +646,7 @@ struct tnode *ap1, *ap2;
  * Compile an expression expected to have constant value,
  * for example an array bound or a case value.
  */
-conexp()
+int conexp(void)
 {
 	register struct tnode *t;
 

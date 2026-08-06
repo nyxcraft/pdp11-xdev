@@ -6,11 +6,35 @@
 
 #include "c2.h"
 
-rmove()
+/* Forward prototypes for this file's own functions (use-before-def).
+ * Original K&R return/param types are preserved: an implicit-int return
+ * that never yields a value becomes void; every declared param keeps its
+ * original type (no declarator == int).  abs() comes from <stdlib.h>. */
+int	toofar(struct node *p);
+int	ilen(struct node *p);
+int	adrlen(char *s);
+void	savereg(int ai, char *as);
+void	dest(char *as, int flt);
+void	singop(struct node *ap);
+void	dualop(struct node *ap);
+int	findrand(char *as, int flt);
+int	isreg(char *as);
+void	check(void);
+int	source(char *ap);
+void	repladdr(struct node *p, int f, int flt);
+void	redunbr(struct node *p);
+int	compare(int oper, char *cp1, char *cp2);
+void	setcon(char *ar1, char *ar2);
+int	equstr(char *ap1, char *ap2);
+void	setcc(char *ap);
+int	natural(char *ap);
+
+void
+rmove(void)
 {
 	register struct node *p;
 	register int r;
-	register  r1, flt;
+	register int r1, flt;
 
 	for (p=first.forw; p!=0; p = p->forw) {
 	flt = 0;
@@ -241,10 +265,11 @@ to be deleted later.
 	}
 }
 
-jumpsw()
+int
+jumpsw(void)
 {
 	register struct node *p, *p1;
-	register t;
+	register int t;
 	register struct node *tp;
 	int nj;
 
@@ -272,7 +297,8 @@ jumpsw()
 	return(nj);
 }
 
-addsob()
+void
+addsob(void)
 {
 	register struct node *p, *p1;
 
@@ -293,8 +319,8 @@ addsob()
 	}
 }
 
-toofar(p)
-struct node *p;
+int
+toofar(struct node *p)
 {
 	register struct node *p1;
 	int len;
@@ -307,10 +333,10 @@ struct node *p;
 	return(1);
 }
 
-ilen(p)
-register struct node *p;
+int
+ilen(register struct node *p)
 {
-	register l;
+	register int l;
 
 	switch (p->op) {
 	case LABEL:
@@ -329,8 +355,8 @@ register struct node *p;
 	}
 }
 
-adrlen(s)
-register char *s;
+int
+adrlen(register char *s)
 {
 	if (*s == 0)
 		return(0);
@@ -343,13 +369,14 @@ register char *s;
 	return(2);
 }
 
-abs(x)
+int
+abs(int x)
 {
 	return(x<0? -x: x);
 }
 
-equop(ap1, p2)
-struct node *ap1, *p2;
+int
+equop(struct node *ap1, struct node *p2)
 {
 	register char *cp1, *cp2;
 	register struct node *p1;
@@ -371,8 +398,8 @@ struct node *ap1, *p2;
 	return(0);
 }
 
-decref(p)
-register struct node *p;
+void
+decref(register struct node *p)
 {
 	if (--p->refc <= 0) {
 		nrlab++;
@@ -382,8 +409,7 @@ register struct node *p;
 }
 
 struct node *
-nonlab(p)
-struct node *p;
+nonlab(struct node *p)
 {
 	while (p && p->op==LABEL)
 		p = p->forw;
@@ -391,8 +417,7 @@ struct node *p;
 }
 
 char *
-alloc(n)
-register n;
+alloc(register int n)
 {
 	register char *p;
 
@@ -417,7 +442,8 @@ register n;
 	return(p);
 }
 
-clearreg()
+void
+clearreg(void)
 {
 	register int i;
 
@@ -427,8 +453,8 @@ clearreg()
 	ccloc[0] = 0;
 }
 
-savereg(ai, as)
-char *as;
+void
+savereg(int ai, char *as)
 {
 	register char *p, *s, *sp;
 
@@ -447,8 +473,8 @@ char *as;
 	*--p = '\0';
 }
 
-dest(as, flt)
-char *as;
+void
+dest(char *as, int flt)
 {
 	register char *s;
 	register int i;
@@ -474,8 +500,8 @@ char *as;
 	}
 }
 
-singop(ap)
-struct node *ap;
+void
+singop(struct node *ap)
 {
 	register char *p1, *p2;
 
@@ -486,8 +512,8 @@ struct node *ap;
 }
 
 
-dualop(ap)
-struct node *ap;
+void
+dualop(struct node *ap)
 {
 	register char *p1, *p2;
 	register struct node *p;
@@ -509,8 +535,8 @@ struct node *ap;
 	while (*p2++ = *p1++);
 }
 
-findrand(as, flt)
-char *as;
+int
+findrand(char *as, int flt)
 {
 	register int i;
 	for (i = flt; i<NREG+flt; i++) {
@@ -520,8 +546,8 @@ char *as;
 	return(-1);
 }
 
-isreg(as)
-char *as;
+int
+isreg(char *as)
 {
 	register char *s;
 
@@ -531,7 +557,8 @@ char *as;
 	return(-1);
 }
 
-check()
+void
+check(void)
 {
 	register struct node *p, *lp;
 
@@ -543,8 +570,8 @@ check()
 	}
 }
 
-source(ap)
-char *ap;
+int
+source(char *ap)
 {
 	register char *p1, *p2;
 
@@ -564,10 +591,10 @@ char *ap;
 	return(0);
 }
 
-repladdr(p, f, flt)
-struct node *p;
+void
+repladdr(struct node *p, int f, int flt)
 {
-	register r;
+	register int r;
 	int r1;
 	register char *p1, *p2;
 	static char rt1[50], rt2[50];
@@ -606,11 +633,12 @@ struct node *p;
 	}
 }
 
-movedat()
+void
+movedat(void)
 {
 	register struct node *p1, *p2;
 	struct node *p3;
-	register seg;
+	register int seg;
 	struct node data;
 	struct node *datp;
 
@@ -671,8 +699,8 @@ movedat()
 	}
 }
 
-redunbr(p)
-register struct node *p;
+void
+redunbr(register struct node *p)
 {
 	register struct node *p1;
 	register char *ap1;
@@ -704,10 +732,10 @@ register struct node *p;
 }
 
 char *
-findcon(i)
+findcon(int i)
 {
 	register char *p;
-	register r;
+	register int r;
 
 	p = regs[i];
 	if (*p=='$')
@@ -719,8 +747,8 @@ findcon(i)
 	return(p);
 }
 
-compare(oper, cp1, cp2)
-register char *cp1, *cp2;
+int
+compare(int oper, register char *cp1, register char *cp2)
 {
 	register unsigned n1, n2;
 
@@ -771,8 +799,8 @@ register char *cp1, *cp2;
 	return(-1);
 }
 
-setcon(ar1, ar2)
-char *ar1, *ar2;
+void
+setcon(char *ar1, char *ar2)
 {
 	register char *cl, *cv, *p;
 
@@ -788,8 +816,8 @@ char *ar1, *ar2;
 	while (*p++ = *cv++);
 }
 
-equstr(ap1, ap2)
-char *ap1, *ap2;
+int
+equstr(char *ap1, char *ap2)
 {
 	char *p1, *p2;
 
@@ -802,8 +830,8 @@ char *ap1, *ap2;
 	return(1);
 }
 
-setcc(ap)
-char *ap;
+void
+setcc(char *ap)
 {
 	register char *p, *p1;
 
@@ -816,8 +844,8 @@ char *ap;
 	while (*p1++ = *p++);
 }
 
-natural(ap)
-char *ap;
+int
+natural(char *ap)
 {
 	register char *p;
 

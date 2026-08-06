@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>		/* malloc/exit for the host build */
+#include <string.h>		/* strcpy for the host build */
 
 /* Size of a node-arena chunk (was raw sbrk increments on the PDP-11). */
 #define	C2ARENA	(256*1024)
@@ -84,7 +85,8 @@ struct node {
 struct optab {
 	char	*opstring;
 	int	opcode;
-} optab[];
+};
+extern	struct	optab	optab[];
 
 char	line[LSIZE];
 struct	node	first;
@@ -113,7 +115,7 @@ int	lastseg;
 char	*lasta;
 char	*lastr;
 char	*firstr;
-char	revbr[];
+extern	char	revbr[];
 char	regs[12][20];
 char	conloc[20];
 char	conval[20];
@@ -127,11 +129,20 @@ char	ccloc[20];
 #define	OPHS	57
 
 struct optab *ophash[OPHS];
-struct	node *nonlab();
-char	*copy(int, ...);	/* variadic: needs a prototype on LP64 */
-char	*sbrk();
-char	*findcon();
-struct	node *insertl();
-struct	node *codemove();
-char	*sbrk();
-char	*alloc();
+
+/* Functions shared between c20.c and c21.c (and forward references).
+ * K&R return-type/parameter conventions preserved exactly: an undeclared
+ * parameter is int, and the char/pointer widths are unchanged. */
+struct	node *nonlab(struct node *p);
+char	*copy(int na, ...);	/* variadic: needs a prototype on LP64 */
+char	*findcon(int i);
+struct	node *insertl(struct node *oldp);
+struct	node *codemove(struct node *p);
+char	*alloc(int n);
+void	rmove(void);
+int	jumpsw(void);
+void	addsob(void);
+int	equop(struct node *ap1, struct node *p2);
+void	decref(struct node *p);
+void	clearreg(void);
+void	movedat(void);

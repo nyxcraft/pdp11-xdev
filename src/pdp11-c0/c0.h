@@ -5,6 +5,7 @@
 */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <whoami.h>
 
 /*
@@ -19,7 +20,7 @@
 #define HSHSIZ	600	/* Smaller but be sure vi compiles */
 #else
 #define	HSHSIZ	800	/* # entries in hash table for names */
-#endif	FORTY
+#endif	/* FORTY */
 #define	CMSIZ	40	/* size of expression stack */
 #define	SSIZE	20	/* size of other expression stack */
 #define	SWSIZ	230	/* size of switch table */
@@ -467,21 +468,91 @@ int	mossym;
 
 /*
  * functions
+ *
+ * Full C99 prototypes for every function defined across c00-c05.  The
+ * parameter types match each (originally K&R) definition exactly, so no
+ * argument promotion or truncation changes: the intermediate code the pass
+ * emits stays byte-identical to the native 1981 compiler.
  */
 void	outcode(char *, ...);	/* variadic: needs a prototype so callers
-void	error(char *, ...);
 				 * use the correct varargs calling convention */
-char	*sbrk();
-struct	tnode *tree();
-char	*copnum();
-struct	tnode *convert();
-struct	tnode *chkfun();
-struct	tnode *disarray();
-struct	tnode *block();
-struct	cnode *cblock();
-struct	fnode *fblock();
-char	*gblock();
-struct	tnode *pexpr();
-struct	str *strdec();
-struct	hshtab *xprtype();
-struct	tnode *nblock();
+void	error(char *, ...);
+
+/* c00.c */
+int	lookup(void);
+int	findkw(void);
+int	symbol(void);
+int	getnum(void);
+int	subseq(int c, int a, int b);
+void	putstr(int lab, int amax);
+int	getcc(void);
+int	mapch(int ac);
+struct	tnode *tree(void);
+struct	hshtab *xprtype(struct hshtab *atyb);
+char	*copnum(int len);
+
+/* c01.c */
+void	build(int op);
+struct	tnode *convert(struct tnode *p, int t, int cvn, int len);
+void	setype(struct tnode *ap, int at, struct tnode *anewp);
+struct	tnode *chkfun(struct tnode *ap);
+struct	tnode *disarray(struct tnode *ap);
+void	chkw(struct tnode *p, int okt);
+int	lintyp(int t);
+struct	tnode *block(int op, int t, int *subs, struct str *str, struct tnode *p1, struct tnode *p2);
+struct	tnode *nblock(struct hshtab *ads);
+struct	cnode *cblock(int v);
+struct	fnode *fblock(int t, char *string);
+char	*gblock(int n);
+void	chklval(struct tnode *ap);
+int	fold(int op, struct tnode *ap1, struct tnode *ap2);
+int	conexp(void);
+
+/* c02.c */
+void	extdef(void);
+void	cfunc(void);
+int	cinit(struct hshtab *anp, int flex, int sclass);
+void	strinit(struct tnode *np, int sclass);
+void	setinit(struct hshtab *anp);
+void	statement(void);
+int	forstmt(void);
+struct	tnode *pexpr(void);
+void	pswitch(void);
+void	funchead(void);
+void	blockhead(void);
+void	blkend(void);
+void	prste(struct hshtab *acs);
+void	errflush(int ao);
+
+/* c03.c */
+int	declist(int sclass);
+int	getkeywords(int *scptr, struct hshtab *tptr);
+struct	str *strdec(int mosf, int kind);
+int	declare(int askw, struct hshtab *tptr, int offset);
+int	decl1(int askw, struct hshtab *atptr, int offset, struct hshtab *absname);
+void	pushdecl(struct phshtab *asp);
+void	cpysymb(struct phshtab *s1, struct phshtab *s2);
+int	getype(struct tdim *adimp, struct hshtab *absname);
+void	typov(void);
+int	align(int type, int offset, int aflen);
+void	decsyn(int o);
+void	redec(void);
+int	goodreg(struct hshtab *hp);
+
+/* c04.c */
+int	decref(int at);
+int	incref(int t);
+void	cbranch(struct tnode *t, int lbl, int cond);
+void	rcexpr(struct tnode *atp);
+void	treeout(struct tnode *atp, int isstruct);
+void	branch(int lab);
+void	label(int l);
+int	plength(struct tnode *ap);
+int	length(struct tnode *acs);
+int	rlength(struct tnode *cs);
+int	simplegoto(void);
+int	nextchar(void);
+int	spnextchar(void);
+void	chconbrk(int l);
+void	dogoto(void);
+void	doret(void);

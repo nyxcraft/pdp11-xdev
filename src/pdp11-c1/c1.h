@@ -8,6 +8,8 @@
 
 #define	LTYPE	long	/* change to int for no long consts */
 #define	NCPS	8
+#undef	NULL		/* <stdio.h> defines NULL as ((void*)0); the code below
+			 * and the pass rely on the historical integer 0 */
 #define	NULL	0
 /* Target (PDP-11) scalar sizes in bytes.  c1 runs on the LP64 HOST, where
  * sizeof(int)==4, so target-size arithmetic must use these constants, never
@@ -133,13 +135,71 @@ struct	swtab {
 	int	swval;
 };
 
-/* functions returning pointers, declared so calls before the definition
- * (often cross-file) do not default to int and truncate on LP64 */
-struct	tnode	*strfunc(), *lconst(), *optim(), *tnode(), *getblk(), *tconst();
-struct	tnode	*unoptim(), *lvfield(), *acommute(), *isconstant(), *hardlongs();
-struct	tnode	*sdelay(), *ncopy(), *pow2();
-char	*outname(), *sbrk();
+/* Pass-2 (code generator) function prototypes.  Converted from the original
+ * K&R declarations so calls before the definition (often cross-file) do not
+ * default to int and truncate pointers on LP64.  Each prototype gives every
+ * parameter its ORIGINAL K&R type (a parameter with no declarator was int).
+ * tnode() (unary vs binary node) and error() (printf-style) are genuinely
+ * variable-arity and keep a variadic prototype, exactly matching the original
+ * K&R call sites that passed a varying number of arguments. */
+struct	tnode	*strfunc(struct tnode *atp);
+struct	tnode	*lconst(int op, struct tnode *lp, struct tnode *rp);
+struct	tnode	*optim(struct tnode *atree);
+struct	tnode	*tnode(int op, int type, struct tnode *tr1, ...);
+struct	tnode	*getblk(int size);
+struct	tnode	*tconst(int val, int type);
+struct	tnode	*unoptim(struct tnode *atree);
+struct	tnode	*lvfield(struct tnode *at);
+struct	tnode	*acommute(struct tnode *atree);
+struct	tnode	*isconstant(struct tnode *at);
+struct	tnode	*hardlongs(struct tnode *at);
+struct	tnode	*sdelay(struct tnode **ap);
+struct	tnode	*ncopy(struct tname *ap);
+struct	tnode	*pow2(struct tnode *atree);
+char	*outname(char *s);
+struct	optab	*match(struct tnode *atree, struct table *table, int nrleft, int nocvt);
 void	error(char *, ...);	/* variadic: needs a prototype on LP64 */
+
+int	rcexpr(struct tnode *atree, struct table *atable, int reg);
+int	cexpr(struct tnode *atree, struct table *table, int areg);
+int	reorder(struct tnode **treep, struct table *table, int reg);
+int	sreorder(struct tnode **treep, struct table *table, int reg, int recurf);
+int	delay(struct tnode **treep, struct table *table, int reg);
+int	chkleaf(struct tnode *atree, struct table *table, int reg);
+int	comarg(struct tnode *atree, int *flagp);
+void	doinit(int atype, struct tnode *atree);
+void	movreg(int r0, int r1, struct tnode *tree);
+int	max(int a, int b);
+int	degree(struct tnode *at);
+void	pname(struct tnode *ap, int flag);
+void	regerr(void);
+void	pbase(struct tnode *ap);
+int	xdcalc(struct tnode *ap, int nrleft);
+int	dcalc(struct tnode *ap, int nrleft);
+int	notcompat(struct tnode *ap, int ast, int op);
+void	prins(int op, int c, struct instab *itable);
+int	collcon(struct tnode *ap);
+int	isfloat(struct tnode *at);
+int	oddreg(struct tnode *t, int areg);
+int	arlength(int t);
+void	pswitch(struct swtab *afp, struct swtab *alp, int deflab);
+void	breq(int v, int l);
+int	sort(struct swtab *afp, struct swtab *alp);
+int	ispow2(struct tnode *atree);
+void	cbranch(struct tnode *atree, int albl, int cond, int areg);
+void	branch(int lbl, int aop, ...);
+void	longrel(struct tnode *atree, int lbl, int cond, int reg);
+int	xlongrel(int f);
+void	label(int l);
+void	popstk(int a);
+void	psoct(int an);
+void	getree(void);
+int	geti(void);
+void	strasg(struct fasgn *atp);
+void	setype(struct tnode *p, int t);
+int	decref(int at);
+int	incref(int t);
+int	islong(int t);
 extern char	maprel[];
 extern char	notrel[];
 int	nreg;

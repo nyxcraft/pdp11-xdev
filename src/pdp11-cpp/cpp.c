@@ -10,6 +10,7 @@
 # include <stdarg.h>
 # include <stdlib.h>
 # include <sys/stat.h>
+# include <fcntl.h>
 # include "universe.h"
 /* C command
 /* written by John F. Reiser
@@ -150,10 +151,13 @@ STATIC	int	fins[MAXINC];
 STATIC	int	lineno[MAXINC];
 
 STATIC	char	*dirs[10];	/* -I and <> directories */
-char *strdex(), *copy(), *subst(), *trmdir();
-struct symtab *stsym();
+struct symtab;
+char *strdex(char *s, char c), *copy(char *s), *subst(char *p, struct symtab *sp), *trmdir(char *s);
+struct symtab *stsym(char *s);
 int pperror(char *s, ...);	/* prototyped: passed pointer args (filenames) */
 int yyerror(char *s, ...);
+void ppwarn(char *s, ...);
+int yyparse(void);
 STATIC	int	fin	= STDIN;
 STATIC	FILE	*fout	= 0;	/* set to stdout in main (not constant on modern libc) */
 STATIC	int	nd	= 1;
@@ -170,7 +174,9 @@ STATIC	int	exfail;
 struct symtab {
 	char	*name;
 	char	*value;
-} *lastsym, *lookup(), *slookup();
+} *lastsym;
+struct symtab *lookup(char *namep, int enterf);
+struct symtab *slookup(char *p1, char *p2, int enterf);
 
 # if gcos
 #include <setjmp.h>
@@ -203,7 +209,7 @@ STATIC	struct symtab *uflloc;
 STATIC	int	trulvl;
 STATIC	int	flslvl;
 
-sayline() {
+void sayline(void) {
 	if (pflag==0) fprintf(fout,"# %d \"%s\"\n", lineno[ifno], fnames[ifno]);
 }
 
@@ -260,7 +266,7 @@ sayline() {
 /* are available for use.
 */
 
-dump() {
+void dump(void) {
 /* write part of buffer which lies between  outp  and  inp .
 /* this should be a direct call to 'write', but the system slows to a crawl
 /* if it has to do an unaligned copy.  thus we buffer.  this silly loop
@@ -303,7 +309,7 @@ dump() {
 }
 
 char *
-refill(p) register char *p; {
+refill(register char *p) {
 /* dump buffer.  save chars from inp to p.  read into buffer at pbuf,
 /* contiguous with p.  update pointers, return new p.
 */
@@ -349,7 +355,7 @@ refill(p) register char *p; {
 #define LF 1
 
 char *
-cotoken(p) register char *p; {
+cotoken(register char *p) {
 	register int c,i; char quoc;
 	static int state = BEG;
 
@@ -525,13 +531,13 @@ prevlf:
 }
 
 char *
-skipbl(p) register char *p; {/* get next non-blank token */
+skipbl(register char *p) {/* get next non-blank token */
 	do {outp=inp=p; p=cotoken(p);} while ((toktyp+COFF)[*inp]==BLANK);
 	return(p);
 }
 
 char *
-unfill(p) register char *p; {
+unfill(register char *p) {
 /* take <= BUFSIZ chars from right end of buffer and put them on instack .
 /* slide rest of buffer to the right, update pointers, return new p.
 */
@@ -557,7 +563,7 @@ unfill(p) register char *p; {
 }
 
 char *
-doincl(p) register char *p; {
+doincl(register char *p) {
 	int filok,inctype;
 	register char *cp; char **dirp,*nfil; char filname[BUFSIZ];
 
@@ -629,14 +635,14 @@ doincl(p) register char *p; {
 	return(p);
 }
 
-equfrm(a,p1,p2) register char *a,*p1,*p2; {
+int equfrm(register char *a, register char *p1, register char *p2) {
 	register char c; int flag;
 	c= *p2; *p2='\0';
 	flag=strcmp(a,p1); *p2=c; return(flag==SAME);
 }
 
 char *
-dodef(p) char *p; {/* process '#define' */
+dodef(char *p) {/* process '#define' */
 	register char *pin,*psav,*cf;
 	char **pf,**qf; int b,c,params; struct symtab *np;
 	char *oldval,*oldsavch;
@@ -732,7 +738,7 @@ dodef(p) char *p; {/* process '#define' */
 #define sloscan() ptrtab=slotab+COFF
 
 char *
-control(p) register char *p; {/* find and handle preprocessor control lines */
+control(register char *p) {/* find and handle preprocessor control lines */
 	register struct symtab *np;
 for (;;) {
 	fasscan(); p=cotoken(p); if (*inp=='\n') ++inp; dump();
@@ -787,7 +793,7 @@ for (;;) {
 }
 
 struct symtab *
-stsym(s) register char *s; {
+stsym(register char *s) {
 	char buf[BUFSIZ]; register char *p;
 
 	/* make definition look exactly like end of #define line */
@@ -801,7 +807,7 @@ stsym(s) register char *s; {
 }
 
 struct symtab *
-ppsym(s) char *s; {/* kluge */
+ppsym(char *s) {/* kluge */
 	register struct symtab *sp;
 	cinit=SALT; *savch++=SALT; sp=stsym(s); --sp->name; cinit=0; return(sp);
 }
@@ -810,7 +816,7 @@ ppsym(s) char *s; {/* kluge */
 /* stdarg, not K&R varargs: an arg may be a pointer (`filname'), which the old
  * implicit-int params truncated on LP64 -> fprintf %s read a bad pointer and
  * crashed (e.g. on "Can't find include file %s") */
-vpperror(s, ap) char *s; va_list ap; {
+int vpperror(char *s, va_list ap) {
 	if (fnames[ifno][0]) fprintf(stderr,
 # if gcos
 			"*%c*   \"%s\", line ", exfail >= 0 ? 'F' : 'W',
@@ -824,20 +830,20 @@ vpperror(s, ap) char *s; va_list ap; {
 	++exfail;
 }
 
-pperror(char *s, ...) { va_list ap; va_start(ap,s); vpperror(s,ap); va_end(ap); }
+int pperror(char *s, ...) { va_list ap; va_start(ap,s); vpperror(s,ap); va_end(ap); }
 
-yyerror(char *s, ...) { va_list ap; va_start(ap,s); vpperror(s,ap); va_end(ap); }
+int yyerror(char *s, ...) { va_list ap; va_start(ap,s); vpperror(s,ap); va_end(ap); }
 
-ppwarn(s,x) char *s; {
+void ppwarn(char *s, ...) {
+	va_list ap;
 	int fail = exfail;
 	exfail = -1;
-	pperror(s,x);
+	va_start(ap,s); vpperror(s,ap); va_end(ap);
 	exfail = fail;
 }
 
 struct symtab *
-lookup(namep, enterf)
-char *namep;
+lookup(char *namep, int enterf)
 {
 	register char *np, *snp;
 	register int c, i; int around;
@@ -863,7 +869,7 @@ char *namep;
 }
 
 struct symtab *
-slookup(p1,p2,enterf) register char *p1,*p2; int enterf;{
+slookup(register char *p1, register char *p2, int enterf) {
 	register char *p3; char c2,c3; struct symtab *np;
 	         c2= *p2; *p2='\0';	/* mark end of token */
 	if ((p2-p1)>NCPS) p3=p1+NCPS; else p3=p2;
@@ -876,7 +882,7 @@ slookup(p1,p2,enterf) register char *p1,*p2; int enterf;{
 }
 
 char *
-subst(p,sp) register char *p; struct symtab *sp; {
+subst(register char *p, struct symtab *sp) {
 	static char match[]="%s: argument mismatch";
 	register char *ca,*vp; int params;
 	char *actual[MAXFRM]; /* actual[n] is text of nth actual */
@@ -947,7 +953,7 @@ subst(p,sp) register char *p; struct symtab *sp; {
 
 
 char *
-trmdir(s) register char *s; {
+trmdir(register char *s) {
 	register char *p = s;
 	while (*p++); --p; while (p>s && *--p!='/');
 # if unix
@@ -958,7 +964,7 @@ trmdir(s) register char *s; {
 }
 
 STATIC char *
-copy(s) register char *s; {
+copy(register char *s) {
 	register char *old;
 
 	old = savch; while (*savch++ = *s++);
@@ -966,12 +972,12 @@ copy(s) register char *s; {
 }
 
 char *
-strdex(s,c) char *s,c; {
+strdex(char *s, char c) {
 	while (*s) if (*s++==c) return(--s);
 	return(0);
 }
 
-yywrap(){ return(1); }
+int yywrap(void){ return(1); }
 
 /*
  * Compute the default system include directory relative to the cpp binary,
@@ -983,8 +989,7 @@ STATIC char incdir[256];
 STATIC char cppself[1024];
 
 char *
-getincdir(av0)
-	char *av0;
+getincdir(char *av0)
 {
 	char *p, *last;
 	int len;
@@ -1022,8 +1027,7 @@ getincdir(av0)
 	return 0;
 }
 
-main(argc,argv)
-	char *argv[];
+int main(int argc, char **argv)
 {
 	register int i,c;
 	register char *p;

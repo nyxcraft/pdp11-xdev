@@ -8,6 +8,7 @@ static	char	sccsid[] = "@(#)c10.c	2.2";	/*	SCCS id keyword	*/
 */
 
 #include "c1.h"
+#include <stdlib.h>
 #include <math.h>
 
 #define	dbprint(op)	/* */
@@ -86,8 +87,8 @@ struct	table	*cregtab;
 int	nreg =	3;
 int	isn =	10000;
 
-main(argc, argv)
-char *argv[];
+int
+main(int argc, char **argv)
 {
 
 	if (argc<4) {
@@ -105,7 +106,7 @@ char *argv[];
 #ifdef MENLO_OVLY
 	if (argc > 4)
 		ovlyflag++;
-#endif MENLO_OVLY
+#endif /* MENLO_OVLY */
 	sfuncr.class = STATIC;
 	/* Node arena: a malloc region (not raw sbrk, which would corrupt the
 	 * host libc heap that c1's own stdio uses).  Reset per function via
@@ -148,10 +149,8 @@ char *argv[];
  * required is not too large.
  * Return a ptr to the table entry or 0 if none found.
  */
-char *
-match(atree, table, nrleft, nocvt)
-struct tnode *atree;
-struct table *table;
+struct optab *
+match(struct tnode *atree, struct table *table, int nrleft, int nocvt)
 {
 #define	NOCVL	1
 #define	NOCVR	2
@@ -239,11 +238,10 @@ struct table *table;
  * A number of special cases are recognized, and
  * there is an interaction with the optimizer routines.
  */
-rcexpr(atree, atable, reg)
-struct tnode *atree;
-struct table *atable;
+int
+rcexpr(struct tnode *atree, struct table *atable, int reg)
 {
-	register r;
+	register int r;
 	int modf, nargs, recurf;
 	register struct tnode *tree;
 	register struct table *table;
@@ -283,7 +281,7 @@ again:
 	 * Structure assignments
 	 */
 	case STRASG:
-		strasg(tree);
+		strasg((struct fasgn *)tree);
 		return(0);
 
 	/*
@@ -462,9 +460,8 @@ again:
  * Most of the work is the macro-expansion of the
  * code table.
  */
-cexpr(atree, table, areg)
-struct tnode *atree;
-struct table *table;
+int
+cexpr(struct tnode *atree, struct table *table, int areg)
 {
 	int c, r;
 	register struct tnode *p, *p1, *tree;
@@ -878,11 +875,10 @@ loop:
  * on the subtrees and then on the tree itself.
  * It returns non-zero if anything changed.
  */
-reorder(treep, table, reg)
-struct tnode **treep;
-struct table *table;
+int
+reorder(struct tnode **treep, struct table *table, int reg)
 {
-	register r, o;
+	register int r, o;
 	register struct tnode *p;
 
 	p = *treep;
@@ -912,9 +908,8 @@ struct table *table;
  * Moreover, expressions like "reg = x+y" are best done as
  * "reg = x; reg += y" (so long as "reg" and "y" are not the same!).
  */
-sreorder(treep, table, reg, recurf)
-struct tnode **treep;
-struct table *table;
+int
+sreorder(struct tnode **treep, struct table *table, int reg, int recurf)
 {
 	register struct tnode *p, *p1;
 
@@ -1008,12 +1003,11 @@ struct table *table;
  * Otherwise it uses sdelay to search for inc/dec
  * among the operands.
  */
-delay(treep, table, reg)
-struct tnode **treep;
-struct table *table;
+int
+delay(struct tnode **treep, struct table *table, int reg)
 {
 	register struct tnode *p, *p1;
-	register r;
+	register int r;
 
 	p = *treep;
 	if ((p->op==INCAFT||p->op==DECAFT)
@@ -1037,8 +1031,7 @@ struct table *table;
 }
 
 struct tnode *
-sdelay(ap)
-struct tnode **ap;
+sdelay(struct tnode **ap)
 {
 	register struct tnode *p, *p1;
 
@@ -1048,7 +1041,7 @@ struct tnode **ap;
 				 * but a segfault on the host. */
 		return(0);
 	if ((p->op==INCAFT||p->op==DECAFT) && p->tr1->op==NAME) {
-		*ap = ncopy(p->tr1);
+		*ap = ncopy((struct tname *)p->tr1);
 		return(p);
 	}
 	if (p->op==STAR || p->op==PLUS)
@@ -1067,30 +1060,28 @@ struct tnode **ap;
  * modifying the reg--.
  */
 struct tnode *
-ncopy(ap)
-struct tname *ap;
+ncopy(struct tname *ap)
 {
 	register struct tname *p, *q;
 
 	p = ap;
 	if (p->class!=REG)
-		return(p);
-	q = getblk(sizeof(*p));
+		return((struct tnode *)p);
+	q = (struct tname *)getblk(sizeof(*p));
 	q->op = p->op;
 	q->type = p->type;
 	q->class = p->class;
 	q->offset = p->offset;
 	q->nloc = p->nloc;
-	return(q);
+	return((struct tnode *)q);
 }
 
 /*
  * If the tree can be immediately loaded into a register,
  * produce code to do so and return success.
  */
-chkleaf(atree, table, reg)
-struct tnode *atree;
-struct table *table;
+int
+chkleaf(struct tnode *atree, struct table *table, int reg)
 {
 	/* On the PDP-11 the unset fields of lbuf were stack garbage, harmless
 	 * because every 16-bit value is a readable address whose contents
@@ -1120,12 +1111,11 @@ struct table *table;
  * Return the number of bytes pushed,
  * for future popping.
  */
-comarg(atree, flagp)
-struct tnode *atree;
-int *flagp;
+int
+comarg(struct tnode *atree, int *flagp)
 {
 	register struct tnode *tree;
-	register retval;
+	register int retval;
 	int i;
 	int size;
 
@@ -1177,8 +1167,7 @@ normal:
 }
 
 struct tnode *
-strfunc(atp)
-struct tnode *atp;
+strfunc(struct tnode *atp)
 {
 	register struct tnode *tp;
 
@@ -1192,8 +1181,8 @@ struct tnode *atp;
 /*
  * Compile an initializing expression
  */
-doinit(atype, atree)
-struct tnode *atree;
+void
+doinit(int atype, struct tnode *atree)
 {
 	register struct tnode *tree;
 	register int type;
@@ -1291,8 +1280,8 @@ illinit:
 	error("Illegal initialization");
 }
 
-movreg(r0, r1, tree)
-struct tnode *tree;
+void
+movreg(int r0, int r1, struct tnode *tree)
 {
 	register char *s;
 

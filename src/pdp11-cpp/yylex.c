@@ -8,20 +8,24 @@
 #define COFF 0
 #endif
 
-yylex() {
+#include <string.h>
+int pperror(char *s, ...);
+int tobinary(char *st, int b);
+
+int yylex(void) {
 	static int ifdef=0;
 	static char *op2[]={"||",  "&&" , ">>", "<<", ">=", "<=", "!=", "=="};
 	static int  val2[]={OROR, ANDAND,  RS,   LS,   GE,   LE,   NE,   EQ};
 	static char *opc="b\bt\tn\nf\fr\r\\\\";
 	extern char fastab[];
 	extern char *outp,*inp,*newp; extern int flslvl;
-	register char savc, *s; char *skipbl(); int val;
+	register char savc, *s; char *skipbl(char *); int val;
 	register char **p2;
 	struct symtab {
 		char *name;
 		char *value;
 	} *sp;
-	struct symtab *lookup();	/* LP64: needs a prototype, else the
+	struct symtab *lookup(char *, int);	/* LP64: needs a prototype, else the
 				 * returned pointer is truncated to int */
 
 for (;;) {
@@ -63,7 +67,7 @@ ret:
 }
 }
 
-tobinary(st, b) char *st; {
+int tobinary(char *st, int b) {
 	int n, c, t;
 	char *s;
 	n=0;
