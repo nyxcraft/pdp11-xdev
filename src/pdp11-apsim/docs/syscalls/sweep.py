@@ -9,9 +9,13 @@ apsim gives the guest the REAL filesystem rooted at the tree (APSIM_ROOT),
 so a DANGER blocklist skips destructive/interactive commands, stdin is
 /dev/null, each run has a 3s timeout (a timeout counts as a pass -- waiting
 for input is not a miss), and each child gets its own session so an /etc
-binary that signals its process group on exit can't kill the sweep.  A
-binary that can't be read as extracted is reported, not silently dropped,
-so the denominator stays honest.
+binary that signals its process group on exit can't kill the sweep.
+
+Execute-only binaries (mode 0111 -- the historical uucp convention) are
+read-enabled just long enough to sniff and run, then restored to their
+original mode, so the uucp set is tested rather than reported as
+unreadable.  A binary we cannot chmod (not ours) is still reported, not
+silently dropped, so the denominator stays honest.
 """
 import os, re, sys, subprocess
 from collections import Counter
@@ -34,12 +38,29 @@ nroff troff tset reset stty tar cpio pax clri icheck dcheck ncheck
 """.split())
 
 
+def read_enable(path):
+    """A binary can ship execute-only (mode 0111) -- the historical uucp
+    convention, so an unprivileged user couldn't read the setuid binary.
+    We usually OWN the extracted copy, so we can add a read bit long
+    enough to sniff and run it (both is_bin and apsim's loader need to
+    open it), then restore the original mode.  Returns the original mode
+    to restore, or None if it was already readable / we can't chmod it."""
+    if os.access(path, os.R_OK):
+        return None
+    try:
+        orig = os.stat(path).st_mode
+        os.chmod(path, orig | 0o400)
+        return orig
+    except OSError:
+        return None			# not ours to chmod -- genuinely untestable
+
+
 def is_bin(path):
     try:
         with open(path, "rb") as f:
             return f.read(2) in MAGIC
     except OSError:
-        return None		# unreadable (execute-only) -- report, don't drop
+        return None		# unreadable even after read_enable -- report
 
 
 def main():
@@ -65,27 +86,33 @@ def main():
             path = os.path.join(dp, name)
             if not os.path.isfile(path) or name in DANGER:
                 continue
-            b = is_bin(path)
-            if b is None:
-                unreadable.append(d + "/" + name); continue
-            if not b:
-                continue
-            ran += 1
+            restore = read_enable(path)     # execute-only? borrow a read bit
             try:
-                p = subprocess.run([APSIM, os.path.abspath(path)],
-                                   capture_output=True, timeout=3, env=env,
-                                   cwd=sand, stdin=subprocess.DEVNULL,
-                                   start_new_session=True)
-                out = (p.stdout + p.stderr).decode("latin-1")
-            except subprocess.TimeoutExpired:
-                ok += 1; continue          # blocked on input = not a miss
-            hits = set(re.findall(r"unhandled sys (\d+)", out))
-            if hits:
-                for h in hits:
-                    misses[h] += 1
-                    who.setdefault(h, set()).add(name)
-            else:
-                ok += 1
+                b = is_bin(path)
+                if b is None:
+                    unreadable.append(d + "/" + name); continue
+                if not b:
+                    continue
+                ran += 1
+                try:
+                    p = subprocess.run([APSIM, os.path.abspath(path)],
+                                       capture_output=True, timeout=3, env=env,
+                                       cwd=sand, stdin=subprocess.DEVNULL,
+                                       start_new_session=True)
+                    out = (p.stdout + p.stderr).decode("latin-1")
+                except subprocess.TimeoutExpired:
+                    ok += 1; continue      # blocked on input = not a miss
+                hits = set(re.findall(r"unhandled sys (\d+)", out))
+                if hits:
+                    for h in hits:
+                        misses[h] += 1
+                        who.setdefault(h, set()).add(name)
+                else:
+                    ok += 1
+            finally:
+                if restore is not None:
+                    try: os.chmod(path, restore)   # leave the tree as found
+                    except OSError: pass
 
     print("%d of %d command binaries ran without an unimplemented syscall"
           % (ok, ran))

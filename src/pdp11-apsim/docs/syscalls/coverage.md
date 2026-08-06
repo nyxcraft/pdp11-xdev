@@ -22,17 +22,21 @@ stack, the same deliberate-refusal category as `adjtime`/`quota`/`fetchi`.
 | `v6` | `~/unix/v6` | 88 / 88 | — |
 | `v7` | `~/unix/v7` | 114 / 114 | — |
 | `sys3` | `~/unix/sys3` | 174 / 174 | — |
-| `bsd210` | `~/bsd/2.10/root` | 255 / 255 | — |
-| `bsd211` | `~/bsd/2.11/root` | 295 / 295 | — |
+| `bsd210` | `~/bsd/2.10/root` | 262 / 262 | — |
+| `bsd211` | `~/bsd/2.11/root` | 303 / 303 | — |
 | `ultrix1` | `~/unix/ultrix11/1.0` | 70 / 71 | `elp`: sys 55 |
 | `ultrix2` | `~/unix/ultrix11/2.0` | 183 / 184 | `elp`: sys 67 |
 | `ultrix3` | `~/unix/ultrix11/3.0` | 184 / 188 | `elc`,`elp`: sys 67 |
 | `ultrix31` | `~/unix/ultrix11/3.1` | 185 / 189 | `elc`,`elp`: sys 67 |
 
 The research eras (V5–V7), System III, and both modern 2BSD releases run
-their entire shipped command set with no unimplemented call.  The 2.10/2.11
-"unreadable as extracted" tail is the uucp set (mode 0111 execute-only on
-the dump) — untested, not failing.
+their entire shipped command set with no unimplemented call — including the
+uucp set (`uucp`, `uux`, `uuname`, `uulog`, `uupoll`, `uustat`, `uuq`,
+`uusnap`, …), which ships execute-only (mode 0111, the historical
+convention) and so was previously reported as "unreadable / untested".
+The sweep now read-enables such binaries just long enough to run them and
+restores the original mode, so the denominator is complete: every 2.10 and
+2.11 command binary is accounted for (262/262 and 303/303).
 
 ## The Ultrix misses, classified
 
