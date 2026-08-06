@@ -26,8 +26,16 @@ stack, the same deliberate-refusal category as `adjtime`/`quota`/`fetchi`.
 | `bsd211` | `~/bsd/2.11/root` | 303 / 303 | — |
 | `ultrix1` | `~/unix/ultrix11/1.0` | 70 / 71 | `elp`: sys 55 |
 | `ultrix2` | `~/unix/ultrix11/2.0` | 183 / 184 | `elp`: sys 67 |
-| `ultrix3` | `~/unix/ultrix11/3.0` | 184 / 188 | `elc`,`elp`: sys 67 |
-| `ultrix31` | `~/unix/ultrix11/3.1` | 185 / 189 | `elc`,`elp`: sys 67 |
+| `ultrix3` | `~/unix/ultrix11/3.0` | 247 / 250 | `elc`,`elp`: sys 67; `fpsim`: sys 70 |
+| `ultrix31` | `~/unix/ultrix11/3.1` | 248 / 251 | `elc`,`elp`: sys 67; `fpsim`: sys 70 |
+
+The 3.0/3.1 numbers grew (from 184/188 and 185/189) once the boot tapes'
+optional-software TAR images were extracted into `/usr` — f77, the SCCS
+suite, nroff/troff/eqn/tbl, spell, learn, ratfor and the games — so the
+sweep now covers ~60 more heavyweight binaries per tree (a Fortran
+compiler, the text-processing chain).  All run clean.  The `/usr/games`
+set (24 binaries) extracts too and runs, but is interactive, so it is not
+in the default sweep dirs.
 
 The research eras (V5–V7), System III, and both modern 2BSD releases run
 their entire shipped command set with no unimplemented call — including the
@@ -40,7 +48,7 @@ restores the original mode, so the denominator is complete: every 2.10 and
 
 ## The Ultrix misses, classified
 
-Every remaining Ultrix miss is a DEC error-logger control tool hitting a
+Every remaining Ultrix miss is a DEC hardware/kernel control tool hitting a
 call that is privileged or kernel-internal — legitimately refused, exactly
 as native Ultrix would refuse it to an unprivileged process:
 
@@ -48,9 +56,19 @@ as native Ultrix would refuse it to an unprivileged process:
   `elc`/`elp` DEC error-logger utilities.  A kernel-internal logging
   channel; apsim answers `ENOSYS`, so the tools exit cleanly rather than
   operate on a log device that does not exist.
+- **sys 70 = `fpsim`** (FP-simulator control): the `fpsim` daemon that
+  drives the kernel's software floating point on an FP11-less CPU.  apsim
+  always provides a real FP11, so the control call is moot — refused.
 - **sys 55 = "readwrite (in abeyance)"** under `ultrix1`: a `nosys` slot
   *in the native 1.0 sysent itself* — `elp` probes a call that never
   existed on real Ultrix-11 1.0.  Refusing it is the authentic behavior.
+
+The socket ABI is NOT in this list any more: the sweep found `rdate` and
+`tftp` calling `socket` (sys 101) directly, so 3.x's shipped kernel
+carried the Berkeley socket calls (not only a TCP/IP driver, as earlier
+assumed).  apsim now maps the Ultrix socket block (101-106, 113-119) to
+its host-socket handlers, so those clients run to a real network result
+instead of a false "no such call".
 
 These are the PDP-11 counterpart of the four calls the VAX apsim also
 refuses (`adjtime`, `quota`, `fetchi`, `ucall`): not coverage gaps, but

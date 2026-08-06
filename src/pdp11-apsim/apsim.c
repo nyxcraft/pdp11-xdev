@@ -893,9 +893,14 @@ static const struct sremap Sys3Remap[] = {
  * Mail, lpr, uustat) calling sys 99 (gethostname) directly, so 2.0's
  * vector carried this block too.  System III / SVR2 (also Kern SYS3 but
  * not ultrix) do NOT get it.  Slots the sysent leaves nosys map to
- * C_NOSYS.  The UCB_NET socket numbers (101-106, 113-119) stay unmapped:
- * the distributed Ultrix kernel carries TCP/IP as an Executive-mode
- * driver, not the socket ABI. */
+ * C_NOSYS.  The UCB_NET socket block (101-106, 113-119) IS mapped: the
+ * shipped 3.x userland has real socket clients (rdate, tftp call socket
+ * (101) directly), so the distributed kernel carried the socket ABI, not
+ * only a driver.  apsim routes them to the same host-socket handlers as
+ * 2.11 -- so a client runs to a genuine network result (a real host
+ * connect, or a clean ECONNREFUSED) instead of a false "no such call".
+ * The Ultrix numbers differ from 2.11's (socket is 101 here, 97 there),
+ * so they get their own rows. */
 static const struct sremap Ultrix3Remap[] = {
 	{80,C_NOSYS,0}, {81,C_NOSYS,0} /* login */,
 	{82,C_LSTAT,0} /* UCB_SYMLINKS lstat, V7 stat shape */,
@@ -909,9 +914,14 @@ static const struct sremap Ultrix3Remap[] = {
 	{95,C_OK,0} /* fperr: no pending FP fault to report */,
 	{96,C_NOSYS,0} /* vhangup (nosys in 3.1) */,
 	{98,C_SELECT,0}, {99,C_GETHOSTNAME,0}, {100,C_OK,0} /* sethostname */,
+	/* UCB_NET sockets (3.1 sysent numbering, distinct from 2.11's) */
+	{101,C_SOCKET,0}, {102,C_BIND,0}, {103,C_LISTEN,0}, {104,C_ACCEPT,0},
+	{105,C_CONNECT,0}, {106,C_SOCKETPAIR,0},
 	{107,C_OK,0}, {108,C_OK,0} /* setre[ug]id: identity model */,
 	{109,C_SYMLINK,0}, {110,C_READLINK,0},
 	{111,C_OK,0}, {112,C_OK,0} /* get/sethostid */,
+	{113,C_SETSOCKOPT,0}, {114,C_GETSOCKOPT,0}, {115,C_GETSOCKNAME,0},
+	{116,C_GETPEERNAME,0}, {117,C_SHUTDOWN,0}, {118,C_SEND,0}, {119,C_RECV,0},
 	{ 0, 0, 0 }
 };
 static int sremap_apply(const struct sremap *t, int code, int *stat211){
