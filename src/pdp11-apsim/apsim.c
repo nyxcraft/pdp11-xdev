@@ -3173,18 +3173,43 @@ static int load_script(FILE *f, const char *path, int use_line,
 	sb_depth=0;
 	return r;
 }
+/* Read a segment into a 64 KB space at a byte offset, clamped so a
+ * hostile size/base can never write past the space (the loader fuzzer's
+ * find on the at-offset data reads).  A short file just leaves the tail
+ * zero -- the space was memset first. */
+static void loadseg(unsigned char *space, int off, int count, FILE *f){
+	off &= 0xffff;
+	if(count<0) count=0;
+	if(off+count > 0x10000) count = 0x10000 - off;
+	if(count>0){ if(fread(space+off,1,count,f)){} }
+}
 static int load_aout_env(const char *path, int nargs, char **args, int nenv, char **env){
-	FILE *f=fopen(path,"rb"); int hdr[8],i,tsize,dsize,entry;
+	FILE *f=fopen(path,"rb"); int hdr[8],i,nread,tsize,dsize,entry;
 	if(!f) return -1;
-	for(i=0;i<8;i++){ int lo=fgetc(f),hi=fgetc(f); hdr[i]=lo|(hi<<8); }
-	if((hdr[0]&0xffff)==0x2123)	/* "#!" */
+	/* The exec header is eight 16-bit on-disk words; mask each to 16 bits
+	 * so a short/hostile file cannot turn a size into a negative int that
+	 * reaches fread/memset as a huge size_t (the loader fuzzer's first
+	 * find).  Read what is there and record how many words landed -- the
+	 * script forms (#! and, for the initial exec, plain text) need only
+	 * the first word and can be far shorter than a 16-byte header, so
+	 * they are detected BEFORE any short-read rejection. */
+	for(i=0;i<8;i++) hdr[i]=0;
+	for(nread=0;nread<8;nread++){
+		int lo=fgetc(f),hi=fgetc(f);
+		if(lo==EOF) break;
+		hdr[nread]=(lo|((hi==EOF?0:hi)<<8))&0xffff;
+		if(hi==EOF){ nread++; break; }
+	}
+	if(nread>=1 && hdr[0]==0x2123)	/* "#!" */
 		return load_script(f, path, 1, nargs, args, nenv, env);
 	if(hdr[0]!=0405&&hdr[0]!=0407&&hdr[0]!=0410&&hdr[0]!=0411&&hdr[0]!=0430&&hdr[0]!=0431){
 		int b0=hdr[0]&0xff;
-		if(initial_exec && (b0=='\n'||b0=='\t'||(b0>=' '&&b0<127)))
+		if(initial_exec && nread>=1 && (b0=='\n'||b0=='\t'||(b0>=' '&&b0<127)))
 			return load_script(f, path, 0, nargs, args, nenv, env);
 		fclose(f); return -1;
 	}
+	/* a real a.out needs the full eight-word header */
+	if(nread<8){ fclose(f); return -1; }
 	if(hdr[0]==0405){
 		/* First Edition: [0405][a_text incl header][syms][reloc][data area][0].
 		 * exec loads the whole FILE IMAGE (12-byte header included) at core
@@ -3193,7 +3218,7 @@ static int load_aout_env(const char *path, int nargs, char **args, int nenv, cha
 		v1sys=1; ov_proc=0; tsizew=0; Isp=M;
 		memset(M,0,1<<16);
 		fseek(f,0,SEEK_SET);
-		if(fread(M+040000,1,(hdr[1]&0xffff)<=0100000?(hdr[1]&0xffff):0100000,f)){}
+		loadseg(M,040000,(hdr[1]&0xffff)<=0100000?(hdr[1]&0xffff):0100000,f);
 		fclose(f);
 		setup_stack_v1(nargs,args);
 		PC=040000;
@@ -3211,7 +3236,7 @@ static int load_aout_env(const char *path, int nargs, char **args, int nenv, cha
 		v1sys=1; ov_proc=0; tsizew=0; Isp=M;
 		memset(M,0,1<<16);
 		fseek(f,020,SEEK_SET);			/* skip the 8-word (16-byte) header */
-		if(fread(M+040000,1,(tsize+dsize)&0xffff,f)){}
+		loadseg(M,040000,(tsize+dsize)&0xffff,f);
 		fclose(f);
 		setup_stack_v1(nargs,args);
 		PC=040000;
@@ -3229,43 +3254,48 @@ static int load_aout_env(const char *path, int nargs, char **args, int nenv, cha
 		 * -- how 2.11 fits csh (55K base + 7K window + 10K data). */
 		int novl=(Kern>=PDP11_K_BSD210)?15:7;
 		int ovh[16],j,dbase;
-		for(j=0;j<novl+1;j++){ int lo=fgetc(f),hi=fgetc(f); ovh[j]=lo|(hi<<8); }
+		for(j=0;j<novl+1;j++){ int lo=fgetc(f),hi=fgetc(f);
+			if(lo==EOF||hi==EOF){ fclose(f); return -1; }
+			ovh[j]=(lo|(hi<<8))&0xffff; }
 		ov_max=ovh[0];
 		if(ov_max>16384){ fclose(f); return -1; }
 		ov_sep=(hdr[0]==0431);
 		ov_base=(tsize+017777)&~017777;
 		if(ov_base+ov_max>0x10000){ fclose(f); return -1; }
-		for(j=1;j<=novl;j++) ov_siz[j]=ovh[j];
+		/* each overlay image lands in a fixed 16 KB ov_img[] slot; a
+		 * hostile ov_siz past that would overflow it (the fuzzer's
+		 * overlay-header find), so cap every one at the slot size */
+		for(j=1;j<=novl;j++){ ov_siz[j]=ovh[j]; if(ov_siz[j]>16384){ fclose(f); return -1; } }
 		for(;j<16;j++) ov_siz[j]=0;
 		if(ov_sep){
 			Isp=MI; tsizew=0;
 			memset(MI,0,1<<16); memset(M,0,1<<16);
-			if(fread(MI,1,tsize,f)){}
+			loadseg(MI,0,tsize,f);
 			for(j=1;j<=novl;j++)
 				if(ov_siz[j]>0){ if(fread(ov_img[j-1],1,ov_siz[j],f)){} }
-			if(fread(M,1,dsize,f)){}
+			loadseg(M,0,dsize,f);
 			gbrk=(dsize+hdr[3])&0xffff;
 		} else {
 			dbase=((ov_base+ov_max)+017777)&~017777;
 			tsizew=0; Isp=M;
 			memset(M,0,1<<16);
-			if(fread(M,1,tsize,f)){}
+			loadseg(M,0,tsize,f);
 			for(j=1;j<=novl;j++)
 				if(ov_siz[j]>0){ if(fread(ov_img[j-1],1,ov_siz[j],f)){} }
-			if(fread(M+dbase,1,dsize,f)){}
+			loadseg(M,dbase,dsize,f);
 			gbrk=(dbase+dsize+hdr[3])&0xffff;
 		}
 		ov_proc=1;
 	} else if(hdr[0]==0411){
 		Isp=MI; tsizew=0;
 		memset(MI,0,1<<16); memset(M,0,1<<16);
-		if(fread(MI,1,tsize,f)){} if(fread(M,1,dsize,f)){}
+		loadseg(MI,0,tsize,f); loadseg(M,0,dsize,f);
 	} else {
 		int dbase=(hdr[0]==0407)?tsize:((tsize+017777)&~017777);
 		if(getenv("APSIM_DBASE")) dbase=(int)strtol(getenv("APSIM_DBASE"),0,8);
 		tsizew=(hdr[0]==0407)?0:tsize; Isp=M;
 		memset(M,0,1<<16);
-		if(fread(M,1,tsize,f)){} if(fread(M+dbase,1,dsize,f)){}
+		loadseg(M,0,tsize,f); loadseg(M,dbase,dsize,f);
 		gbrk=(dbase+dsize+hdr[3])&0xffff;
 	}
 	if(hdr[0]==0411) gbrk=(dsize+hdr[3])&0xffff;

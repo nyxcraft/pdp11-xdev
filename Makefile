@@ -37,6 +37,12 @@ check: libc
 	@sh tests/run.sh
 	@sh oracle/cross-universe.sh
 
+# apsim under AddressSanitizer + UBSan: the suite + the loader fuzz corpus
+# on the hostile-input paths, then a clean rebuild.  Separate from `check`
+# (it rebuilds apsim twice); run it after touching the simulator.
+check-san:
+	@$(MAKE) -C src/pdp11-apsim check-san
+
 # Rebuild the static documentation site into gh-pages/public/ (committed) and
 # fail on any broken internal link.  Needs markdown-it-py: pip install markdown-it-py
 docs:
@@ -49,4 +55,4 @@ clean:
 	@$(MAKE) -C src/common clean
 	rm -rf bin include lib
 
-.PHONY: all libc headers check docs clean $(TOOLS)
+.PHONY: all libc headers check check-san docs clean $(TOOLS)
