@@ -13,6 +13,7 @@ numbers.tsv   universe <tab> number <tab> name   (generated)
 MANIFEST.tsv  per-source provenance: format, count, sha256 (generated)
 gaps.py       which of each era's calls does apsim leave silent?
 sweep.py      run real era binaries, count ones that hit an unimplemented call
+coverage.md   the recorded sweep results per universe, with the misses classified
 ```
 
 ## Where each number comes from

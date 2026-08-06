@@ -216,15 +216,17 @@ if [ -f "$HOME/unix/ultrix11/2.0/usr/bin/awk40" ]; then
   [ "$o" = "42" ] && ok apsim ultrix2 "native 2.0 awk40 (overlays + stack args)" \
     || bad apsim ultrix2 "2.0 awk40 [$o]"
 fi
-# negative gate: a 3.x binary's sys 82 (lstat) must stay ENOSYS under the
-# 2.0 universe -- era numbering must not leak backward down the Ultrix line.
+# negative gate: the Ultrix "Berkeley block" (80+) is the DEC Ultrix vector,
+# shared across 1.0..3.1 -- the sweep found real 2.0 binaries calling sys 99
+# directly, so it is NOT 3.x-only.  The real personality boundary is Ultrix
+# vs non-Ultrix: an Ultrix binary's sys 82 (lstat) must stay ENOSYS under a
+# NON-ultrix V7-family universe (v7), where 82 is not a syscall at all.
 U31LS="$HOME/unix/ultrix11/3.1/bin/ls"
 if [ -f "$U31LS" ]; then
-  o=$(APSIM_ROOT="$HOME/unix/ultrix11/3.1" timeout 8 "$APSIM" -u ultrix2 "$U31LS" /bin 2>/dev/null | grep -c .)
-  # lstat(82) must be ENOSYS there, so ls reports "not found" (1 line)
-  # rather than producing a listing -- a real listing is the era leak.
-  [ "$o" -lt 100 ] && ok apsim ultrix2 "3.x lstat(82) correctly dead under ultrix2" \
-    || bad apsim ultrix2 "3.x ls WORKED under ultrix2 (era leak)"
+  o=$(APSIM_ROOT="$HOME/unix/ultrix11/3.1" timeout 8 "$APSIM" -u v7 "$U31LS" /bin 2>/dev/null | grep -c .)
+  # lstat(82) is ENOSYS under v7, so ls cannot list -- a real listing is the leak.
+  [ "$o" -lt 100 ] && ok apsim v7 "Ultrix Berkeley-block lstat(82) dead under v7" \
+    || bad apsim v7 "Ultrix ls WORKED under v7 (personality leak)"
 fi
 # 1BSD/2BSD are userland layered on V6/V7 (no kernel of their own), so their
 # personalities ARE v56/v7.  Validate that identity directly: a native V6/V7

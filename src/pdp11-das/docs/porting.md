@@ -1,20 +1,35 @@
-# das (disassembler)
+# das (disassembler) — original porting guide (historical)
 
-`das/das.c` is the inverse of this toolchain's `as`: a disassembler for the
-three 2.8BSD PDP-11 binary formats.
+> **Historical.**  This is the porting guide for the *original* small das,
+> when it disassembled only the 2.8BSD object formats and its `-a` inverse
+> was proven over the 2.8BSD `.s` corpus.  The engine has since grown to
+> cover every era `as` covers (First Edition 1971 through V7 and
+> 1/2.8/2.9/2.10/2.11BSD), the 2.11 string-table and old binary archive
+> formats, and stripped/overlaid binaries — with much larger corpus
+> numbers.  For the current scope and command-line, see the
+> [README](../README.md); for the reassembly engine as it stands now, the
+> [field guide](fieldguide.md).  The design writeup below (control-flow
+> code/data separation, the `sysent` inline-arg walk, byte-granular
+> segment reconstruction) is still an accurate account of how the core
+> works, which is why it is kept.
+
+`das/das.c` is the inverse of this toolchain's `as`.  In the era this guide
+was written it handled the 2.8BSD object formats:
 
 ```sh
-pdp11-bsd29-das  file        # write <stem>.<object>.dis listings (one per object)
-pdp11-bsd29-das -p file      # write a single combined listing to stdout
-pdp11-bsd29-das -a file      # emit reassemblable `as' source instead of a listing
+pdp11-das  file        # write <stem>.<object>.dis listings (one per object)
+pdp11-das -p file      # write a single combined listing to stdout
+pdp11-das -a file      # emit reassemblable `as' source instead of a listing
 ```
 
 ## Reassemblable output (`-a`)
 
 With `-a`, das emits clean `as` source (no address/byte columns, `/` comments,
 `.globl` declarations) that **reassembles to a byte-identical object**.  It is
-the verified inverse of `as` across the **entire 2.8BSD `.s` corpus**: every one
-of the 197 source files that assembles (`as o.o ... | das -a | as` again)
+the verified inverse of `as` across the **entire 2.8BSD `.s` corpus** (197
+source files at the time this guide was written; the current engine is proven
+over far more — 1130 wide-corpus objects and 1665 2.11 objects, see the README):
+every one of those source files that assembles (`as o.o ... | das -a | as` again)
 round-trips with byte-identical text+data — zero differences — covering compiler
 output, all of libc, the syscall stubs, the boot loaders, the overlay runtime,
 the Pascal interpreter (`px`), the kernel machine-config (`m40`/`mch`), and the
@@ -108,6 +123,8 @@ a.out everything resolves.
   `n_ovly`, `n_value`.  Types: N_TEXT=02, N_DATA=03, N_BSS=04, N_FN=037,
   +N_EXT=040.
 - archive: the binary `ar` format, `ARMAG` 0177545, 26-byte member headers.
+  (The current das also reads the 2.11 string-table objects and the old
+  binary / portable-ASCII archive variants; see the field guide.)
 
 ## Decoder
 

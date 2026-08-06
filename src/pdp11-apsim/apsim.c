@@ -885,15 +885,17 @@ static const struct sremap Sys3Remap[] = {
 	{79,C_NOSYS,0} /* semsys */,
 	{ 0, 0, 0 }
 };
-/* Ultrix-11 3.x only: the "Berkeley 2.9 compatable" block -- the 2.9BSD
- * local sub-calls flattened onto direct numbers 80+ (3.1src sysent.c:
- * "Indir's through #58 an offset to this point"; 80+n = 2.9 local #n).
- * 3.0 and 3.1 share it; 1.0/2.0 predate it, so the gate is the universe,
- * not the kern.  Slots the 3.1 sysent leaves nosys stay unmapped or map
- * to C_NOSYS so a wrong-era probe still fails.  The UCB_NET socket
- * numbers (101-106, 113-119) are deliberately unmapped: the distributed
- * 3.x kernel carries TCP/IP as an Executive-mode driver, not the socket
- * ABI. */
+/* The Ultrix "Berkeley 2.9 compatable" block -- the 2.9BSD local
+ * sub-calls flattened onto direct numbers 80+ (3.1src sysent.c: "Indir's
+ * through #58 an offset to this point"; 80+n = 2.9 local #n).  Shared by
+ * the whole DEC Ultrix vector: applied to every ultrix universe (Kern ==
+ * ULTRIX), NOT just 3.x -- the sweep found real 2.0 binaries (hostname,
+ * Mail, lpr, uustat) calling sys 99 (gethostname) directly, so 2.0's
+ * vector carried this block too.  System III / SVR2 (also Kern SYS3 but
+ * not ultrix) do NOT get it.  Slots the sysent leaves nosys map to
+ * C_NOSYS.  The UCB_NET socket numbers (101-106, 113-119) stay unmapped:
+ * the distributed Ultrix kernel carries TCP/IP as an Executive-mode
+ * driver, not the socket ABI. */
 static const struct sremap Ultrix3Remap[] = {
 	{80,C_NOSYS,0}, {81,C_NOSYS,0} /* login */,
 	{82,C_LSTAT,0} /* UCB_SYMLINKS lstat, V7 stat shape */,
@@ -1112,8 +1114,10 @@ static void do_syscall(int num, int argaddr)
 	else if(Kern==PDP11_K_BSD211) num = sremap_apply(Bsd211Remap, num, &stat211);
 	else if(Kern==PDP11_K_SYS3 || Kern==PDP11_K_ULTRIX){
 	                              num = sremap_apply(Sys3Remap, num, &stat211);
-		if(Kern==PDP11_K_ULTRIX &&
-		   (!strcmp(Univ,"ultrix3") || !strcmp(Univ,"ultrix31")))
+		/* the Berkeley-block flattening is the DEC Ultrix vector, shared
+		 * across 1.0..3.1 -- so every ultrix universe, but not System
+		 * III / SVR2 (which share the SYS3 kern without it). */
+		if(Kern==PDP11_K_ULTRIX)
 			num = sremap_apply(Ultrix3Remap, num, &stat211);
 	}
 	else if(Kern==PDP11_K_V56 && v56_nosys(num)){

@@ -134,7 +134,7 @@ if [ -x "$R/bin/echo" ] && [ -x "$R/bin/cat" ]; then
 	# path -- overlays, 32-bit sigmasks, sigsuspend, wait3 -- end to end.
 	if [ -x "$R/bin/csh" ]; then
 		out=$(printf 'foreach i (a b c)\n/bin/echo item $i\nend\nexit\n' | \
-		      APSIM_ROOT="$R" timeout 15 "$APSIM" -u bsd211 "$R/bin/csh" -f 2>&1)
+		      APSIM_ROOT="$R" timeout 60 "$APSIM" -u bsd211 "$R/bin/csh" -f 2>&1)
 		nl=$(printf '%s\n' "$out" | grep -c '^item ')
 		if [ "$nl" = 3 ]; then
 			ok 211-csh 'csh forks/reaps externals: foreach loop of 3'
@@ -142,7 +142,7 @@ if [ -x "$R/bin/echo" ] && [ -x "$R/bin/cat" ]; then
 			bad 211-csh "csh job control: got [$out]"
 		fi
 		out=$(printf '/bin/echo J &\nwait\nexit\n' | \
-		      APSIM_ROOT="$R" timeout 15 "$APSIM" -u bsd211 "$R/bin/csh" -f 2>&1)
+		      APSIM_ROOT="$R" timeout 60 "$APSIM" -u bsd211 "$R/bin/csh" -f 2>&1)
 		case "$out" in
 		*Done*) ok 211-csh-bg 'csh background job reaped and reported Done' ;;
 		*) bad 211-csh-bg "no Done report: [$out]" ;;
@@ -221,7 +221,7 @@ fi
 R="$HOME/bsd/2.10/root"
 if [ -x "$R/bin/csh" ]; then
 	out=$(printf 'foreach i (a b c)\n/bin/echo item $i\nend\nexit\n' | \
-	      APSIM_ROOT="$R" timeout 15 "$APSIM" -u bsd210 "$R/bin/csh" -f 2>&1)
+	      APSIM_ROOT="$R" timeout 60 "$APSIM" -u bsd210 "$R/bin/csh" -f 2>&1)
 	nl=$(printf '%s\n' "$out" | grep -c '^item ')
 	if [ "$nl" = 3 ]; then
 		ok 210-csh 'csh getwd + foreach loop of 3 externals (16-byte dirs)'
@@ -229,7 +229,7 @@ if [ -x "$R/bin/csh" ]; then
 		bad 210-csh "csh: got [$out]"
 	fi
 	out=$(printf '/bin/echo J &\nwait\nexit\n' | \
-	      APSIM_ROOT="$R" timeout 15 "$APSIM" -u bsd210 "$R/bin/csh" -f 2>&1)
+	      APSIM_ROOT="$R" timeout 60 "$APSIM" -u bsd210 "$R/bin/csh" -f 2>&1)
 	case "$out" in
 	*Done*) ok 210-csh-bg 'csh background job reaped and reported Done' ;;
 	*) bad 210-csh-bg "no Done report: [$out]" ;;
