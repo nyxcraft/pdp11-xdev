@@ -211,4 +211,31 @@ else
 	skip bsd211 '~/bsd/2.11/root not present'
 fi
 
+# 2.10 csh: the SAME 4.3 job-control path as 2.11, but on 2.10's V7-style
+# 16-byte on-disk directory.  csh's getwd() reads .. via readdir at
+# startup; 2.10's readdir casts each slot to a fixed 16-byte v7direct,
+# so a 2.11-style variable snapshot misparses and getwd fails ("read
+# error in ..") before csh runs anything.  These pin the directory-format
+# split AND the job-control path under -u bsd210.  (apsim's own
+# diagnostics survive csh closing fd 2 because they go to a private dup.)
+R="$HOME/bsd/2.10/root"
+if [ -x "$R/bin/csh" ]; then
+	out=$(printf 'foreach i (a b c)\n/bin/echo item $i\nend\nexit\n' | \
+	      APSIM_ROOT="$R" timeout 15 "$APSIM" -u bsd210 "$R/bin/csh" -f 2>&1)
+	nl=$(printf '%s\n' "$out" | grep -c '^item ')
+	if [ "$nl" = 3 ]; then
+		ok 210-csh 'csh getwd + foreach loop of 3 externals (16-byte dirs)'
+	else
+		bad 210-csh "csh: got [$out]"
+	fi
+	out=$(printf '/bin/echo J &\nwait\nexit\n' | \
+	      APSIM_ROOT="$R" timeout 15 "$APSIM" -u bsd210 "$R/bin/csh" -f 2>&1)
+	case "$out" in
+	*Done*) ok 210-csh-bg 'csh background job reaped and reported Done' ;;
+	*) bad 210-csh-bg "no Done report: [$out]" ;;
+	esac
+else
+	skip 210-csh '~/bsd/2.10/root/bin/csh not present'
+fi
+
 [ "$fail" = 0 ] && echo "ALL PASS" || echo "FAILURES"; exit $fail

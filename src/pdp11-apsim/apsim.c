@@ -47,6 +47,16 @@
 static int Kern = PDP11_K_BSD2X;	/* personality (default: bsd29) */
 static const char *Univ = PDP11_UNIV_DEFAULT_NAME;
 
+/* Every apsim diagnostic (traces, faults, the unhandled-syscall notice)
+ * goes to Dbg, NOT the raw stderr, because the guest owns host fds 0/1/2:
+ * a program that closes or reuses fd 2 (csh's initdesc dups 0/1/2 up high
+ * and closes the originals) would otherwise silence apsim's own voice --
+ * so a fault after that point vanished, and this is exactly what hid the
+ * 2.10 csh failure.  main() re-points Dbg at a private dup of the startup
+ * stderr on a high, close-on-exec descriptor the guest never touches. */
+static FILE *Dbg;			/* set in main; NULL means "use stderr" */
+#define DBGF (Dbg ? Dbg : stderr)
+
 static const struct { const char *name; int id, kern; } UnivTab[] = {
 #define X(n, i, s, k, d) { n, i, k },
 	PDP11_UNIVERSE_TABLE(X)
@@ -343,12 +353,12 @@ static unsigned short pcring[16]; static int pcri; static int steppc;
 static int rndpc=-2, rndn;	/* rnd-trace: log each call at PC=$APSIM_RNDPC (octal) */
 static void st2(int a,int v){ a&=0xffff;
 	if(v1sys && a>=KE11LO && a<=KE11HI+1){ ke11_wr(a,v&0xffff); return; }
-	if(a==watchaddr || a+1==watchaddr) fprintf(stderr,"apsim: WATCH addr=%06o val=%06o steppc=%06o\n",a,v&0xffff,steppc);
-	if(watchval && (v&0xffff)>=watchval && (v&0xffff)<=watchval+6) fprintf(stderr,"apsim: VALSET addr=%06o val=%06o steppc=%06o r2=%06o\n",a,v&0xffff,steppc,R[2]);
+	if(a==watchaddr || a+1==watchaddr) fprintf(DBGF,"apsim: WATCH addr=%06o val=%06o steppc=%06o\n",a,v&0xffff,steppc);
+	if(watchval && (v&0xffff)>=watchval && (v&0xffff)<=watchval+6) fprintf(DBGF,"apsim: VALSET addr=%06o val=%06o steppc=%06o r2=%06o\n",a,v&0xffff,steppc,R[2]);
 	if(watchtext && a<tsizew){ int k;
-		fprintf(stderr,"apsim: TEXT WRITE addr=%06o val=%06o steppc=%06o instr=%06o\n",a,v&0xffff,steppc,ld2(steppc));
-		fprintf(stderr,"  R0-5: %06o %06o %06o %06o %06o %06o SP=%06o\n",R[0],R[1],R[2],R[3],R[4],R[5],R[6]);
-		fprintf(stderr,"  recent pcs:"); for(k=0;k<16;k++) fprintf(stderr," %06o",pcring[(pcri+k)&15]); fprintf(stderr,"\n");
+		fprintf(DBGF,"apsim: TEXT WRITE addr=%06o val=%06o steppc=%06o instr=%06o\n",a,v&0xffff,steppc,ld2(steppc));
+		fprintf(DBGF,"  R0-5: %06o %06o %06o %06o %06o %06o SP=%06o\n",R[0],R[1],R[2],R[3],R[4],R[5],R[6]);
+		fprintf(DBGF,"  recent pcs:"); for(k=0;k<16;k++) fprintf(DBGF," %06o",pcring[(pcri+k)&15]); fprintf(DBGF,"\n");
 		if(--watchtext==0) { halted=1; ecode=126; } }
 	M[a]=v&0xff; M[(a+1)&0xffff]=(v>>8)&0xff; }
 static int ld1(int a){ a&=0xffff;
@@ -356,8 +366,8 @@ static int ld1(int a){ a&=0xffff;
 	return M[a]; }
 static void st1(int a,int v){ a&=0xffff;
 	if(v1sys && a>=KE11LO && a<=KE11HI+1){ ke11_wr(a,v&0xff); return; }
-	if(a==watchaddr){ fprintf(stderr,"apsim: WATCH1 addr=%06o val=%03o steppc=%06o r2=%06o iob[r2]: ptr=%06o cnt=%06o base=%06o flag=%06o\n",a,v&0xff,steppc,R[2],ld2(R[2]),ld2(R[2]+2),ld2(R[2]+4),ld2(R[2]+6)); }
-	if(watchtext && a<tsizew){ fprintf(stderr,"apsim: TEXT WRITE1 addr=%06o val=%03o steppc=%06o instr=%06o\n",a,v&0xff,steppc,ld2(steppc));
+	if(a==watchaddr){ fprintf(DBGF,"apsim: WATCH1 addr=%06o val=%03o steppc=%06o r2=%06o iob[r2]: ptr=%06o cnt=%06o base=%06o flag=%06o\n",a,v&0xff,steppc,R[2],ld2(R[2]),ld2(R[2]+2),ld2(R[2]+4),ld2(R[2]+6)); }
+	if(watchtext && a<tsizew){ fprintf(DBGF,"apsim: TEXT WRITE1 addr=%06o val=%03o steppc=%06o instr=%06o\n",a,v&0xff,steppc,ld2(steppc));
 		if(--watchtext==0) { halted=1; ecode=126; } }
 	M[a]=v&0xff; }
 
@@ -626,14 +636,20 @@ static unsigned char *dir_build(const char *hpath, int *lenp){
 			int k; buf[len]=ino&0xff; buf[len+1]=(ino>>8)&0xff;
 			for(k=0;k<8;k++) buf[len+2+k]= k<(int)strlen(e->d_name)?e->d_name[k]:0;
 			len+=10;
-		} else if(Kern>=PDP11_K_BSD210){
-			/* 4.3-style variable records packed into 512-byte blocks:
-			 * {d_ino, d_reclen, d_namlen, name NUL-padded to a 4-byte
-			 * boundary}.  A record never crosses a block; remaining
-			 * room too small for the next entry is closed out with a
-			 * SEPARATE empty record (ino 0, reclen = what's left) --
-			 * the same shape Apout emits -- rather than by inflating
-			 * the last real entry's reclen. */
+		} else if(Kern>=PDP11_K_BSD211){
+			/* 2.11's variable-length directory (its readdir walks
+			 * struct direct records by d_reclen): {d_ino, d_reclen,
+			 * d_namlen, name NUL-padded to a 4-byte boundary}, packed
+			 * into 512-byte blocks.  A record never crosses a block;
+			 * remaining room too small for the next entry is closed
+			 * out with a SEPARATE empty record (ino 0, reclen = what's
+			 * left).  2.10 does NOT use this -- it kept V7's fixed
+			 * 16-byte on-disk directory (its readdir casts each slot to
+			 * `struct v7direct'), so it takes the V5..2.9 branch below.
+			 * Emitting variable records to 2.10 made its getwd read ..
+			 * to EOF without ever matching the cwd's inode (the entries
+			 * misparsed), so csh died at startup with "getwd: read
+			 * error in .." before running a single command. */
 			int nl=(int)strlen(e->d_name); if(nl>63) nl=63;
 			int rl=((6+nl+1)+3)&~3;
 			int left=512-(len&511);
@@ -656,7 +672,7 @@ static unsigned char *dir_build(const char *hpath, int *lenp){
 			len+=16;
 		}
 	}
-	if(Kern>=PDP11_K_BSD210 && (len&511)!=0){
+	if(Kern>=PDP11_K_BSD211 && (len&511)!=0){
 		/* close out the final block with an empty record */
 		int left=512-(len&511);
 		buf[len]=0; buf[len+1]=0;
@@ -1101,7 +1117,7 @@ static void do_syscall(int num, int argaddr)
 			num = sremap_apply(Ultrix3Remap, num, &stat211);
 	}
 	else if(Kern==PDP11_K_V56 && v56_nosys(num)){
-		if(systrace) fprintf(stderr, "sys %d: nosys in this era\n", num);
+		if(systrace) fprintf(DBGF, "sys %d: nosys in this era\n", num);
 		FC=1; R[0]=EINVAL; return;
 	}
 	if(stackargs){
@@ -1123,7 +1139,7 @@ static void do_syscall(int num, int argaddr)
 		}
 	}
 	if(Kern==PDP11_K_BSD2X && num==57) num=2;	/* 2.9 vfork: treat as fork */
-	if(systrace) fprintf(stderr, "[%d] sys %d fd0=%d a1=%06o a2=%06o a3=%06o\n", getpid()&0x7fff, num, fd0, a1, a2, a3);
+	if(systrace) fprintf(DBGF, "[%d] sys %d fd0=%d a1=%06o a2=%06o a3=%06o\n", getpid()&0x7fff, num, fd0, a1, a2, a3);
 	switch(num){
 	case 1:				/* exit(code in r0; 2.10: on stack) */
 		halted=1; ecode=(stackargs?a1:R[0])&0xff; return;
@@ -1192,7 +1208,7 @@ static void do_syscall(int num, int argaddr)
 	}
 	case 5: {			/* open(a1=path, a2=mode) */
 		char hp[1024]; struct stat ds;
-		if(systrace) fprintf(stderr, "    open ret=%06o path='%s'\n", ld2(SP), (char*)(M+(a1&0xffff)));
+		if(systrace) fprintf(DBGF, "    open ret=%06o path='%s'\n", ld2(SP), (char*)(M+(a1&0xffff)));
 		strncpy(hp, mappath(a1), sizeof hp-1); hp[sizeof hp-1]=0;
 		r = open(hp, Kern>=PDP11_K_BSD210 ? (a2&3) : a2);
 		/* classic UNIX lists directories by read(2); snapshot them */
@@ -1205,7 +1221,7 @@ static void do_syscall(int num, int argaddr)
 		r = close(fd0);
 		break;
 	case 8:				/* creat(a1=path, a2=mode) */
-		if(systrace) fprintf(stderr, "    creat path='%s' mode=%o\n", mappath(a1), a2);
+		if(systrace) fprintf(DBGF, "    creat path='%s' mode=%o\n", mappath(a1), a2);
 		r = creat(mappath(a1), a2);
 		break;
 	case 19: {			/* V5/V6: seek(fd, offset16, ptrname 0-5);
@@ -1265,8 +1281,8 @@ static void do_syscall(int num, int argaddr)
 					 * era's struct stat shape (put_stat). */
 		struct stat hs; int sb, ok;
 		if(num==28){ ok=fstat(fd0,&hs); sb=a1&0xffff; }
-		else if(num==C_LSTAT){ if(systrace) fprintf(stderr, "    lstat path='%s' -> %s\n", (char*)(M+(a1&0xffff)), mappath(a1)); ok=lstat(mappath(a1),&hs); sb=a2&0xffff; }
-		else { if(systrace) fprintf(stderr, "    stat path='%s'\n", mappath(a1)); ok=stat(mappath(a1),&hs); sb=a2&0xffff; }
+		else if(num==C_LSTAT){ if(systrace) fprintf(DBGF, "    lstat path='%s' -> %s\n", (char*)(M+(a1&0xffff)), mappath(a1)); ok=lstat(mappath(a1),&hs); sb=a2&0xffff; }
+		else { if(systrace) fprintf(DBGF, "    stat path='%s'\n", mappath(a1)); ok=stat(mappath(a1),&hs); sb=a2&0xffff; }
 		if(ok<0){ r=-1; break; }
 		if(S_ISDIR(hs.st_mode)){
 			/* the guest sees the era-format snapshot, so its size
@@ -1966,10 +1982,10 @@ static void do_syscall(int num, int argaddr)
 	case C_NOSYS:
 		errno = ENOSYS; r = -1; break;
 	default:
-		fprintf(stderr, "apsim: unhandled sys %d (universe %s) -> ENOSYS\n", num, Univ);
+		fprintf(DBGF, "apsim: unhandled sys %d (universe %s) -> ENOSYS\n", num, Univ);
 		errno = ENOSYS; r = -1; break;
 	}
-	if(systrace) fprintf(stderr, "    -> %ld\n", r);
+	if(systrace) fprintf(DBGF, "    -> %ld\n", r);
 	if(r<0 && errno==EINTR && (num==3||num==4)){
 		PC=TrapPC;	/* slow read/write: deliver the signal, then
 				 * restart (the kernel's ERESTART).  wait is
@@ -2082,7 +2098,7 @@ static void do_v1syscall(int num, int argaddr)
 {
 	int a1=ld2(argaddr), a2=ld2(argaddr+2);
 	long r=0;
-	if(systrace) fprintf(stderr,"v1sys %d r0=%06o a1=%06o a2=%06o\n",num,R[0],a1,a2);
+	if(systrace) fprintf(DBGF,"v1sys %d r0=%06o a1=%06o a2=%06o\n",num,R[0],a1,a2);
 	switch(num){
 	case 0:					/* rele: give up the processor */
 	case 17:				/* break: grow the data area (flat here) */
@@ -2214,7 +2230,7 @@ static void do_v1syscall(int num, int argaddr)
 	case 24:				/* getuid -> r0 */
 		R[0]=g_ruid&0xffff; FC=0; return;
 	default:
-		fprintf(stderr,"apsim: V1 sys %d not implemented (pc=%06o)\n",num,(PC-2)&0xffff);
+		fprintf(DBGF,"apsim: V1 sys %d not implemented (pc=%06o)\n",num,(PC-2)&0xffff);
 		halted=1; ecode=127; return;
 	}
 }
@@ -2225,7 +2241,7 @@ static void do_v1sys(int instr)
 	 * sync=36, kill=37 -- so a v2 binary that uses them runs under -u v2 but
 	 * is a "bad system call" under -u v1, the real edition boundary. */
 	int limit = !strcmp(Univ,"v2") ? 37 : 34;
-	if(num>limit){ fprintf(stderr,"apsim: bad V1 sys %o at pc=%06o\n",num,(PC-2)&0xffff);
+	if(num>limit){ fprintf(DBGF,"apsim: bad V1 sys %o at pc=%06o\n",num,(PC-2)&0xffff);
 		halted=1; ecode=127; return; }
 	PC=(PC+2*v1inl[num])&0xffff;	/* step past the inline args (exec resets PC) */
 	do_v1syscall(num, argaddr);
@@ -2336,7 +2352,7 @@ static double fpv2d(struct fpv v){	/* trace only -- no libm */
 	while(e>0){ d*=2; e--; } while(e<0){ d*=0.5; e++; }
 	return v.sign?-d:d;
 }
-#define FPTR(...) do{ if(fptrace>0) fprintf(stderr,__VA_ARGS__); }while(0)
+#define FPTR(...) do{ if(fptrace>0) fprintf(DBGF,__VA_ARGS__); }while(0)
 
 static void do_fp(int instr){
 	int op=instr&0177400, ac=(instr>>6)&3, spec=instr&077;
@@ -2450,7 +2466,7 @@ static void do_fp(int instr){
 		fN=(AC[ac].frac!=0)&&AC[ac].sign; fZ=(AC[ac].frac==0); fV=0; fC=0;
 		FPTR("%06o: stcfi %f -> %ld\n",pc0,fpv2d(AC[ac]),iv); return;
 	}
-	fprintf(stderr,"apsim: unhandled fp instr %06o at %06o\n", instr, (PC-2)&0xffff);
+	fprintf(DBGF,"apsim: unhandled fp instr %06o at %06o\n", instr, (PC-2)&0xffff);
 	halted=1; ecode=127;
 }
 
@@ -2819,7 +2835,7 @@ static void step(void)
 			t = (n==7) ? PC : R[n];
 			if((t&1) || ld2(t)==0){		/* badrts: fall through as a nop
 							 * (the real kernel resumed the program) */
-				fprintf(stderr,"apsim: V1 emt %d bad return %06o at pc=%06o\n",n,t,(PC-2)&0xffff);
+				fprintf(DBGF,"apsim: V1 emt %d bad return %06o at pc=%06o\n",n,t,(PC-2)&0xffff);
 				halted=1; ecode=128+7; return;
 			}
 			if(n!=7){ R[n]=ld2(SP); SP=(SP+2)&0xffff; PC=t&0xffff; }
@@ -2834,9 +2850,9 @@ static void step(void)
 				memset(win+ov_base,0,ov_max);
 				memcpy(win+ov_base,ov_img[n-1],ov_siz[n]);
 				cur_ovno=n;
-				if(systrace) fprintf(stderr,"apsim: overlay -> %d (%d bytes @%06o%s)\n",n,ov_siz[n],ov_base,ov_sep?" I":"");
+				if(systrace) fprintf(DBGF,"apsim: overlay -> %d (%d bytes @%06o%s)\n",n,ov_siz[n],ov_base,ov_sep?" I":"");
 			} else {
-				fprintf(stderr,"apsim: EMT bad overlay %d\n",n);
+				fprintf(DBGF,"apsim: EMT bad overlay %d\n",n);
 				halted=1; ecode=128+7;
 			}
 			return;
@@ -3000,8 +3016,8 @@ static void step(void)
 						 * illegal instruction, keeping the fault
 						 * visible. */
 		if(raise_fault(4)) return;
-		fprintf(stderr,"apsim: HALT at %06o (wild jump into zeroed memory?)\n",(PC-2)&0xffff);
-		{ int k; fprintf(stderr,"  recent pcs:"); for(k=0;k<16;k++) fprintf(stderr," %06o",pcring[(pcri+k)&15]); fprintf(stderr,"\n"); }
+		fprintf(DBGF,"apsim: HALT at %06o (wild jump into zeroed memory?)\n",(PC-2)&0xffff);
+		{ int k; fprintf(DBGF,"  recent pcs:"); for(k=0;k<16;k++) fprintf(DBGF," %06o",pcring[(pcri+k)&15]); fprintf(DBGF,"\n"); }
 		halted=1; ecode=128+4; return;
 	case 0000002:					/* RTI */
 	case 0000006: {					/* RTT: pop PC then PS (signal */
@@ -3013,7 +3029,7 @@ static void step(void)
 	case 0000003:					/* BPT -> SIGTRAP (adb breakpoints) */
 		if(pt_traced){ pt_pending=5; return; }	/* traced: trap-stop for the tracer */
 		if(raise_fault(5)) return;
-		fprintf(stderr,"apsim: BPT at %06o (no SIGTRAP handler)\n",(PC-2)&0xffff);
+		fprintf(DBGF,"apsim: BPT at %06o (no SIGTRAP handler)\n",(PC-2)&0xffff);
 		halted=1; ecode=128+5; return;
 	case 0000004:					/* IOT -> SIGIOT (abort()) */
 		if(raise_fault(6)) return;
@@ -3039,9 +3055,9 @@ static void step(void)
 	 * almost always an apsim DECODE GAP rather than a guest bug, so print the
 	 * diagnostic and halt -- keeping emulation holes visible. */
 	if(raise_fault(4)) return;
-	fprintf(stderr,"apsim: illegal instruction %06o at %06o\n", instr, (PC-2)&0xffff);
-	{ int a; fprintf(stderr,"  arena window 0111130..0111154:"); for(a=0111130;a<=0111154;a+=2) fprintf(stderr," %06o:%06o",a,ld2(a)); fprintf(stderr,"\n");
-	  fprintf(stderr,"  recent pcs:"); { int k; for(k=0;k<16;k++) fprintf(stderr," %06o",pcring[(pcri+k)&15]); } fprintf(stderr,"\n"); }
+	fprintf(DBGF,"apsim: illegal instruction %06o at %06o\n", instr, (PC-2)&0xffff);
+	{ int a; fprintf(DBGF,"  arena window 0111130..0111154:"); for(a=0111130;a<=0111154;a+=2) fprintf(DBGF," %06o:%06o",a,ld2(a)); fprintf(DBGF,"\n");
+	  fprintf(DBGF,"  recent pcs:"); { int k; for(k=0;k<16;k++) fprintf(DBGF," %06o",pcring[(pcri+k)&15]); } fprintf(DBGF,"\n"); }
 	halted=1; ecode=126;
 }
 
@@ -3314,6 +3330,13 @@ static int load_aout(const char *path, int nargs, char **args){
 int main(int argc, char **argv)
 {
 	FILE *f; int hdr[8], ai=1, tsize, dsize, bsize, entry; long long i;
+	/* Private diagnostic channel: dup the startup stderr onto a high,
+	 * close-on-exec descriptor and use that for every apsim message, so a
+	 * guest that closes or reassigns fd 2 can never mute the simulator.
+	 * Falls back to plain stderr if the dup fails. */
+	{ int e=fcntl(2, F_DUPFD_CLOEXEC, 100);
+	  if(e>=0) Dbg=fdopen(e,"w");
+	  if(Dbg) setvbuf(Dbg,(char*)0,_IONBF,0); }
 	/* env first, so a command-line flag can override it */
 	if(getenv("APSIM_WATCHTEXT")) watchtext=atoi(getenv("APSIM_WATCHTEXT"));
 	if(getenv("APSIM_WATCHSP")) watchsp=1;
@@ -3326,11 +3349,11 @@ int main(int argc, char **argv)
 	/* universe: $PDP11_UNIVERSE first, then --universe/-u override */
 	{ char *e=getenv("PDP11_UNIVERSE");
 	  if(e && *e && !univ_apply(e)){
-		fprintf(stderr,"apsim: unknown universe `%s' in PDP11_UNIVERSE; valid:",e);
-#define X(n,i,s,k,d) fprintf(stderr," %s",n);
+		fprintf(DBGF,"apsim: unknown universe `%s' in PDP11_UNIVERSE; valid:",e);
+#define X(n,i,s,k,d) fprintf(DBGF," %s",n);
 		PDP11_UNIVERSE_TABLE(X)
 #undef X
-		fprintf(stderr,"\n"); return 2; } }
+		fprintf(DBGF,"\n"); return 2; } }
 	if(getenv("APSIM_SYSARGS") && !strcmp(getenv("APSIM_SYSARGS"),"stack")) stackargs=1;
 	/* flags (any order): -t trace instrs, -s trace syscalls, -p N fix getpid() */
 	while(ai<argc && argv[ai][0]=='-' && argv[ai][1]){
@@ -3341,18 +3364,18 @@ int main(int argc, char **argv)
 		else if(!strncmp(argv[ai],"--universe=",11) || !strcmp(argv[ai],"-u") || !strcmp(argv[ai],"--universe")) {
 			const char *nm;
 			if(argv[ai][1]=='-' && argv[ai][10]=='='){ nm=argv[ai]+11; ai++; }
-			else { if(ai+1>=argc){ fprintf(stderr,"apsim: %s needs a name\n",argv[ai]); return 2; } nm=argv[ai+1]; ai+=2; }
+			else { if(ai+1>=argc){ fprintf(DBGF,"apsim: %s needs a name\n",argv[ai]); return 2; } nm=argv[ai+1]; ai+=2; }
 			if(!univ_apply(nm)){
-				fprintf(stderr,"apsim: unknown universe `%s'; valid:",nm);
-#define X(n,i,s,k,d) fprintf(stderr," %s",n);
+				fprintf(DBGF,"apsim: unknown universe `%s'; valid:",nm);
+#define X(n,i,s,k,d) fprintf(DBGF," %s",n);
 				PDP11_UNIVERSE_TABLE(X)
 #undef X
-				fprintf(stderr,"\n"); return 2;
+				fprintf(DBGF,"\n"); return 2;
 			}
 		}
 		else break;
 	}
-	if(ai>=argc){ fprintf(stderr,"usage: apsim [-t] [-s] [-p pid] [-u universe] [-2] a.out [args]\n"); return 2; }
+	if(ai>=argc){ fprintf(DBGF,"usage: apsim [-t] [-s] [-p pid] [-u universe] [-2] a.out [args]\n"); return 2; }
 	/* save the host terminal so a curses guest's raw/cbreak mode can be applied
 	 * and restored.  No-op when stdin isn't a tty (e.g. piped test input). */
 	if(isatty(0) && tcgetattr(0,&saved_tio)==0){ tty_saved=1; atexit(tty_restore); }
@@ -3364,7 +3387,7 @@ int main(int argc, char **argv)
 	i=load_aout(argv[ai], argc-ai, argv+ai);
 	initial_exec=0;
 	if(i < 0){
-		fprintf(stderr,"apsim: cannot load %s\n", argv[ai]); return 2; }
+		fprintf(DBGF,"apsim: cannot load %s\n", argv[ai]); return 2; }
 
 	for(i=0; i<4000000000LL && !halted; i++){
 		if(pt_traced && pt_pending){		/* traced: park on the trap and
@@ -3431,16 +3454,16 @@ int main(int argc, char **argv)
 				if(halted) break;
 			}
 		}
-		if(watchsp && (SP<0150000 || SP>0177700)){ fprintf(stderr,"apsim: SP=%06o pc=%06o instr=%06o (i=%lld)\n",SP,PC,ifetch(PC),i); halted=1; ecode=126; break; }
+		if(watchsp && (SP<0150000 || SP>0177700)){ fprintf(DBGF,"apsim: SP=%06o pc=%06o instr=%06o (i=%lld)\n",SP,PC,ifetch(PC),i); halted=1; ecode=126; break; }
 		steppc=PC; pcring[pcri=(pcri+1)&15]=PC;
 		if(rndpc==-2){ char*e=getenv("APSIM_RNDPC"); rndpc=e?(int)strtol(e,0,8):-1; }
-		if(rndpc>=0 && PC==rndpc) fprintf(stderr,"RND %d r=%d s=%06o ret=%06o\n", rndn++, ld2((R[6]+2)&0xffff), ld2(041202), ld2(R[6]));
-		if(trace) fprintf(stderr,"pc=%06o sp=%06o r0=%06o instr=%06o\n",PC,SP,R[0],ifetch(PC));
-		if((i&0xFFFFFFF)==0xFFFFFFF) fprintf(stderr,"apsim: %lldM pc=%06o sp=%06o\n",i>>20,PC,SP);
+		if(rndpc>=0 && PC==rndpc) fprintf(DBGF,"RND %d r=%d s=%06o ret=%06o\n", rndn++, ld2((R[6]+2)&0xffff), ld2(041202), ld2(R[6]));
+		if(trace) fprintf(DBGF,"pc=%06o sp=%06o r0=%06o instr=%06o\n",PC,SP,R[0],ifetch(PC));
+		if((i&0xFFFFFFF)==0xFFFFFFF) fprintf(DBGF,"apsim: %lldM pc=%06o sp=%06o\n",i>>20,PC,SP);
 		step();
 		if(pt_traced && pt_step) pt_pending=5;	/* single-step done -> SIGTRAP stop */
 	}
 	if(pt_traced) pt_notify_exit(ecode);		/* let the tracer's wait see us go */
-	if(!halted){ fprintf(stderr,"apsim: instruction limit\n"); return 125; }
+	if(!halted){ fprintf(DBGF,"apsim: instruction limit\n"); return 125; }
 	return ecode;
 }
