@@ -7,14 +7,13 @@
 #include	<fcntl.h>
 #include	<stdint.h>
 #include	<time.h>
-#define	MAGIC	exp.a_magic
+#define	MAGIC	exph.a_magic
 #define	BADMAG	MAGIC!=A_MAGIC1 && MAGIC!=A_MAGIC2  \
 		&& MAGIC!=A_MAGIC3 && MAGIC!=A_MAGIC4
 struct	ar_hdr	arp;
-struct	exec	exp;
+struct	exec	exph;
 FILE	*fi, *fo;
 long	off, oldoff;
-long	ftell();
 char	arcmd[1024] = "ar";	/* resolved to this toolchain's ar below */
 #define TABSZ	700
 struct tab
@@ -28,10 +27,17 @@ char	tempnm[] = "__.SYMDEF";
 char	firstname[17];
 long	offdelta;
 
+static void setup_ar(void);
+static int  nextel(FILE *af);
+static void stash(struct nlist *s);
+static int  fixsize(void);
+static void fixdate(char *s);
+
 /* Resolve this toolchain's ar (e.g. .../usr/bin/pdp11-bsd29-ar) relative to
  * the ranlib binary, so `ar rlb' invokes the matching ar -- the same
  * /proc/self/exe scheme cc and ld use. */
-setup_ar()
+static void
+setup_ar(void)
 {
 	static char self[1024];
 	int n = readlink("/proc/self/exe", self, sizeof self - 1);
@@ -52,10 +58,10 @@ setup_ar()
 	}
 }
 
-main(argc, argv)
-char **argv;
+int
+main(int argc, char **argv)
 {
-	char buf[256];
+	char buf[2048];
 
 	setup_ar();
 	--argc;
@@ -65,8 +71,8 @@ char **argv;
 			fprintf(stderr, "nm: cannot open %s\n", *argv);
 			continue;
 		}
-		off = sizeof(exp.a_magic);
-		fread((char *)&exp, 1, sizeof(MAGIC), fi);	/* get magic no. */
+		off = sizeof(exph.a_magic);
+		fread((char *)&exph, 1, sizeof(MAGIC), fi);	/* get magic no. */
 		if ((unsigned short)MAGIC != ARMAG)
 		{	fprintf(stderr, "not archive: %s\n", *argv);
 			continue;
@@ -79,17 +85,17 @@ char **argv;
 		}
 		do {
 			long o;
-			register n;
+			register int n;
 			struct nlist sym;
 
-			fread((char *)&exp, 1, sizeof(struct exec), fi);
+			fread((char *)&exph, 1, sizeof(struct exec), fi);
 			if (BADMAG)		/* archive element not in  */
 				continue;	/* proper format - skip it */
-			o = (long)exp.a_text + exp.a_data;
-			if ((exp.a_flag & 01) == 0)
+			o = (long)exph.a_text + exph.a_data;
+			if ((exph.a_flag & 01) == 0)
 				o *= 2;
 			fseek(fi, o, 1);
-			n = exp.a_syms / sizeof(struct nlist);
+			n = exph.a_syms / sizeof(struct nlist);
 			if (n == 0) {
 				fprintf(stderr, "nm: %s-- no name list\n", arp.ar_name);
 				continue;
@@ -130,10 +136,10 @@ char **argv;
 	exit(0);
 }
 
-nextel(af)
-FILE *af;
+static int
+nextel(FILE *af)
 {
-	register r;
+	register int r;
 
 	oldoff = off;
 	fseek(af, off, 0);
@@ -150,7 +156,8 @@ FILE *af;
 	return(1);
 }
 
-stash(s) struct nlist *s;
+static void
+stash(struct nlist *s)
 {	int i;
 	if(tnum >= TABSZ)
 	{	fprintf(stderr, "symbol table overflow\n");
@@ -162,7 +169,8 @@ stash(s) struct nlist *s;
 	tnum++;
 }
 
-fixsize()
+static int
+fixsize(void)
 {	int i;
 	offdelta = tnum * sizeof(struct tab) + sizeof(arp);
 	off = sizeof(MAGIC);
@@ -181,7 +189,8 @@ fixsize()
 }
 
 /* patch time */
-fixdate(s) char *s;
+static void
+fixdate(char *s)
 {	int32_t timex;
 	int fd;
 	fd = open(s, 1);
@@ -195,7 +204,7 @@ fixdate(s) char *s;
 	 * possible) use a far-future date so the table is always honoured.  Write
 	 * exactly 4 bytes -- the on-disk ar_date is 4, not host sizeof(long)=8. */
 	timex = PDPL(0x7fffffff);	/* PDP-11 middle-endian on-disk ar_date */
-	lseek(fd, (long)sizeof(exp.a_magic) + ((char *)&arp.ar_date-(char *)&arp), 0);
+	lseek(fd, (long)sizeof(exph.a_magic) + ((char *)&arp.ar_date-(char *)&arp), 0);
 	write(fd, (char *)&timex, 4);
 	close(fd);
 }

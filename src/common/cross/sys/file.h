@@ -22,9 +22,18 @@
 #define	FSEEK_ABSOLUTE	0x0	/* absolute offset (== SEEK_SET) */
 #define	FSEEK_RELATIVE	0x1	/* relative to current (== SEEK_CUR) */
 #define	FSEEK_EOF	0x2	/* relative to eof (== SEEK_END) */
+/* The host's <fcntl.h> also defines these lseek-whence names under
+ * _DEFAULT_SOURCE; guard so a tool that includes both does not redefine
+ * them (the values agree: L_SET==SEEK_SET==0, ...). */
+#ifndef	L_SET
 #define	L_SET		FSEEK_ABSOLUTE
+#endif
+#ifndef	L_INCR
 #define	L_INCR		FSEEK_RELATIVE
+#endif
+#ifndef	L_XTND
 #define	L_XTND		FSEEK_EOF
+#endif
 
 /* flags supplied to open call */
 #define	FATT_RDONLY	0x0	/* open for reading only (== O_RDONLY) */

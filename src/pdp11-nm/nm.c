@@ -10,6 +10,8 @@
 #include	<a.out.h>
 #include	<stdio.h>
 #include	<ctype.h>
+#include	<stdlib.h>
+#include	<string.h>
 
 #ifdef	MENLO_OVLY
 struct	nnlist {	/* symbol table entry */
@@ -18,7 +20,7 @@ struct	nnlist {	/* symbol table entry */
 	char		nn_ovno;
 	unsigned	n_value;	/* value */
 };
-#endif	MENLO_OVLY
+#endif /* MENLO_OVLY */
 #define	SELECT	arch_flg ? arp.ar_name : *argv
 int	numsort_flg;
 int	undef_flg;
@@ -28,18 +30,16 @@ int	nosort_flg;
 int	arch_flg;
 int	prep_flg;
 struct	ar_hdr	arp;
-struct	exec	exp;
+struct	exec	exph;
 FILE	*fi;
 long	off;
-long	ftell();
-char	*malloc();
-char	*realloc();
+static int compare(const void *a, const void *b);
+static int nextel(FILE *af);
 
-main(argc, argv)
-char **argv;
+int
+main(int argc, char **argv)
 {
 	int narg;
-	int  compare();
 
 	if (--argc>0 && argv[1][0]=='-' && argv[1][1]!=0) {
 		argv++;
@@ -85,13 +85,13 @@ char **argv;
 			fprintf(stderr, "nm: cannot open %s\n", *argv);
 			continue;
 		}
-		off = sizeof(exp.a_magic);
-		fread((char *)&exp, 1, sizeof(exp.a_magic), fi);	/* get magic no. */
+		off = sizeof(exph.a_magic);
+		fread((char *)&exph, 1, sizeof(exph.a_magic), fi);	/* get magic no. */
 		/* compare as 16-bit: on the host a.a_magic sign-extends (ARMAG
 		 * 0177545 has bit 15 set) and would never equal the int ARMAG. */
-		if ((unsigned short)exp.a_magic == (unsigned short)ARMAG)
+		if ((unsigned short)exph.a_magic == (unsigned short)ARMAG)
 			arch_flg++;
-		else if (N_BADMAG(exp)) {
+		else if (N_BADMAG(exph)) {
 			fprintf(stderr, "nm: %s-- bad format\n", *argv);
 			continue;
 		}
@@ -103,7 +103,7 @@ char **argv;
 		}
 		do {
 			long o;
-			register i, n, c;
+			register int i, n, c;
 #ifdef	MENLO_OVLY
 			struct nnlist sym;
 			struct nnlist *symp = NULL;
@@ -111,36 +111,35 @@ char **argv;
 #else
 			struct nlist sym;
 			struct nlist *symp = NULL;
-#endif	MENLO_OVLY
-
-			fread((char *)&exp, 1, sizeof(struct exec), fi);
-			if (N_BADMAG(exp))		/* archive element not in  */
+#endif /* MENLO_OVLY */
+			fread((char *)&exph, 1, sizeof(struct exec), fi);
+			if (N_BADMAG(exph))		/* archive element not in  */
 				continue;	/* proper format - skip it */
-			if (exp.a_magic == 0405) {
+			if (exph.a_magic == 0405) {
 				/* First Edition a.out(V): a 6-word header that
 				 * a_text INCLUDES, so the symbol table (12-byte
 				 * entries) begins at file offset a_text and its
 				 * SIZE is in a_data; the a_syms slot holds the bss.
 				 * Seek relative to here (after the 16-byte exec
 				 * read) so this works for archive members too. */
-				fseek(fi, (long)(unsigned short)exp.a_text
+				fseek(fi, (long)(unsigned short)exph.a_text
 					   - (long)sizeof(struct exec), 1);
-				n = (unsigned short)exp.a_data / sizeof(struct nlist);
+				n = (unsigned short)exph.a_data / sizeof(struct nlist);
 			} else {
 #ifdef	MENLO_OVLY
-			if (exp.a_magic == A_MAGIC5 || exp.a_magic == A_MAGIC6) {
+			if (exph.a_magic == A_MAGIC5 || exph.a_magic == A_MAGIC6) {
 				fread((char *)ovsizes, 1, sizeof ovsizes, fi);
 				o	= 0L;
 				for (i = 1; i <= NOVL; i++)
 					o	+= (long) ovsizes[i];
 				fseek(fi, o, 1);
 			}
-#endif	MENLO_OVLY
-			o = (long)exp.a_text + exp.a_data;
-			if ((exp.a_flag & 01) == 0)
+#endif /* MENLO_OVLY */
+			o = (long)exph.a_text + exph.a_data;
+			if ((exph.a_flag & 01) == 0)
 				o *= 2;
 			fseek(fi, o, 1);
-			n = exp.a_syms / sizeof(struct nlist);
+			n = exph.a_syms / sizeof(struct nlist);
 			}
 			if (n == 0) {
 				fprintf(stderr, "nm: %s-- no name list\n", SELECT);
@@ -149,7 +148,7 @@ char **argv;
 			i = 0;
 			while (--n >= 0) {
 				fread((char *)&sym, 1, sizeof(sym), fi);
-				if (exp.a_magic == 0405) {
+				if (exph.a_magic == 0405) {
 					/* V1 symbol flag: 00 undef, 01 abs, 02 register,
 					 * 03 relocatable, |40 global -- map to the later
 					 * type/N_EXT encoding the switch below reads. */
@@ -170,15 +169,15 @@ char **argv;
 				}
 #ifndef MENLO_OVLY
 				if (globl_flg && (sym.n_type&N_EXT)==0)
-#else MENLO_OVLY
+#else /* MENLO_OVLY */
 				if (globl_flg && (sym.nn_type&N_EXT)==0)
-#endif	MENLO_OVLY
+#endif /* MENLO_OVLY */
 					continue;
 #ifndef MENLO_OVLY
 				switch (sym.n_type&N_TYPE)
-#else MENLO_OVLY
+#else /* MENLO_OVLY */
 				switch (sym.nn_type&N_TYPE)
-#endif	MENLO_OVLY
+#endif /* MENLO_OVLY */
 					{
 
 					case N_UNDF:
@@ -216,27 +215,27 @@ char **argv;
 					continue;
 #ifndef MENLO_OVLY
 				if (sym.n_type&N_EXT)
-#else MENLO_OVLY
+#else /* MENLO_OVLY */
 				if (sym.nn_type&N_EXT)
-#endif	MENLO_OVLY
+#endif /* MENLO_OVLY */
 					c = toupper(c);
 #ifndef MENLO_OVLY
 				sym.n_type = c;
-#else MENLO_OVLY
+#else /* MENLO_OVLY */
 				sym.nn_type = c;
-#endif	MENLO_OVLY
+#endif /* MENLO_OVLY */
 				if (symp==NULL)
 #ifdef	MENLO_OVLY
 					symp = (struct nnlist *)malloc(sizeof(struct nlist));
 #else
 					symp = (struct nlist *)malloc(sizeof(struct nlist));
-#endif	MENLO_OVLY
+#endif /* MENLO_OVLY */
 				else {
 #ifdef	MENLO_OVLY
 					symp = (struct nnlist *)realloc(symp, (i+1)*sizeof(struct nlist));
 #else
 					symp = (struct nlist *)realloc(symp, (i+1)*sizeof(struct nlist));
-#endif	MENLO_OVLY
+#endif /* MENLO_OVLY */
 				}
 				if (symp == NULL) {
 					fprintf(stderr, "nm: out of memory on %s\n", *argv);
@@ -258,7 +257,7 @@ char **argv;
 				c = symp[n].nn_type;
 #else
 				c = symp[n].n_type;
-#endif	MENLO_OVLY
+#endif /* MENLO_OVLY */
 				if (!undef_flg) {
 					if (c=='u' || c=='U')
 						printf("      ");
@@ -268,14 +267,14 @@ char **argv;
 				}
 #ifndef MENLO_OVLY
 				printf("%.8s\n", symp[n].n_name);
-#else MENLO_OVLY
+#else /* MENLO_OVLY */
 				if (symp[n].nn_ovno)
 					printf("%-8.8s %d", symp[n].n_name,
 					   symp[n].nn_ovno);
 				else
 					printf("%.8s", symp[n].n_name);
 				printf("\n");
-#endif	MENLO_OVLY
+#endif /* MENLO_OVLY */
 			}
 			if (symp)
 				free((char *)symp);
@@ -285,10 +284,11 @@ char **argv;
 	exit(0);
 }
 
-compare(p1, p2)
-register struct nlist *p1, *p2;
+static int
+compare(const void *a, const void *b)
 {
-	register i;
+	register const struct nlist *p1 = a, *p2 = b;
+	register int i;
 
 	if (numsort_flg) {
 		if (p1->n_value > p2->n_value)
@@ -306,10 +306,10 @@ register struct nlist *p1, *p2;
 	return(0);
 }
 
-nextel(af)
-register FILE *af;
+static int
+nextel(FILE *af)
 {
-	register r;
+	register int r;
 
 	fseek(af, off, 0);
 	r = fread((char *)&arp, 1, sizeof(struct ar_hdr), af);  /* read archive header */

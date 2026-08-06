@@ -1,22 +1,23 @@
 char *sccsid = "@(#)size.c	2.5";
 #include	<stdio.h>
-#include 	<a.out.h>
+#include	<stdlib.h>
+#include	<a.out.h>
 #include	<whoami.h>
 
 /*
  *	size -- determine object size
  */
 
-main(argc, argv)
-register char **argv;
+int
+main(int argc, char **argv)
 {
 	struct exec buf;
 	long sum;
 #ifdef MENLO_OVLY
 	long coresize;
 	struct ovlhdr ovlbuf;
-#endif MENLO_OVLY
-	register gorp,i;
+	int i;
+#endif
 	FILE *f;
 
 	if (argc == 1) {
@@ -24,7 +25,6 @@ register char **argv;
 		argc++;
 		--argv;
 	}
-	gorp = argc;
 	printf("text\tdata\tbss\tdec\toct\n");
 	while (--argc) {
 		++argv;
@@ -72,7 +72,7 @@ register char **argv;
 				}
 			printf(")\n");
 		}
-#endif MENLO_OVLY
+#endif
 		fclose(f);
 	}
 	exit(0);

@@ -1,11 +1,16 @@
+#include	<stdio.h>
+#include	<stdlib.h>
+#include	<string.h>
+#include	<unistd.h>
 #include	<whoami.h>
 #include	<sys/param.h>
 #include	<a.out.h>
 #include	<signal.h>
+#include	<fcntl.h>
 #include	<sys/file.h>
 #include	<sysexits.h>
 
-char	*mktemp();
+char	*mktemp(char *);
 char	tnamebuf[] = "/tmp/sXXXXXX";	/* writable: mktemp() rewrites in place
 					 * (6 X's: modern mktemp requires it) */
 int	errs;
@@ -18,13 +23,16 @@ struct	ovlhdr	ovlhdr, novlhdr;
 #endif
 #define	ISSTRIPPED(x)	(((x).a_syms == 0) && (((x).a_flag & 1) != 0))
 
-main(ac, av)
-char **av;
+int copy(char *name, int fromfd, int tofd, off_t size);
+int copyout(char *name, int tofd, char *buf, u_short nbytes);
+
+int
+main(int ac, char **av)
 {
 	int nflag = 0;
 	char *tname;
-	register i;
-	register in, out;
+	register int i;
+	register int in, out;
 	off_t filesize, ovlsizes, rellen, reloffset;
 
 	if (--ac > 1 && !strcmp(av[1], "-n")) {
@@ -187,11 +195,10 @@ err:
 	exit(errs);
 }
 
-copy(name, fromfd, tofd, size)
-char *name;
-off_t size;
+int
+copy(char *name, int fromfd, int tofd, off_t size)
 {
-	register s, n;
+	register int s, n;
 	char buf[BSIZE];
 
 	while (size) {
@@ -215,9 +222,8 @@ off_t size;
 	return(0);
 }
 
-copyout (name, tofd, buf, nbytes)
-char *name, *buf;
-u_short nbytes;
+int
+copyout (char *name, int tofd, char *buf, u_short nbytes)
 {
 	if (write(tofd, buf, nbytes) != nbytes) {
 		perror(name);
