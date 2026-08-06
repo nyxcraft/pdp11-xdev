@@ -141,7 +141,7 @@ same thing everywhere.</p>
 <tr>
 <td><code>ultrix1</code> <code>ultrix2</code> <code>ultrix3</code> <code>ultrix31</code></td>
 <td>full</td>
-<td>DEC Ultrix-11 1.0 (= V7M-11 1.0, 1982/83), 2.0 (1984), 3.0 (1986, which merged 4.2BSD TCP/IP as an Executive-mode driver) and 3.1 (1987, the last release) — DEC's productized Version 7 for the PDP-11. The local 3.1 <code>sysent.c</code> is authoritative: V7 core numbers (1–48) plus DEC/SysV additions (<code>msgsys</code>/<code>utssys</code>/<code>fcntl</code>/<code>ulimit</code>/<code>nap</code>… at 49+, no user-visible sockets — 3.0/3.1 share the user interface), <code>0407</code>/<code>0410</code>/<code>0411</code> a.out, apsim's Ultrix personality. <strong>Native-validated</strong>: real V7M-11 1.0 <code>/bin</code> (<code>echo</code>/<code>cat</code>/<code>wc</code>/<code>sum</code>/<code>ls</code>/<code>od</code>…), carved from the <code>agn453/V7M-11</code> disk image into <code>~/unix/ultrix11/1.0</code>, runs under <code>-u ultrix1</code> and byte-identically across all four, <code>wc</code>/<code>sum</code> matching the host. The 2.0 install tape carves too (134 native <code>/bin</code> from a UNIX <code>dump</code>), and those run under <code>-u ultrix2</code> — they use Ultrix's stack-argument syscall variant (`sys N</td>
+<td>DEC Ultrix-11 1.0 (= V7M-11 1.0, 1982/83), 2.0 (1984), 3.0 (1986, which merged 4.2BSD TCP/IP as an Executive-mode driver) and 3.1 (1987, the last release) — DEC's productized Version 7 for the PDP-11. The local 3.1 <code>sysent.c</code> is authoritative: V7 core numbers (1–48) plus DEC/SysV additions (<code>msgsys</code>/<code>utssys</code>/<code>fcntl</code>/<code>ulimit</code>/<code>nap</code>… at 49+) and the <code>UCB_NET</code> Berkeley socket block (101–119, used by real clients like <code>rdate</code>/<code>tftp</code>), <code>0407</code>/<code>0410</code>/<code>0411</code> a.out, apsim's Ultrix personality. <strong>Native-validated</strong>: real V7M-11 1.0 <code>/bin</code> (<code>echo</code>/<code>cat</code>/<code>wc</code>/<code>sum</code>/<code>ls</code>/<code>od</code>…), carved from the <code>agn453/V7M-11</code> disk image into <code>~/unix/ultrix11/1.0</code>, runs under <code>-u ultrix1</code> and byte-identically across all four, <code>wc</code>/<code>sum</code> matching the host. The 2.0 install tape carves too (134 native <code>/bin</code> from a UNIX <code>dump</code>), and those run under <code>-u ultrix2</code> — they use Ultrix's stack-argument syscall variant (`sys N</td>
 </tr>
 </tbody>
 </table>
@@ -196,8 +196,9 @@ and disk-image tooling:</p>
 <h2 id="build-and-test">Build and test</h2>
 <pre><code class="language-sh">make            # every host tool -&gt; ./bin/pdp11-*
 make libc       # matched headers -&gt; ./include/, one universal libc.a -&gt; ./lib/
-make check      # per-tool suites + the end-to-end pipeline suite
-                # (compile/link/run under apsim, both universes, plain and -O)
+make check      # per-tool suites + the end-to-end pipeline suite + the
+                # cross-universe matrix (compile/link/run under apsim)
+make check-san  # apsim under ASan+UBSan: the suite + the loader fuzz corpus
 </code></pre>
 <p>Requires a host C compiler (<code>cc</code>/<code>gcc</code>/<code>clang</code>), <code>make</code>, <code>yacc</code>, and
 <code>python3</code>.  Nothing else — no PDP-11 hardware, no external trees.</p>

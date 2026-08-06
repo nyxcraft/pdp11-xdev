@@ -99,6 +99,9 @@
     { "slug": "apsim-syscalls", "title": "apsim: syscall numbers", "source": "src/pdp11-apsim/docs/syscalls/README.md",
       "template": "page",
       "summary": "How apsim stands in for the kernel at the sys trap boundary, and the per-era syscall-number tables it serves." },
+    { "slug": "apsim-coverage", "title": "apsim: syscall coverage", "source": "src/pdp11-apsim/docs/syscalls/coverage.md",
+      "template": "page",
+      "summary": "Corpus-driven coverage: every command binary in each distribution tree run under apsim, the numbers per universe, and the few deliberate refusals classified." },
 
     { "slug": "binutils-porting", "title": "Porting nm, size, strip", "source": "docs/binutils-porting.md",
       "summary": "The three single-file binary utilities — the easiest ports, and the pattern the rest follow." },

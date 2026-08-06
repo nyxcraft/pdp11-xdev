@@ -84,8 +84,9 @@ Each tool lives in `src/pdp11-<tool>/` with its own Makefile and tests.
 ```sh
 make            # every host tool -> ./bin/pdp11-*
 make libc       # matched headers -> ./include/, one universal libc.a -> ./lib/
-make check      # per-tool suites + the end-to-end pipeline suite
-                # (compile/link/run under apsim, both universes, plain and -O)
+make check      # per-tool suites + the end-to-end pipeline suite + the
+                # cross-universe matrix (compile/link/run under apsim)
+make check-san  # apsim under ASan+UBSan: the suite + the loader fuzz corpus
 ```
 
 Requires a host C compiler (`cc`/`gcc`/`clang`), `make`, `yacc`, and

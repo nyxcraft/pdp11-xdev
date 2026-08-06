@@ -8,8 +8,12 @@ For how it is put together, see [design.md](design.md).
 ## 1. Build
 
     make            # every host tool -> ./bin/pdp11-*
-    make libc       # era headers -> ./include/<u>/, target libs -> ./lib/<u>/
-    make check      # full gate: per-tool suites + end-to-end pipeline suite
+    make libc       # matched headers -> ./include/, one universal libc.a
+                    # + crt0 (and curses/termlib) -> ./lib/  (both FLAT:
+                    # the universe is chosen at link, see design.md)
+    make check      # full gate: per-tool suites + end-to-end pipeline +
+                    # the cross-universe matrix
+    make check-san  # apsim under ASan+UBSan: the suite + the loader fuzz
 
 Prerequisites: a host C compiler, `make`, `yacc` (byacc/bison), `python3`.
 Everything is vendored; no network, no external trees.
@@ -26,9 +30,12 @@ Choose the era per invocation or per shell:
     PDP11_UNIVERSE=bsd28 bin/pdp11-cc hi.c -o hi # environment form
     export PDP11_UNIVERSE=bsd28                  # ...or for the whole session
 
-An unknown or not-yet-buildable universe is rejected with the valid list.
-The universe selects `include/<u>/` for cpp, `lib/<u>/{crt0.o,libc.a,...}`
-for cc/ld, so the same command line targets either era.
+An unknown universe is rejected with the list of valid ones.  There is one
+universal `libc.a` and one header set (both flat); the universe is applied
+at link — `ld` stamps `__univ` into the executable — so the same command
+line targets any era.  The compile targets run from First Edition through
+2.11BSD plus System III, SVR2, and Ultrix-11 1.0–3.1; `bin/pdp11-cc
+--universe=bogus x.c` prints the full list.
 
 ## 3. The pipeline by hand
 
@@ -37,7 +44,8 @@ for cc/ld, so the same command line targets either era.
     $B/pdp11-cc  -c prog.c            # compile -> prog.o
     $B/pdp11-cc  -O prog.c -o prog    # with the c2 peephole optimizer
     $B/pdp11-as  -o prog.o prog.s     # assemble 2BSD syntax
-    $B/pdp11-ld  -X lib/bsd29/crt0.o prog.o -lc -o prog
+    PDP11_UNIVERSE=bsd29 $B/pdp11-ld -X lib/crt0.o prog.o -lc -o prog
+                                     # ld reads $PDP11_UNIVERSE, stamps __univ
     $B/pdp11-nm    prog               # symbols
     $B/pdp11-size  prog               # text/data/bss
     $B/pdp11-das   prog               # disassemble (any era, V1..2.11BSD)
@@ -76,15 +84,22 @@ probe uses.
 
 ## 6. Running vintage binaries
 
-`apsim` runs originals, not just our output: 0407/0410/0411/0430 2BSD
-a.outs, and First Edition (0405) images with the 1971 trap conventions
-(the surviving V1 `ar`, `mv`, `chown` run correctly).  Useful knobs:
+`apsim` runs originals, not just our output: 0407/0410/0411/0430/0431 2BSD
+a.outs, and First Edition (0405) images with the 1971 trap conventions.
+Pick the right **personality** for the binary's era, and it runs — native
+V5/V6/V7, 2.10/2.11 (including the csh with job control), System III, and
+all four Ultrix-11 releases all execute their real /bin under apsim:
 
+    -u NAME           the kernel personality (or --universe=NAME, or
+    (or $PDP11_UNIVERSE)   $PDP11_UNIVERSE) -- default bsd29
     APSIM_ROOT=path   guest filesystem root for absolute paths
+    APSIM_PTRACE=1    enable the cooperative ptrace channel (runs adb)
     -s / -t           syscall / instruction trace
     -p N, APSIM_PID   pin getpid (rogue seeds), APSIM_TIME pins time(2)
-    -2                2.9/2.10 stack-argument syscall convention
+    -2                force the 4BSD stack-arg convention (normally the
+                      personality sets it; an override for odd binaries)
 
+For example, `APSIM_ROOT=~/unix/v6 bin/pdp11-apsim -u v6 ~/unix/v6/bin/ls /`.
 `src/pdp11-apsim/root/` is a minimal guest root skeleton; `mkroot.sh`
 populates `/tmp` and can install rogue.
 

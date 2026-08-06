@@ -59,8 +59,12 @@ For how it is put together, see <a href="../design/index.html">design.md</a>.</p
 <hr />
 <h2 id="1-build">1. Build</h2>
 <pre><code>make            # every host tool -&gt; ./bin/pdp11-*
-make libc       # era headers -&gt; ./include/&lt;u&gt;/, target libs -&gt; ./lib/&lt;u&gt;/
-make check      # full gate: per-tool suites + end-to-end pipeline suite
+make libc       # matched headers -&gt; ./include/, one universal libc.a
+                # + crt0 (and curses/termlib) -&gt; ./lib/  (both FLAT:
+                # the universe is chosen at link, see design.md)
+make check      # full gate: per-tool suites + end-to-end pipeline +
+                # the cross-universe matrix
+make check-san  # apsim under ASan+UBSan: the suite + the loader fuzz
 </code></pre>
 <p>Prerequisites: a host C compiler, <code>make</code>, <code>yacc</code> (byacc/bison), <code>python3</code>.
 Everything is vendored; no network, no external trees.</p>
@@ -74,16 +78,19 @@ bin/pdp11-apsim ./hi
 PDP11_UNIVERSE=bsd28 bin/pdp11-cc hi.c -o hi # environment form
 export PDP11_UNIVERSE=bsd28                  # ...or for the whole session
 </code></pre>
-<p>An unknown or not-yet-buildable universe is rejected with the valid list.
-The universe selects <code>include/&lt;u&gt;/</code> for cpp, <code>lib/&lt;u&gt;/{crt0.o,libc.a,...}</code>
-for cc/ld, so the same command line targets either era.</p>
+<p>An unknown universe is rejected with the list of valid ones.  There is one
+universal <code>libc.a</code> and one header set (both flat); the universe is applied
+at link — <code>ld</code> stamps <code>__univ</code> into the executable — so the same command
+line targets any era.  The compile targets run from First Edition through
+2.11BSD plus System III, SVR2, and Ultrix-11 1.0–3.1; <code>bin/pdp11-cc --universe=bogus x.c</code> prints the full list.</p>
 <h2 id="3-the-pipeline-by-hand">3. The pipeline by hand</h2>
 <pre><code>B=$PWD/bin
 $B/pdp11-cc  -S prog.c            # stop after codegen -&gt; prog.s
 $B/pdp11-cc  -c prog.c            # compile -&gt; prog.o
 $B/pdp11-cc  -O prog.c -o prog    # with the c2 peephole optimizer
 $B/pdp11-as  -o prog.o prog.s     # assemble 2BSD syntax
-$B/pdp11-ld  -X lib/bsd29/crt0.o prog.o -lc -o prog
+PDP11_UNIVERSE=bsd29 $B/pdp11-ld -X lib/crt0.o prog.o -lc -o prog
+                                 # ld reads $PDP11_UNIVERSE, stamps __univ
 $B/pdp11-nm    prog               # symbols
 $B/pdp11-size  prog               # text/data/bss
 $B/pdp11-das   prog               # disassemble (any era, V1..2.11BSD)
@@ -114,15 +121,22 @@ the oracle suite links the 2.9 GENERIC kernel this way byte-identically.</p>
 enables the late-hardware mnemonics (MFPT/CIS/FIS...) that the apsim test
 probe uses.</p>
 <h2 id="6-running-vintage-binaries">6. Running vintage binaries</h2>
-<p><code>apsim</code> runs originals, not just our output: 0407/0410/0411/0430 2BSD
-a.outs, and First Edition (0405) images with the 1971 trap conventions
-(the surviving V1 <code>ar</code>, <code>mv</code>, <code>chown</code> run correctly).  Useful knobs:</p>
-<pre><code>APSIM_ROOT=path   guest filesystem root for absolute paths
+<p><code>apsim</code> runs originals, not just our output: 0407/0410/0411/0430/0431 2BSD
+a.outs, and First Edition (0405) images with the 1971 trap conventions.
+Pick the right <strong>personality</strong> for the binary's era, and it runs — native
+V5/V6/V7, 2.10/2.11 (including the csh with job control), System III, and
+all four Ultrix-11 releases all execute their real /bin under apsim:</p>
+<pre><code>-u NAME           the kernel personality (or --universe=NAME, or
+(or $PDP11_UNIVERSE)   $PDP11_UNIVERSE) -- default bsd29
+APSIM_ROOT=path   guest filesystem root for absolute paths
+APSIM_PTRACE=1    enable the cooperative ptrace channel (runs adb)
 -s / -t           syscall / instruction trace
 -p N, APSIM_PID   pin getpid (rogue seeds), APSIM_TIME pins time(2)
--2                2.9/2.10 stack-argument syscall convention
+-2                force the 4BSD stack-arg convention (normally the
+                  personality sets it; an override for odd binaries)
 </code></pre>
-<p><code>src/pdp11-apsim/root/</code> is a minimal guest root skeleton; <code>mkroot.sh</code>
+<p>For example, <code>APSIM_ROOT=~/unix/v6 bin/pdp11-apsim -u v6 ~/unix/v6/bin/ls /</code>.
+<code>src/pdp11-apsim/root/</code> is a minimal guest root skeleton; <code>mkroot.sh</code>
 populates <code>/tmp</code> and can install rogue.</p>
 <h2 id="7-disk-images">7. Disk images</h2>
 <p><code>bin/pdp11-s5fs</code> manipulates V7/2.8/2.9/2.10 s5fs disk images without

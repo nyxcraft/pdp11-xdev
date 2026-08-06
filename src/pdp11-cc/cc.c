@@ -110,9 +110,9 @@ char *av0;
 	sprintf(pass2, "%s%sc2", bin, prefix);
 	sprintf(asname, "%s%sas", bin, prefix);
 	sprintf(ldname, "%s%sld", bin, prefix);
-	/* the era libraries are under .../lib/<universe>/ if cc is under
-	 * .../bin; remember the lib root and compose the crt0 path once the
-	 * universe is known (resolve_universe) */
+	/* one universal libc lives FLAT under .../lib/ if cc is under
+	 * .../bin; remember the lib root and compose the crt0 path in
+	 * resolve_universe (the universe selects __univ, not a directory) */
 	if ((last = strstr(base, "bin/")) != 0) {
 		int len = last - base;
 		strncpy(libroot, base, len);

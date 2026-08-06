@@ -14,8 +14,9 @@ file.c …`.
   assembly). Verified end to end (`tests/cc/driver.sh`).
 - Option handling, `-D/-I/-U/-C` pass-through to cpp, multiple source
   files, and relocatable pass resolution.
-- `-c`/`-o` (assemble/link) run as far as invoking `as`, which is not yet
-  ported, so they stop with a clear "Can't find …-as".
+- `-c` (compile+assemble to `.o`) and a plain link (`cc file.c -o prog`)
+  run the whole chain through `as` and `ld`; `--universe`/`-u` selects the
+  target era.
 - **`-O` runs the c2 peephole optimizer** (see [c2.md](c2.md)); it is
   opt-in. The default pipeline (no `-O`) does not run c2.
 
