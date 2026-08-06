@@ -7,8 +7,6 @@
 #include	<fcntl.h>
 #include	<stdint.h>
 #include	<time.h>
-/* POSIX readlink is hidden under strict -std=c99; declare it (no feature macro). */
-ssize_t	readlink(const char *, char *, size_t);
 #define	MAGIC	exph.a_magic
 #define	BADMAG	MAGIC!=A_MAGIC1 && MAGIC!=A_MAGIC2  \
 		&& MAGIC!=A_MAGIC3 && MAGIC!=A_MAGIC4

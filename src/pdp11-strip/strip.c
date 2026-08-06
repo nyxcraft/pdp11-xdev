@@ -10,9 +10,7 @@
 #include	<sys/file.h>
 #include	<sysexits.h>
 
-char	*mktemp(char *);
-char	tnamebuf[] = "/tmp/sXXXXXX";	/* writable: mktemp() rewrites in place
-					 * (6 X's: modern mktemp requires it) */
+char	tnamebuf[] = "/tmp/sXXXXXX";	/* writable: mkstemp() rewrites the X's in place */
 int	errs;
 struct	exec	exec, nexec;
 #ifdef	MENLO_OVLY
@@ -43,7 +41,8 @@ main(int ac, char **av)
 	signal(SIGHUP, SIG_IGN);
 	signal(SIGINT, SIG_IGN);
 	signal(SIGQUIT, SIG_IGN);
-	tname = mktemp(tnamebuf);
+	{ int fd = mkstemp(tnamebuf); if (fd >= 0) close(fd); }	/* POSIX: reserve the name */
+	tname = tnamebuf;
 	while (*++av)	{
 		rellen = (off_t) 0;
 		reloffset = (off_t) 0;

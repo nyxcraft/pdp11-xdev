@@ -3,15 +3,20 @@
 # (src/pdp11-<tool>/).
 #
 # HOSTCC is the host C compiler used to build the tools themselves.  The host
-# tools have been modernized to clean, STRICT ISO C99 (ANSI prototypes,
-# explicit types, no BSD types, POSIX/XSI entry points declared explicitly in
-# the sources rather than via a feature-test macro) -- so COMPAT is plain
-# `-std=c99' with NO _DEFAULT_SOURCE / _GNU_SOURCE and NO -Wno-* suppressions:
-# the whole tree builds warning-free.  (libc stays K&R -- it is target code for
-# our own cc.)  Three semantic flags remain because they are CORRECTNESS for
-# this code, not dialect:
+# tools have been modernized to clean C99 (ANSI prototypes, explicit types, no
+# BSD types); every function they call is either ISO C99 or POSIX, and the
+# POSIX ones come from their standard headers -- no hand-written prototypes.
+# The whole tree builds warning-free with NO -Wno-* suppressions.  (libc stays
+# K&R -- it is target code for our own cc.)  The dialect + correctness flags:
 #
 #   -std=c99                   strict ISO C99
+#   -D_POSIX_C_SOURCE=200809L  request the POSIX.1-2008 standard, so the
+#                              standard headers declare the POSIX functions
+#                              (readlink, setenv, mkstemp, popen, strdup,
+#                              open_memstream) that -std=c99 alone hides.  This
+#                              is the POSIX feature-test macro, NOT the glibc
+#                              _DEFAULT_SOURCE grab-bag -- it exposes exactly
+#                              the standard, and does not bring back BSD types.
 #   -fno-strict-aliasing       the code type-puns through unions and int/char*
 #                              casts (the on-disk a.out/ar word access); TBAA
 #                              would miscompile it
@@ -28,7 +33,7 @@ HOSTCC ?= cc
 OPT    ?= -O
 YACC   ?= yacc -Wno-yacc -Wno-other -Wno-conflicts-sr
 
-COMPAT = -std=c99 -fno-strict-aliasing -fwrapv -fcommon
+COMPAT = -std=c99 -D_POSIX_C_SOURCE=200809L -fno-strict-aliasing -fwrapv -fcommon
 
 # Locations, relative to a tool directory
 COMMON = ../common

@@ -21,8 +21,6 @@ pid_t	fork(void);
 int	execv(const char *, char *const *);
 unsigned int sleep(unsigned int);
 int	unlink(const char *);
-char	*mktemp(char *);			/* XSI, not ISO C99 */
-int	setenv(const char *, const char *, int);	/* POSIX, not ISO C99 */
 
 /* forward prototypes for the file-local helpers; cc's own execvp/execlp keep
  * external linkage so they shadow libc. */
@@ -359,8 +357,7 @@ passa:
 
 		sprintf(tb, "%s/ctm0XXXXXX", td);
 		tmp0 = copy(tb);
-		mktemp (tmp0);
-		FD = creat (tmp0, 0600);
+		FD = mkstemp (tmp0);	/* POSIX: makes the name AND the 0600 file */
 		if (FD < 0)
 		{
 			error("cc: cannot create temp", NULL);

@@ -16,7 +16,6 @@
 
 #define	ignore(a)	Ignore((char *)(long) a)
 
-char	*mktemp(char *);
 
 /* Forward declarations for file-local functions. */
 static void	process(char *name);
@@ -77,7 +76,8 @@ main(int argc, char **argv)
 	if (cflg || argc == 0 && !readstd)
 		inithash();
 	else
-		strings = mktemp(savestr("/tmp/xstrXXXXXX"));
+		strings = savestr("/tmp/xstrXXXXXX");
+		{ int fd = mkstemp(strings); if (fd >= 0) close(fd); }
 	while (readstd || argc > 0) {
 		if (freopen("x.c", "w", stdout) == NULL)
 			perror("x.c"), exit(1);

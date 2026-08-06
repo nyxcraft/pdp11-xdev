@@ -18,11 +18,6 @@
 #include <ar.h>		/* PDPL: PDP-11 middle-endian on-disk ar longs */
 #include "universe.h"	/* era names for the lib/<universe>/ search + __univ id */
 
-/* POSIX/XSI entry points that ISO C99 (-std=c99) does not expose from the
- * headers; declared explicitly so no feature-test macro is needed. */
-char	*mktemp(char *);
-ssize_t	readlink(const char *, char *, size_t);
-
 /* ld defines its own putw(word, struct buf *) for buffered output; the host's
  * <stdio.h> (which 2.9BSD's ld.c includes) also declares putw(int, FILE *),
  * a mismatch the LP64 host rejects.  Rename ours -- 2.9BSD's PDP-11 libc had
@@ -989,7 +984,7 @@ setupout(void)
 	if (v1out)
 		sflag = 1;		/* First Edition exes here carry no symtab */
 	tcreat(&toutb, 0);
-	mktemp(tfname);
+	{ int fd = mkstemp(tfname); if (fd >= 0) close(fd); }	/* reserve the name (tcreat makes the file) */
 	tcreat(&doutb, 1);
 	if (sflag==0 || xflag==0)
 		tcreat(&soutb, 1);

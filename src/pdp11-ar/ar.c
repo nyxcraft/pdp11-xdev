@@ -54,7 +54,6 @@ int	oldfmt;		/* archive is First Edition (0177555): read-only */
 char	buf[512];
 
 static char *trim(char *);
-char *mktemp(char *);
 
 static int setcom(int (*fun)(void));
 static int init(void);
@@ -289,9 +288,8 @@ mcmd(void)
 		noar();
 	if(oldfmt)
 		cantmod();
-	tf2nam = mktemp(tmp2nam);
-	close(creat(tf2nam, 0600));
-	tf2 = open(tf2nam, 2);
+	tf2 = mkstemp(tmp2nam);	/* creates the 0600 file, returns O_RDWR fd */
+	tf2nam = tmp2nam;
 	if(tf2 < 0) {
 		fprintf(stderr, "ar: cannot create third temp\n");
 		done(1);
@@ -360,9 +358,8 @@ init(void)
 {
 	static int mbuf = ARMAG;
 
-	tfnam = mktemp(tmpfnam);
-	close(creat(tfnam, 0600));
-	tf = open(tfnam, 2);
+	tf = mkstemp(tmpfnam);
+	tfnam = tmpfnam;
 	if(tf < 0) {
 		fprintf(stderr, "ar: cannot create temp file\n");
 		done(1);
@@ -716,9 +713,8 @@ bamatch(void)
 
 	case 2:
 		bastate = 0;
-		tf1nam = mktemp(tmp1nam);
-		close(creat(tf1nam, 0600));
-		f = open(tf1nam, 2);
+		f = mkstemp(tmp1nam);
+		tf1nam = tmp1nam;
 		if(f < 0) {
 			fprintf(stderr, "ar: cannot create second temp\n");
 			return;
