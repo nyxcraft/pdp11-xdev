@@ -86,7 +86,7 @@ main(int argc, char **argv)
 			continue;
 		}
 		off = sizeof(exph.a_magic);
-		fread((char *)&exph, 1, sizeof(exph.a_magic), fi);	/* get magic no. */
+		if (fread((char *)&exph, 1, sizeof(exph.a_magic), fi)) {}	/* get magic no. */
 		/* compare as 16-bit: on the host a.a_magic sign-extends (ARMAG
 		 * 0177545 has bit 15 set) and would never equal the int ARMAG. */
 		if ((unsigned short)exph.a_magic == (unsigned short)ARMAG)
@@ -112,7 +112,7 @@ main(int argc, char **argv)
 			struct nlist sym;
 			struct nlist *symp = NULL;
 #endif /* MENLO_OVLY */
-			fread((char *)&exph, 1, sizeof(struct exec), fi);
+			if (fread((char *)&exph, 1, sizeof(struct exec), fi)) {}
 			if (N_BADMAG(exph))		/* archive element not in  */
 				continue;	/* proper format - skip it */
 			if (exph.a_magic == 0405) {
@@ -128,7 +128,7 @@ main(int argc, char **argv)
 			} else {
 #ifdef	MENLO_OVLY
 			if (exph.a_magic == A_MAGIC5 || exph.a_magic == A_MAGIC6) {
-				fread((char *)ovsizes, 1, sizeof ovsizes, fi);
+				if (fread((char *)ovsizes, 1, sizeof ovsizes, fi)) {}
 				o	= 0L;
 				for (i = 1; i <= NOVL; i++)
 					o	+= (long) ovsizes[i];
@@ -147,7 +147,7 @@ main(int argc, char **argv)
 			}
 			i = 0;
 			while (--n >= 0) {
-				fread((char *)&sym, 1, sizeof(sym), fi);
+				if (fread((char *)&sym, 1, sizeof(sym), fi)) {}
 				if (exph.a_magic == 0405) {
 					/* V1 symbol flag: 00 undef, 01 abs, 02 register,
 					 * 03 relocatable, |40 global -- map to the later

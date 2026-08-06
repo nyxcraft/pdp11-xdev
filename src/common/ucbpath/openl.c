@@ -1,7 +1,8 @@
 /*	@(#)openl.c	2.2	SCCS id keyword	*/
 #include <errno.h>
 #include <stdarg.h>
-extern	errno;
+#include <fcntl.h>
+#include "ucbpath.h"
 
 /*
  *	openl(buffer, mode, list1,....0)
@@ -13,6 +14,7 @@ extern	errno;
  * ABIs like x86-64.  Use stdarg to collect the char* arguments into an
  * array, which _concat() (unchanged, char**-based) consumes.
  */
+int
 openl(char *buffer, int mode, ...)
 {
 	char *argv[64];

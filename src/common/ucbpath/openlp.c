@@ -2,8 +2,8 @@
 
 #include <errno.h>
 #include <stdarg.h>
-extern	errno;
-char *makefp();
+#include <fcntl.h>
+#include "ucbpath.h"
 
 /*
  *	openlp(buffer, mode, list1,....0)
@@ -14,6 +14,7 @@ char *makefp();
  * so it works on register-argument ABIs (x86-64); makefp() then consumes
  * it as a plain char** as before.
  */
+int
 openlp(char *buffer, int mode, ...)
 {
 	char *argv[64];

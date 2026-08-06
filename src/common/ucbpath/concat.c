@@ -1,7 +1,8 @@
 /*	@(#)concat.c	2.2	SCCS id keyword	*/
-_concat(out, list)
-register	char	*out;
-register	char	**list;
+#include "ucbpath.h"
+
+void
+_concat(register char *out, register char **list)
 {
 	register	char	*cp;
 

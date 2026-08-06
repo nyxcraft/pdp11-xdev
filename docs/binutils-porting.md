@@ -18,8 +18,12 @@ ${HOSTCC} ${O} ${COMPAT} -Icross -o ${BIN}/${PREFIX}-size  size/size.c
 ${HOSTCC} ${O} ${COMPAT} -Icross -o ${BIN}/${PREFIX}-strip strip/strip.c
 ```
 
-`-Icross` makes them use the fixed-width on-disk structs; the K&R warning
-suppressions in `COMPAT` handle the 1981 source style.
+`-Icross` makes them use the fixed-width on-disk structs.  `COMPAT` is now
+just `-std=gnu99` plus the three correctness flags (`-fno-strict-aliasing`,
+`-fwrapv`, `-fcommon`) — the host tools have been modernized to clean C99
+(ANSI prototypes, explicit types), so there are no warning suppressions
+left to carry.  (The target C library stays K&R; it is compiled by our own
+`cc`, not the host compiler.)
 
 ## Porting fixes
 

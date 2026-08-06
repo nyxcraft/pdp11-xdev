@@ -633,7 +633,7 @@ load1arg(char *acp)
 			error(2, "fast load buffer too small");
 		}
 		lseek(infil, (long)(sizeof(filhdr.fmagic)+sizeof(archdr)), 0);
-		read(infil, (char *)tab, tnum * sizeof(struct tab));
+		if (read(infil, (char *)tab, tnum * sizeof(struct tab))) {}
 		{ int _i; for(_i=0;_i<tnum;_i++) tab[_i].cloc = PDPL(tab[_i].cloc); }
 		while (ldrand());
 		libp->loc = -1;
@@ -1286,7 +1286,7 @@ finishout(void)
 	close(toutb.fildes);
 	if (!ofilfnd) {
 		unlink("a.out");
-		link("l.out", "a.out");
+		if (link("l.out", "a.out")) {}
 		ofilename = "a.out";
 	}
 	delarg = errlev;

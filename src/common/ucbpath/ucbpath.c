@@ -1,9 +1,10 @@
 /*	@(#)ucbpath.c	2.2	SCCS id keyword	*/
-#define NULL 0
-char	*getenv();
+#include <stdlib.h>
+#include "ucbpath.h"
 static	char	*searchpath;
 
-resetfp()
+void
+resetfp(void)
 {
 	static	char	*path = NULL;
 	if (path == NULL) {
@@ -17,10 +18,8 @@ resetfp()
 	searchpath = path;
 }
 
-char *makefp(bestsofar, buffer, list)
-char	*bestsofar;
-char	*buffer;
-char	**list;
+char *
+makefp(char *bestsofar, char *buffer, char **list)
 {
 	char	*retval;
 	register	char	*cp1, *cp2;

@@ -58,7 +58,7 @@ main(int argc, char **argv)
 		printf("\t%s\n", *argv);
 #ifdef MENLO_OVLY
 		if (buf.a_magic == A_MAGIC5 || buf.a_magic == A_MAGIC6) {
-			fread(&ovlbuf, sizeof ovlbuf, 1, f);
+			if (fread(&ovlbuf, sizeof ovlbuf, 1, f)) {}
 			coresize = buf.a_text;
 			for (i = 0; i < NOVL; i++)
 				if (ovlbuf.ov_siz[i])

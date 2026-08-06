@@ -72,7 +72,7 @@ main(int argc, char **argv)
 			continue;
 		}
 		off = sizeof(exph.a_magic);
-		fread((char *)&exph, 1, sizeof(MAGIC), fi);	/* get magic no. */
+		if (fread((char *)&exph, 1, sizeof(MAGIC), fi)) {}	/* get magic no. */
 		if ((unsigned short)MAGIC != ARMAG)
 		{	fprintf(stderr, "not archive: %s\n", *argv);
 			continue;
@@ -88,7 +88,7 @@ main(int argc, char **argv)
 			register int n;
 			struct nlist sym;
 
-			fread((char *)&exph, 1, sizeof(struct exec), fi);
+			if (fread((char *)&exph, 1, sizeof(struct exec), fi)) {}
 			if (BADMAG)		/* archive element not in  */
 				continue;	/* proper format - skip it */
 			o = (long)exph.a_text + exph.a_data;
@@ -101,7 +101,7 @@ main(int argc, char **argv)
 				continue;
 			}
 			while (--n >= 0) {
-				fread((char *)&sym, 1, sizeof(sym), fi);
+				if (fread((char *)&sym, 1, sizeof(sym), fi)) {}
 				if ((sym.n_type&N_EXT)==0)
 					continue;
 				switch (sym.n_type&N_TYPE) {
@@ -205,6 +205,6 @@ fixdate(char *s)
 	 * exactly 4 bytes -- the on-disk ar_date is 4, not host sizeof(long)=8. */
 	timex = PDPL(0x7fffffff);	/* PDP-11 middle-endian on-disk ar_date */
 	lseek(fd, (long)sizeof(exph.a_magic) + ((char *)&arp.ar_date-(char *)&arp), 0);
-	write(fd, (char *)&timex, 4);
+	if (write(fd, (char *)&timex, 4)) {}
 	close(fd);
 }
