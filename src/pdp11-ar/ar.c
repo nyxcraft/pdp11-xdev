@@ -20,16 +20,15 @@ char	*man	=	{ "mrxtdpq" };
 char	*opt	=	{ "uvnbail" };
 
 int	signum[] = {SIGHUP, SIGINT, SIGQUIT, 0};
-int	sigdone();
-long	lseek();
-int	rcmd();
-int	dcmd();
-int	xcmd();
-int	tcmd();
-int	pcmd();
-int	mcmd();
-int	qcmd();
-int	(*comfun)();
+static void sigdone(int);
+static int rcmd(void);
+static int dcmd(void);
+static int xcmd(void);
+static int tcmd(void);
+static int pcmd(void);
+static int mcmd(void);
+static int qcmd(void);
+int	(*comfun)(void);
 char	flg[26];
 char	**namv;
 int	namc;
@@ -54,14 +53,38 @@ int	bastate;
 int	oldfmt;		/* archive is First Edition (0177555): read-only */
 char	buf[512];
 
-char	*trim();
-char	*mktemp();
-char	*ctime();
+static char *trim(char *);
+char *mktemp(char *);
 
-main(argc, argv)
-char *argv[];
+static int setcom(int (*fun)(void));
+static int init(void);
+static int getaf(void);
+static int getqf(void);
+static int usage(void);
+static int noar(void);
+static int cantmod(void);
+static int done(int);
+static int notfound(void);
+static int morefil(void);
+static int cleanup(void);
+static int install(void);
+static int movefil(int);
+static int stats(void);
+static int copyfil(int, int, int);
+static int getdir(void);
+static int match(void);
+static void bamatch(void);
+static int phserr(void);
+static int mesg(int);
+static int longt(void);
+static int pmode(void);
+static int arselect(int *);
+static int wrerr(void);
+
+int
+main(int argc, char **argv)
 {
-	register i;
+	register int i;
 	register char *cp;
 
 	for(i=0; signum[i]; i++)
@@ -144,8 +167,8 @@ char *argv[];
 	done(notfound());
 }
 
-setcom(fun)
-int (*fun)();
+static int
+setcom(int (*fun)(void))
 {
 
 	if(comfun != 0) {
@@ -155,9 +178,10 @@ int (*fun)();
 	comfun = fun;
 }
 
-rcmd()
+static int
+rcmd(void)
 {
-	register f;
+	register int f;
 
 	init();
 	getaf();
@@ -189,7 +213,8 @@ rcmd()
 	cleanup();
 }
 
-dcmd()
+static int
+dcmd(void)
 {
 
 	init();
@@ -209,9 +234,10 @@ dcmd()
 	install();
 }
 
-xcmd()
+static int
+xcmd(void)
 {
-	register f;
+	register int f;
 
 	if(getaf())
 		noar();
@@ -235,7 +261,8 @@ xcmd()
 	}
 }
 
-pcmd()
+static int
+pcmd(void)
 {
 
 	if(getaf())
@@ -253,7 +280,8 @@ pcmd()
 	}
 }
 
-mcmd()
+static int
+mcmd(void)
 {
 
 	init();
@@ -281,7 +309,8 @@ mcmd()
 	install();
 }
 
-tcmd()
+static int
+tcmd(void)
 {
 
 	if(getaf())
@@ -296,9 +325,10 @@ tcmd()
 	}
 }
 
-qcmd()
+static int
+qcmd(void)
 {
-	register i, f;
+	register int i, f;
 
 	if (flg['a'-'a'] || flg['b'-'a']) {
 		fprintf(stderr, "ar: abi not allowed with q\n");
@@ -325,9 +355,10 @@ qcmd()
 	}
 }
 
-init()
+static int
+init(void)
 {
-	static mbuf = ARMAG;
+	static int mbuf = ARMAG;
 
 	tfnam = mktemp(tmpfnam);
 	close(creat(tfnam, 0600));
@@ -340,7 +371,8 @@ init()
 		wrerr();
 }
 
-getaf()
+static int
+getaf(void)
 {
 	unsigned short mbuf;
 
@@ -356,7 +388,8 @@ getaf()
 	return(0);
 }
 
-getqf()
+static int
+getqf(void)
 {
 	unsigned short mbuf;
 
@@ -381,20 +414,23 @@ getqf()
 		cantmod();
 }
 
-usage()
+static int
+usage(void)
 {
 	printf("usage: ar [%s][%s] archive files ...\n", opt, man);
 	done(1);
 }
 
-noar()
+static int
+noar(void)
 {
 
 	fprintf(stderr, "ar: %s does not exist\n", arnam);
 	done(1);
 }
 
-cantmod()
+static int
+cantmod(void)
 {
 	/* We decode the First Edition (V1/V2) format for reading but never
 	 * rewrite it -- our archives are modern build-time containers. */
@@ -404,12 +440,14 @@ cantmod()
 	done(1);
 }
 
-sigdone()
+static void
+sigdone(int sig)
 {
 	done(100);
 }
 
-done(c)
+static int
+done(int c)
 {
 
 	if(tfnam)
@@ -421,9 +459,10 @@ done(c)
 	exit(c);
 }
 
-notfound()
+static int
+notfound(void)
 {
-	register i, n;
+	register int i, n;
 
 	n = 0;
 	for(i=0; i<namc; i++)
@@ -434,9 +473,10 @@ notfound()
 	return(n);
 }
 
-morefil()
+static int
+morefil(void)
 {
-	register i, n;
+	register int i, n;
 
 	n = 0;
 	for(i=0; i<namc; i++)
@@ -445,9 +485,10 @@ morefil()
 	return(n);
 }
 
-cleanup()
+static int
+cleanup(void)
 {
-	register i, f;
+	register int i, f;
 
 	for(i=0; i<namc; i++) {
 		file = namv[i];
@@ -465,9 +506,10 @@ cleanup()
 	install();
 }
 
-install()
+static int
+install(void)
 {
-	register i;
+	register int i;
 
 	for(i=0; signum[i]; i++)
 		signal(signum[i], SIG_IGN);
@@ -504,10 +546,11 @@ install()
  * insert the file 'file'
  * into the temporary file
  */
-movefil(f)
+static int
+movefil(int f)
 {
 	register char *cp;
-	register i;
+	register int i;
 
 	cp = trim(file);
 	for(i=0; i<14; i++)
@@ -522,9 +565,10 @@ movefil(f)
 	close(f);
 }
 
-stats()
+static int
+stats(void)
 {
-	register f;
+	register int f;
 
 	f = open(file, 0);
 	if(f < 0)
@@ -540,9 +584,10 @@ stats()
  * copy next file
  * size given in arbuf
  */
-copyfil(fi, fo, flag)
+static int
+copyfil(int fi, int fo, int flag)
 {
-	register i, o;
+	register int i, o;
 	int pe;
 
 	if(flag & HEAD) {
@@ -578,9 +623,10 @@ copyfil(fi, fo, flag)
 		phserr();
 }
 
-getdir()
+static int
+getdir(void)
 {
-	register i;
+	register int i;
 
 	if(oldfmt) {
 		/* First Edition (0177555): 16-byte header, 8-char name, a
@@ -637,9 +683,10 @@ getdir()
 	return(0);
 }
 
-match()
+static int
+match(void)
 {
-	register i;
+	register int i;
 
 	for(i=0; i<namc; i++) {
 		if(namv[i] == 0)
@@ -653,9 +700,10 @@ match()
 	return(0);
 }
 
-bamatch()
+static void
+bamatch(void)
 {
-	register f;
+	register int f;
 
 	switch(bastate) {
 
@@ -680,13 +728,15 @@ bamatch()
 	}
 }
 
-phserr()
+static int
+phserr(void)
 {
 
 	fprintf(stderr, "ar: phase error on %s\n", file);
 }
 
-mesg(c)
+static int
+mesg(int c)
 {
 
 	if(flg['v'-'a'])
@@ -694,9 +744,8 @@ mesg(c)
 			printf("%c - %s\n", c, file);
 }
 
-char *
-trim(s)
-char *s;
+static char *
+trim(char *s)
 {
 	register char *p1, *p2;
 
@@ -730,7 +779,8 @@ char *s;
 #define	XOTH	01
 #define	STXT	01000
 
-longt()
+static int
+longt(void)
 {
 	register char *cp;
 	time_t t;
@@ -757,7 +807,8 @@ int	m9[] = { 2, STXT, 't', XOTH, 'x', '-' };
 
 int	*m[] = { m1, m2, m3, m4, m5, m6, m7, m8, m9};
 
-pmode()
+static int
+pmode(void)
 {
 	register int **mp;
 
@@ -765,8 +816,8 @@ pmode()
 		arselect(*mp++);
 }
 
-arselect(pairp)
-int *pairp;
+static int
+arselect(int *pairp)
 {
 	register int n, *ap;
 
@@ -777,7 +828,8 @@ int *pairp;
 	putchar(*ap);
 }
 
-wrerr()
+static int
+wrerr(void)
 {
 	perror("ar write error");
 	done(1);

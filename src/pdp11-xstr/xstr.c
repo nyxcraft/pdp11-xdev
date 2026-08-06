@@ -3,8 +3,10 @@
 #include <ctype.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
-int	lseek();	/* Chicanery */
 /*
  * xstr - extract and hash strings in a C program
  *
@@ -12,18 +14,30 @@ int	lseek();	/* Chicanery */
  * November, 1978
  */
 
-#define	ignore(a)	Ignore((char *) a)
+#define	ignore(a)	Ignore((char *)(long) a)
 
-char	*calloc();
+char	*mktemp(char *);
+
+/* Forward declarations for file-local functions. */
+static void	process(char *name);
+static off_t	yankstr(char **cpp);
+static int	octdigit(char c);
+static void	inithash(void);
+static int	fgetNUL(char *obuf, int rmdr, FILE *file);
+static int	xgetc(FILE *file);
+static off_t	hashit(char *str, int new);
+static void	flushsh(void);
+static void	found(int new, off_t off, char *str);
+static void	prstr(char *cp);
+static void	xsdotc(void);
+static char	*savestr(char *cp);
+static void	Ignore(char *a);
+static void	ignorf(void (*a)(int));
+static int	lastchr(char *cp);
+static int	istail(char *str, char *of);
+static void	onintr(int sig);
+
 off_t	tellpt;
-off_t	hashit();
-char	*mktemp();
-int	onintr();
-char	*savestr();
-char	*strcat();
-char	*strcpy();
-off_t	yankstr();
-
 off_t	mesgpt;
 char	*strings =	"strings";
 
@@ -31,9 +45,8 @@ int	cflg;
 int	vflg;
 int	readstd;
 
-main(argc, argv)
-	int argc;
-	char *argv[];
+int
+main(int argc, char **argv)
 {
 
 	argc--, argv++;
@@ -84,8 +97,8 @@ main(argc, argv)
 	exit(0);
 }
 
-process(name)
-	char *name;
+static void
+process(char *name)
 {
 	char *cp;
 	char linebuf[BUFSIZ];
@@ -109,7 +122,7 @@ process(name)
 			continue;
 		}
 		for (cp = linebuf; c = *cp++;) switch (c) {
-			
+
 		case '"':
 			if (incomm)
 				goto def;
@@ -140,7 +153,7 @@ process(name)
 				continue;
 			}
 			goto def;
-		
+
 def:
 		default:
 			putchar(c);
@@ -148,12 +161,11 @@ def:
 		}
 	}
 	if (ferror(stdout))
-		perror("x.c"), onintr();
+		perror("x.c"), onintr(0);
 }
 
-off_t
-yankstr(cpp)
-	register char **cpp;
+static off_t
+yankstr(register char **cpp)
 {
 	register char *cp = *cpp;
 	register int c, ch;
@@ -201,14 +213,15 @@ out:
 	return (hashit(dbuf, 1));
 }
 
-octdigit(c)
-	char c;
+static int
+octdigit(char c)
 {
 
 	return (isdigit(c) && c != '8' && c != '9');
 }
 
-inithash()
+static void
+inithash(void)
 {
 	char buf[BUFSIZ];
 	register FILE *mesgread = fopen(strings, "r");
@@ -217,29 +230,27 @@ inithash()
 		return;
 	for (;;) {
 		mesgpt = tellpt;
-		if (fgetNUL(buf, sizeof buf, mesgread) == NULL)
+		if (fgetNUL(buf, sizeof buf, mesgread) == 0)
 			break;
 		ignore(hashit(buf, 0));
 	}
 	ignore(fclose(mesgread));
 }
 
-fgetNUL(obuf, rmdr, file)
-	char *obuf;
-	register int rmdr;
-	FILE *file;
+static int
+fgetNUL(char *obuf, register int rmdr, FILE *file)
 {
-	register c;
+	register int c;
 	register char *buf = obuf;
 
 	while (--rmdr > 0 && (c = xgetc(file)) != 0 && c != EOF)
 		*buf++ = c;
 	*buf++ = 0;
-	return ((feof(file) || ferror(file)) ? NULL : 1);
+	return ((feof(file) || ferror(file)) ? 0 : 1);
 }
 
-xgetc(file)
-	FILE *file;
+static int
+xgetc(FILE *file)
 {
 
 	tellpt++;
@@ -255,10 +266,8 @@ struct	hash {
 	short	hnew;
 } bucket[BUCKETS];
 
-off_t
-hashit(str, new)
-	char *str;
-	int new;
+static off_t
+hashit(char *str, int new)
 {
 	int i;
 	register struct hash *hp, *hp0;
@@ -280,7 +289,8 @@ hashit(str, new)
 	return (hp->hpt);
 }
 
-flushsh()
+static void
+flushsh(void)
 {
 	register int i;
 	register struct hash *hp;
@@ -321,10 +331,8 @@ flushsh()
 	ignore(fclose(mesgwrit));
 }
 
-found(new, off, str)
-	int new;
-	off_t off;
-	char *str;
+static void
+found(int new, off_t off, char *str)
 {
 	register char *cp;
 
@@ -338,8 +346,8 @@ found(new, off, str)
 	fprintf(stderr, "\n");
 }
 
-prstr(cp)
-	register char *cp;
+static void
+prstr(register char *cp)
 {
 	register int c;
 
@@ -354,7 +362,8 @@ prstr(cp)
 			fprintf(stderr, "%c", c);
 }
 
-xsdotc()
+static void
+xsdotc(void)
 {
 	register FILE *strf = fopen(strings, "r");
 	register FILE *xdotcf;
@@ -372,7 +381,7 @@ xsdotc()
 			c = getc(strf);
 			if (ferror(strf)) {
 				perror(strings);
-				onintr();
+				onintr(0);
 			}
 			if (feof(strf)) {
 				fprintf(xdotcf, "\n");
@@ -388,31 +397,30 @@ out:
 	ignore(fclose(strf));
 }
 
-char *
-savestr(cp)
-	register char *cp;
+static char *
+savestr(register char *cp)
 {
 	register char *dp = (char *) calloc(1, strlen(cp) + 1);
 
 	return (strcpy(dp, cp));
 }
 
-Ignore(a)
-	char *a;
+static void
+Ignore(char *a)
 {
 
 	a = a;
 }
 
-ignorf(a)
-	int (*a)();
+static void
+ignorf(void (*a)(int))
 {
 
 	a = a;
 }
 
-lastchr(cp)
-	register char *cp;
+static int
+lastchr(register char *cp)
 {
 
 	while (cp[0] && cp[1])
@@ -420,8 +428,8 @@ lastchr(cp)
 	return (*cp);
 }
 
-istail(str, of)
-	register char *str, *of;
+static int
+istail(register char *str, register char *of)
 {
 	register int d = strlen(of) - strlen(str);
 
@@ -430,7 +438,8 @@ istail(str, of)
 	return (d);
 }
 
-onintr()
+static void
+onintr(int sig)
 {
 
 	ignorf(signal(SIGINT, SIG_IGN));
