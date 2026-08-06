@@ -14,6 +14,7 @@
 #include <unistd.h>	/* readlink for relocatable -l lib path */
 #include <stdlib.h>	/* getenv for PDP11_UNIVERSE */
 #include <string.h>	/* strcmp for the universe name->id map */
+#include <fcntl.h>	/* open/creat for the object/library I/O */
 #include <ar.h>		/* PDPL: PDP-11 middle-endian on-disk ar longs */
 #include "universe.h"	/* era names for the lib/<universe>/ search + __univ id */
 
@@ -22,6 +23,14 @@
  * a mismatch the LP64 host rejects.  Rename ours -- 2.9BSD's PDP-11 libc had
  * no such collision.  (ld reads via get(), so getw needs no shim.) */
 #define putw ld_putw
+
+/* The on-disk ar header (archdr) is a packed, middle-endian PDP-11 record; ld
+ * reads/writes it word-wise via mget() through explicit (uint16_t *) casts as
+ * part of the LP64 16-bit-I/O port.  Once mget() has a prototype (C99) the host
+ * flags that packed->uint16_t* cast for possible unaligned access; the cast is
+ * deliberate and the layout is fixed, so silence the note here.  archdr is the
+ * only packed struct in this file, and x86-64 handles the 16-bit access. */
+#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
 
 /*	Layout of a.out file :
  *
@@ -261,11 +270,50 @@ struct	xsymbol ovhndlr =
 int	ovbase;			/* The base address of the overlays */
 /* end overlay stuff */
 
-struct symbol	**lookup();
-struct symbol	**slookup();
-struct symbol	*lookloc();
+/* forward declarations -- C99 prototypes; every function here is file-local
+ * (nothing in the separately-linked ucbpath objects references them) so they
+ * are static.  openl/openlp/_concat are NOT used by this ld and so absent. */
+static void	delexit(int sig);
+static void	endload(int argc, char **argv);
+static void	roundov(void);
+static void	record(int c, char *nam);
+static void	restore(int vscan);
+static void	load1arg(char *acp);
+static int	step(long nloc);
+static int	ldrand(void);
+static int	add(int a, int b, char *s);
+static int	load1(int libflg, long loc);
+static void	middle(void);
+static void	ldrsym(struct symbol *asp, int val, int type);
+static void	setupout(void);
+static void	tcreat(struct buf *buf, int tempflg);
+static void	load2arg(char *acp);
+static void	load2(long loc);
+static void	load2td(struct local *lp, int creloc, struct buf *b1, struct buf *b2);
+static void	finishout(void);
+static int	adrof(char *s);
+static void	copy(struct buf *buf);
+static void	mkfsym(char *s);
+static void	mget(uint16_t *aloc, int an);
+static void	mput(struct buf *buf, uint16_t *aloc, int an);
+static void	dseek(struct stream *asp, long aloc, int s);
+static int	half(int i);
+static int	get(struct stream *asp);
+static int	getfile(char *acp);
+static struct symbol	**lookup(void);
+static struct symbol	**slookup(char *s);
+static int	enter(struct symbol **hp);
+static void	symreloc(void);
+static void	error(int n, char *s);
+static struct symbol	*lookloc(struct local *alp, int r);
+static void	readhdr(long loc);
+static void	cp8c(char *from, char *to);
+static int	eq(char *s1, char *s2);
+static void	putw(int w, struct buf *b);
+static void	flush(struct buf *b);
 
-delexit()
+static void
+delexit(int sig)
 {
 	unlink("l.out");
 	if (delarg==0)
@@ -273,10 +321,10 @@ delexit()
 	exit(delarg);
 }
 
-main(argc, argv)
-char **argv;
+int
+main(int argc, char **argv)
 {
-	register int c, i; 
+	register int c, i;
 	int num;
 	register char *ap, **p;
 	int found; 
@@ -439,11 +487,10 @@ int	torigin;
 int	dorigin;
 int	borigin;
 
-endload(argc, argv)
-int argc; 
-char **argv;
+static void
+endload(int argc, char **argv)
 {
-	register int c, i; 
+	register int c, i;
 	int dnum;
 	register char *ap, **p;
 
@@ -509,7 +556,8 @@ char **argv;
 	finishout();
 }
 
-roundov()
+static void
+roundov(void)
 {
 
 	while (torigin & 077) {
@@ -518,9 +566,8 @@ roundov()
 	}
 }
 
-record(c, nam)
-int c; 
-char *nam;
+static void
+record(int c, char *nam)
 {
 	register struct overlay *v;
 
@@ -538,8 +585,8 @@ char *nam;
 	v->cbsav = cbrel;
 }
 
-restore(vscan)
-int vscan;
+static void
+restore(int vscan)
 {
 	register struct overlay *v;
 	register int saved;
@@ -560,8 +607,8 @@ int vscan;
 }
 
 /* scan file to find defined symbols */
-load1arg(acp)
-char *acp;
+static void
+load1arg(char *acp)
 {
 	register char *cp;
 	long nloc;
@@ -602,8 +649,8 @@ char *acp;
 	close(infil);
 }
 
-step(nloc)
-long nloc;
+static int
+step(long nloc)
 {
 	dseek(&text, nloc, sizeof archdr);
 	if (text.size <= 0) {
@@ -620,7 +667,8 @@ long nloc;
 	return(1);
 }
 
-ldrand()
+static int
+ldrand(void)
 {
 	int i;
 	struct symbol *sp, **pp;
@@ -640,9 +688,8 @@ ldrand()
 	return(oldp != libp);
 }
 
-add(a,b,s)
-int a, b;
-char *s;
+static int
+add(int a, int b, char *s)
 {
 	long r;
 
@@ -654,8 +701,8 @@ char *s;
 
 
 /* single file or archive member */
-load1(libflg, loc)
-long loc;
+static int
+load1(int libflg, long loc)
 {
 	register struct symbol *sp;
 	int savindex;
@@ -755,10 +802,11 @@ p11_firsted()
 	return id == PDP11_UNIV_V1 || id == PDP11_UNIV_V2;
 }
 
-middle()
+static void
+middle(void)
 {
 	register struct symbol *sp, *symp;
-	register t, csize;
+	register int t, csize;
 	int nund, corigin;
 	int ttsize;
 
@@ -910,8 +958,8 @@ middle()
 	nsym = ssize / (sizeof cursym);
 }
 
-ldrsym(asp, val, type)
-struct symbol *asp;
+static void
+ldrsym(struct symbol *asp, int val, int type)
 {
 	register struct symbol *sp;
 
@@ -928,7 +976,8 @@ struct symbol *asp;
 	sp->svalue = val;
 }
 
-setupout()
+static void
+setupout(void)
 {
 	int v1out = p11_firsted();	/* First Edition (0405) output: v1, v2 */
 
@@ -987,10 +1036,10 @@ setupout()
 /* end wnj */
 }
 
-tcreat(buf, tempflg)
-struct buf *buf;
+static void
+tcreat(struct buf *buf, int tempflg)
 {
-	register int ufd; 
+	register int ufd;
 	char *nam;
 	nam = (tempflg ? tfname : ofilename);
 	if ((ufd = creat(nam, 0666)) < 0)
@@ -1003,8 +1052,8 @@ struct buf *buf;
 	buf->xnext = buf->iobuf;
 }
 
-load2arg(acp)
-char *acp;
+static void
+load2arg(char *acp)
 {
 	register char *cp;
 	register struct liblist *lp;
@@ -1029,8 +1078,8 @@ char *acp;
 	close(infil);
 }
 
-load2(loc)
-long loc;
+static void
+load2(long loc)
 {
 	register struct symbol *sp;
 	register struct local *lp;
@@ -1107,11 +1156,10 @@ long loc;
 	borigin += filhdr.bsize;
 }
 
-load2td(lp, creloc, b1, b2)
-struct local *lp;
-struct buf *b1, *b2;
+static void
+load2td(struct local *lp, int creloc, struct buf *b1, struct buf *b2)
 {
-	register r, t;
+	register int r, t;
 	register struct symbol *sp;
 
 	for (;;) {
@@ -1177,7 +1225,8 @@ struct buf *b1, *b2;
 	}
 }
 
-finishout()
+static void
+finishout(void)
 {
 	register int n;
 	register uint16_t *p;
@@ -1241,12 +1290,12 @@ finishout()
 		ofilename = "a.out";
 	}
 	delarg = errlev;
-	delexit();
+	delexit(0);
 }
 
 /* wnj added for overlay txt regs */
-adrof(s)
-	char *s;
+static int
+adrof(char *s)
 {
 	register struct symbol **p = slookup(s);
 
@@ -1259,8 +1308,8 @@ adrof(s)
 }
 /* end wnj added */
 
-copy(buf)
-struct buf *buf;
+static void
+copy(struct buf *buf)
 {
 	register int f, n;
 	register uint16_t *p;
@@ -1277,8 +1326,8 @@ struct buf *buf;
 	close(f);
 }
 
-mkfsym(s)
-char *s;
+static void
+mkfsym(char *s)
 {
 
 	if (sflag || xflag)
@@ -1289,8 +1338,8 @@ char *s;
 	mput(&soutb, (uint16_t *)&cursym, sizeof cursym);
 }
 
-mget(aloc, an)
-uint16_t *aloc;
+static void
+mget(uint16_t *aloc, int an)
 {
 	register uint16_t *loc, *p;
 	register int n;
@@ -1316,9 +1365,8 @@ uint16_t *aloc;
 	while (--n);
 }
 
-mput(buf, aloc, an)
-struct buf *buf; 
-uint16_t *aloc;
+static void
+mput(struct buf *buf, uint16_t *aloc, int an)
 {
 	register uint16_t *loc;
 	register int n;
@@ -1331,9 +1379,8 @@ uint16_t *aloc;
 	while (--n);
 }
 
-dseek(asp, aloc, s)
-long aloc;
-struct stream *asp;
+static void
+dseek(struct stream *asp, long aloc, int s)
 {
 	register struct stream *sp;
 	register struct page *p;
@@ -1366,13 +1413,14 @@ struct stream *asp;
 		sp->size = 0;
 }
 
-half(i)
+static int
+half(int i)
 {
 	return((i>>1)&077777);
 }
 
-get(asp)
-struct stream *asp;
+static int
+get(struct stream *asp)
 {
 	register struct stream *sp;
 
@@ -1391,8 +1439,8 @@ struct stream *asp;
 	return(*sp->ptr++);
 }
 
-getfile(acp)
-char *acp;
+static int
+getfile(char *acp)
 {
 	register char *cp;
 	register int c;
@@ -1402,6 +1450,16 @@ char *acp;
 	infil = -1;
 	archdr.aname[0] = '\0';
 	filname = cp;
+	/* The library-path buffers below form a cyclic sprintf dependency
+	 * (libpath -> libdir via "%slib", then libdir -> libpath via
+	 * "%s/lib%s.a"), and udir must stay the same size as libdir so the
+	 * strcpy(libdir, udir) back-copy cannot overflow.  No capacity-only
+	 * enlargement can clear every -Wformat-overflow here (the two ends of
+	 * the cycle impose opposite size constraints), and the format strings
+	 * and arguments must not change, so scope the diagnostic off for this
+	 * block only.  Behaviour and buffer sizes are unchanged. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-overflow"
 	if (cp[0]=='-' && cp[1]=='l') {
 		static char libpath[1024], libdir[1024];
 		if(cp[2] == '\0')
@@ -1439,6 +1497,7 @@ char *acp;
 		filname = libpath;
 		infil = open(filname, 0);
 	}
+#pragma GCC diagnostic pop
 	if (infil == -1 && (infil = open(filname, 0)) < 0)
 		error(2, "cannot open");
 	page[0].bno = page[1].bno = -1;
@@ -1467,9 +1526,10 @@ char *acp;
 	}
 }
 
-struct symbol **lookup()
+static struct symbol **
+lookup(void)
 {
-	int i; 
+	int i;
 	int clash;
 	register struct symbol **hp;
 	register char *cp, *cp1;
@@ -1494,8 +1554,8 @@ struct symbol **lookup()
 	return(hp);
 }
 
-struct symbol **slookup(s)
-char *s;
+static struct symbol **
+slookup(char *s)
 {
 	cp8c(s, cursym.sname);
 	cursym.stype = EXTERN+UNDEF;
@@ -1503,8 +1563,8 @@ char *s;
 	return(lookup());
 }
 
-enter(hp)
-struct symbol **hp;
+static int
+enter(struct symbol **hp)
 {
 	register struct symbol *sp;
 
@@ -1529,7 +1589,8 @@ struct symbol **hp;
 	}
 }
 
-symreloc()
+static void
+symreloc(void)
 {
 	switch (cursym.stype) {
 
@@ -1555,8 +1616,8 @@ symreloc()
 		cursym.stype = EXTERN+ABS;
 }
 
-error(n, s)
-char *s;
+static void
+error(int n, char *s)
 {
 	if (errlev==0)
 		printf("ld:");
@@ -1568,16 +1629,15 @@ char *s;
 	}
 	printf("%s\n", s);
 	if (n > 1)
-		delexit();
+		delexit(0);
 	errlev = n;
 }
 
-struct symbol *
-lookloc(alp, r)
-struct local *alp;
+static struct symbol *
+lookloc(struct local *alp, int r)
 {
 	register struct local *clp, *lp;
-	register sn;
+	register int sn;
 
 	lp = alp;
 	sn = (r>>4) & 07777;
@@ -1587,10 +1647,10 @@ struct local *alp;
 	error(2, "Local symbol botch");
 }
 
-readhdr(loc)
-long loc;
+static void
+readhdr(long loc)
 {
-	register st, sd;
+	register int st, sd;
 
 	dseek(&text, loc, sizeof filhdr);
 	mget((uint16_t *)&filhdr, sizeof filhdr);
@@ -1604,8 +1664,8 @@ long loc;
 	filhdr.bsize = (filhdr.bsize+01) & ~01;
 }
 
-cp8c(from, to)
-char *from, *to;
+static void
+cp8c(char *from, char *to)
 {
 	register char *f, *t, *te;
 
@@ -1617,9 +1677,8 @@ char *from, *to;
 		*t++ = 0;
 }
 
-eq(s1, s2)
-char *s1; 
-char *s2;
+static int
+eq(char *s1, char *s2)
 {
 	while (*s1==*s2++)
 		if ((*s1++)==0)
@@ -1627,18 +1686,18 @@ char *s2;
 	return(FALSE);
 }
 
-putw(w, b)
-register struct buf *b;
+static void
+putw(int w, register struct buf *b)
 {
 	*(b->xnext)++ = w;
 	if (--b->nleft <= 0)
 		flush(b);
 }
 
-flush(b)
-register struct buf *b;
+static void
+flush(register struct buf *b)
 {
-	register n;
+	register int n;
 
 	if ((n = (char *)b->xnext - (char *)b->iobuf) > 0)
 		if (write(b->fildes, (char *)b->iobuf, n) != n)

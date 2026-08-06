@@ -118,7 +118,7 @@ struct sym *symhead, *symtail;	/* symbols in first-creation order, as 2BSD as em
 #define SF_TMINT 010		/* minted by a `~'-marked MENTION: emit even when
 				 * undefined and opcode-named (V1 bos's `halt') */
 
-struct op *oplook(char *name){ struct op *o;
+static struct op *oplook(char *name){ struct op *o;
 	for(o=optab;o->name;o++) if(strcmp(o->name,name)==0 && !kwskip(o)) return o;
 	if(isa==211||jflag) for(o=tab211;o->name;o++) if(strcmp(o->name,name)==0) return o;
 	if(sysnames==1972) for(o=v1systab;o->name;o++) if(strcmp(o->name,name)==0) return o;
@@ -137,7 +137,7 @@ struct op *oplook(char *name){ struct op *o;
  * interpreter) names a NON-opcode, so it IS emitted -- as the absolute symbol
  * `104000 a error'.  So exclude a `^' alias only when it shadows a real opcode.
  * Register aliases (`rer = r3', kwtype 0 / SF_REG) are emitted as N_REG. */
-int emitsym(struct sym *sp){
+static int emitsym(struct sym *sp){
 	return ((sp->flags&SF_GLOBL)||(sp->flags&SF_DEF)||sp->seg==SEXT)
 	       && sp->name[0]!=1 && !(sp->kwtype && oplook(sp->name))
 	       /* an undefined opcode-name (never `='-defined nor .globl'd) is a
@@ -186,11 +186,11 @@ int  brdelt;			/* 2.8 as drift corrector: at every label def (ANY segment,
 int  deciding;			/* in the single as2-style sizing pass: spanrec decides inline */
 int  spanidx, nspan, relaxing, estimating;
 
-void aerror(s) char *s; {
+static void aerror(char *s) {
 	fprintf(stderr, "as: %s:%d: %s\n", infile, lineno, s);
 	errors++;
 }
-void *xalloc(n) { void *p = calloc(1,n); if(!p){fprintf(stderr,"as: no memory\n");exit(1);} return p; }
+static void *xalloc(int n) { void *p = calloc(1,n); if(!p){fprintf(stderr,"as: no memory\n");exit(1);} return p; }
 
 /* The hash covers the FULL spelling; only NCPS chars are stored.  Genuine as
  * (as14.s rname) does exactly this: `add r3,(sp); swab (sp)' folds EVERY
@@ -198,10 +198,10 @@ void *xalloc(n) { void *p = calloc(1,n); if(!p){fprintf(stderr,"as: no memory\n"
  * names that agree in their first 8 chars but differ beyond land in different
  * chains and stay SEPARATE entries with identical stored names -- V6 iolib's
  * `extern char *IEH3outp, *IEH3outlim' yields two `_IEH3out' symtab slots. */
-unsigned nhash(b) char *b; { unsigned h=0; for(;*b;b++) h=h*33+(unsigned char)*b; return h%NHASH; }
+static unsigned nhash(char *b) { unsigned h=0; for(;*b;b++) h=h*33+(unsigned char)*b; return h%NHASH; }
 /* find an existing symbol, or NULL -- never creates one (the dispatch must not
  * mint a spurious entry, e.g. for the `..' reloc-base placeholder) */
-struct sym *find_sym(char *name){
+static struct sym *find_sym(char *name){
 	char nb[NCPS]; int i; struct sym *sp; unsigned h;
 	for(i=0;i<ncps && name[i];i++) nb[i]=name[i];
 	for(;i<NCPS;i++) nb[i]=0;
@@ -209,7 +209,7 @@ struct sym *find_sym(char *name){
 	for(sp=htab[h];sp;sp=sp->next) if(memcmp(sp->name,nb,NCPS)==0) return sp;
 	return 0;
 }
-struct sym *lookup(name) char *name; {
+static struct sym *lookup(char *name) {
 	struct sym *sp=find_sym(name); char nb[NCPS]; int i; unsigned h;
 	if(sp) return sp;
 	for(i=0;i<ncps && name[i];i++) nb[i]=name[i];
@@ -234,7 +234,7 @@ struct sym *lookup(name) char *name; {
 #define MAXTILDE 8000
 struct sym *tildesyms[MAXTILDE]; int ntilde, tildeidx;
 int toklocal;	/* the identifier just lexed began with a stripped `~' */
-struct sym *tildesym(char *name){
+static struct sym *tildesym(char *name){
 	struct sym *sp; char nb[NCPS]; int i;
 	if(tildeidx<ntilde) return tildesyms[tildeidx++];
 	for(i=0;i<ncps && name[i];i++) nb[i]=name[i];
@@ -254,7 +254,7 @@ int tok; long tokval; char tokname[64]; struct op *tokkw; char tokstr[1024]; int
 /* token pushback stack (LIFO) */
 struct savedtok { int tok; long val; char name[64]; struct op *kw; };
 struct savedtok pbstk[8]; int pbsp;
-void pushtok(int tk, long v, char *nm, struct op *kw){
+static void pushtok(int tk, long v, char *nm, struct op *kw){
 	pbstk[pbsp].tok=tk; pbstk[pbsp].val=v;
 	if(nm) strcpy(pbstk[pbsp].name,nm); else pbstk[pbsp].name[0]=0;
 	pbstk[pbsp].kw=kw; pbsp++;
@@ -264,13 +264,13 @@ void pushtok(int tk, long v, char *nm, struct op *kw){
  * symbol "\1N_<count>"; `Nf' refers to the next definition, `Nb' the
  * previous.  loccnt[N] counts definitions seen so far in the current pass. */
 int loccnt[10];
-char *locname(int dig, int n){ static char b[16]; sprintf(b,"\1%d_%d",dig,n); return b; }
+static char *locname(int dig, int n){ static char b[16]; sprintf(b,"\1%d_%d",dig,n); return b; }
 
-int idchar(c){ return isalnum(c)||c=='_'||c=='.'||c=='~'; }
+static int idchar(int c){ return isalnum(c)||c=='_'||c=='.'||c=='~'; }
 
 /* 2BSD as character escapes (the `schar' table in as15.s): \n \s \t \e \0 \r
  * \a \p; any other escaped char is taken literally (`\\' -> `\', etc.). */
-int escval(int c){
+static int escval(int c){
 	switch(c){
 	case 'n': return 012; case 's': return 040; case 't': return 011;
 	case 'e': return 004; case '0': return 000; case 'r': return 015;
@@ -279,7 +279,7 @@ int escval(int c){
 	}
 }
 
-int lex()
+static int lex()
 {
 	int c;
 	if (pbsp) { pbsp--; tok=pbstk[pbsp].tok; tokval=pbstk[pbsp].val; strcpy(tokname,pbstk[pbsp].name); tokkw=pbstk[pbsp].kw; return tok; }
@@ -377,8 +377,8 @@ again:
 	ip++;
 	return tok=c;
 }
-void unlex(){ pushtok(tok,tokval,tokname,tokkw); }
-int peek(){ int t=lex(); unlex(); return t; }
+static void unlex(){ pushtok(tok,tokval,tokname,tokkw); }
+static int peek(){ int t=lex(); unlex(); return t; }
 
 /* ---------------- expressions ---------------- */
 struct sym *exsym;		/* set by term/expr when result is external */
@@ -388,8 +388,8 @@ int v7flag;			/* -7: genuine-as default -- no auto-external of
 int ovasflag;			/* -V (MENLO_OVLY `ovas'): keep refs to defined
 				 * global TEXT symbols external so ld can
 				 * substitute the overlay thunk */
-long expr();
-long term(segp) int *segp; {
+static long expr(int *segp);
+static long term(int *segp) {
 	int t=lex(); long v; struct sym *sp;
 	exsym=0; *segp=SABS; termreg=0; termkw=0;
 	if(t=='-'){ v=term(segp); return -v; }
@@ -444,7 +444,7 @@ long term(segp) int *segp; {
 	}
 	aerror("bad expression"); return 0;
 }
-long expr(segp) int *segp; {
+static long expr(int *segp) {
 	int seg,seg2; long v,v2; struct sym *es;
 	int reg; struct op *reskw=0;
 	v=term(&seg); es=exsym; reg=termreg;	/* a bare register, until an operator applies */
@@ -499,23 +499,22 @@ juxta:;
 }
 
 /* ---------------- emission ---------------- */
-void ensure(seg,n) { if(dot[seg]+n>segcap[seg]){ int nc=(segcap[seg]?segcap[seg]*2:1024); while(dot[seg]+n>nc)nc*=2;
+static void ensure(int seg,int n) { if(dot[seg]+n>segcap[seg]){ int nc=(segcap[seg]?segcap[seg]*2:1024); while(dot[seg]+n>nc)nc*=2;
 	segbuf[seg]=realloc(segbuf[seg],nc); relbuf[seg]=realloc(relbuf[seg],nc);
 	memset(segbuf[seg]+segcap[seg],0,nc-segcap[seg]); memset(relbuf[seg]+segcap[seg],0,nc-segcap[seg]);
 	segcap[seg]=nc; } }
 
 /* relocation kind for a value's segment */
-int relkind(seg){ switch(seg){case STEXT:return RTEXT;case SDATA:return RDATA;case SBSS:return RBSS;default:return RABS;} }
+static int relkind(int seg){ switch(seg){case STEXT:return RTEXT;case SDATA:return RDATA;case SBSS:return RBSS;default:return RABS;} }
 
 /* Within an object the address space is unified: text@0, data@txtsize,
  * bss@txtsize+datsize (the authentic as's datbase/bssbase, as21.s).  Symbol
  * values and internal references are emitted in this unified space; ld's
  * cdrel/cbrel back out the bias when combining objects.  Set after pass 1. */
 int txtsize, datsize;
-int segbase(seg){ switch(seg){case SDATA:return txtsize;case SBSS:return txtsize+datsize;default:return 0;} }
+static int segbase(int seg){ switch(seg){case SDATA:return txtsize;case SBSS:return txtsize+datsize;default:return 0;} }
 
-void emitword(w, seg, sym, pcrel)
-struct sym *sym;
+static void emitword(int w, int seg, struct sym *sym, int pcrel)
 {
 	int s=curseg; int rel;
 	if(pass==2){
@@ -533,13 +532,12 @@ struct sym *sym;
 	}
 	dot[s]+=2;
 }
-void emitbyte(b){ int s=curseg; if(pass==2){ ensure(s,1); segbuf[s][dot[s]]=b&0377; relbuf[s][dot[s]]=0; } dot[s]++; }
+static void emitbyte(int b){ int s=curseg; if(pass==2){ ensure(s,1); segbuf[s][dot[s]]=b&0377; relbuf[s][dot[s]]=0; } dot[s]++; }
 
 /* emit an instruction's extra (offset) word from an operand.  Defined
  * data/bss targets are biased into the unified object address space; the
  * current location (for pc-relative) is biased by the current segment. */
-void emitextra(xval,xseg,xsym,pcrel)
-struct sym *xsym;
+static void emitextra(int xval,int xseg,struct sym *xsym,int pcrel)
 {
 	long v;
 	if(ovasflag && xsym && (xsym->flags&(SF_GLOBL|SF_DEF))==(SF_GLOBL|SF_DEF)
@@ -577,7 +575,7 @@ struct sym *xsym;
  */
 struct operand { int mode; int hasx; long xval; int xseg; struct sym *xsym; int pcrel; };
 
-int regof(){
+static int regof(){
 	if(tok==TID && tokkw && tokkw->type==024) return tokkw->opcode;	/* r0..r5/sp/pc */
 	if(tok==TID && !tokkw){						/* a symbol aliased to a register */
 		struct sym *sp=lookup(tokname);
@@ -586,8 +584,7 @@ int regof(){
 	return -1;
 }
 
-void getop(o)
-struct operand *o;
+static void getop(struct operand *o)
 {
 	int t, defer=0, reg;
 	/* the first operand token, saved so peek() below cannot clobber it */
@@ -651,7 +648,7 @@ struct operand *o;
 	  o->hasx=1;o->xval=v;o->xseg=seg;o->xsym=sym;o->pcrel=1;
 	}
 }
-void putop(o) struct operand*o; {
+static void putop(struct operand*o) {
 	if(o->hasx) emitextra(o->xval,o->xseg,o->xsym,o->pcrel);
 }
 
@@ -661,61 +658,61 @@ void putop(o) struct operand*o; {
  * (e.g. mch.s's odd-length `<...>' string in .data before a `.text').  For a
  * single-section segment this is identical to the end-of-segment rounding, so
  * only interleaved segments differ -- and compiler output never interleaves. */
-void setseg(s){ if(s!=curseg){ if(dot[curseg]&1) emitbyte(0); curseg=s; } }
+static void setseg(int s){ if(s!=curseg){ if(dot[curseg]&1) emitbyte(0); curseg=s; } }
 
 /* size of one operand's extra word (0 or 2) -- known from syntax in pass1 */
 /* we just emit; dot advances identically in both passes */
 
-void doublop(base){ struct operand s,d; getop(&s); if(lex()!=',')aerror("missing ,"); getop(&d);
+static void doublop(int base){ struct operand s,d; getop(&s); if(lex()!=',')aerror("missing ,"); getop(&d);
 	emitword(base|((s.mode&077)<<6)|(d.mode&077),SABS,0,0); putop(&s); putop(&d); }
-void singlop(base){ struct operand d; getop(&d); emitword(base|(d.mode&077),SABS,0,0); putop(&d); }
-void jsrop(base){ struct operand r,d; getop(&r); if(lex()!=',')aerror("missing ,"); getop(&d);
+static void singlop(int base){ struct operand d; getop(&d); emitword(base|(d.mode&077),SABS,0,0); putop(&d); }
+static void jsrop(int base){ struct operand r,d; getop(&r); if(lex()!=',')aerror("missing ,"); getop(&d);
 	emitword(base|((r.mode&07)<<6)|(d.mode&077),SABS,0,0); putop(&d); }
 /* FP11 floating-point operand forms.  A float accumulator (ac0-ac3, written
  * r0-r3) lands in bits 6-7; the other operand is a general addressing mode in
  * bits 0-5 (with its extra word, if any). */
-void flop14(base){ struct operand s,d;	/* `op fsrc,freg' (addf/cmpf/movof/...) */
+static void flop14(int base){ struct operand s,d;	/* `op fsrc,freg' (addf/cmpf/movof/...) */
 	getop(&s); if(lex()!=',')aerror("missing ,"); getop(&d);
 	emitword(base|((d.mode&07)<<6)|(s.mode&077),SABS,0,0); putop(&s); putop(&d); }
-void flop5(base){ struct operand s,d;	/* `op freg,dst' (movfo/movfi/movei) */
+static void flop5(int base){ struct operand s,d;	/* `op freg,dst' (movfo/movfi/movei) */
 	getop(&s); if(lex()!=',')aerror("missing ,"); getop(&d);
 	emitword(base|((s.mode&07)<<6)|(d.mode&077),SABS,0,0); putop(&s); putop(&d); }
-void movfop(base){ struct operand s,d;	/* movf: LDF mem,freg | STF freg,mem */
+static void movfop(int base){ struct operand s,d;	/* movf: LDF mem,freg | STF freg,mem */
 	getop(&s); if(lex()!=',')aerror("missing ,"); getop(&d);
 	if((s.mode&077) < 4)		/* source is a float register -> STF */
 		emitword(0174000|((s.mode&07)<<6)|(d.mode&077),SABS,0,0);
 	else				/* source is memory -> LDF */
 		emitword(base|((d.mode&07)<<6)|(s.mode&077),SABS,0,0);
 	putop(&s); putop(&d); }
-void rtsop(base){ struct operand r; getop(&r); emitword(base|(r.mode&07),SABS,0,0); }
+static void rtsop(int base){ struct operand r; getop(&r); emitword(base|(r.mode&07),SABS,0,0); }
 /* sys/trap: the operand is the trap number encoded in the low 6 bits.  It must
  * be an absolute constant; if it is a relocatable/external symbol, carry that
  * segment+symbol so the word is relocated (native as does -- e.g. the vestigial
  * lfstat.s does `sys lfstat' but sys.s renamed lfstat->qfstat, leaving lfstat an
  * undefined external), AND flag it -- native as reports it as an error too. */
-void sysop(base){ int seg; long v=expr(&seg); struct sym *es=exsym;
+static void sysop(int base){ int seg; long v=expr(&seg); struct sym *es=exsym;
 	if(pass==2 && seg!=SABS) aerror("sys operand not absolute");
 	/* the sys/trap CODE is the low 8 bits (0..0377), not 6: lib/jobs stubs do
 	 * `sys read+200' (a job-control flag in bit 0200), which a &077 mask would
 	 * truncate.  Plain syscalls are <64 so only the +200 forms exposed this. */
 	emitword(base|(v&0377),seg,es,0); }
 /* emt [code] -- the operand is optional (bare `emt' == `emt 0'); 8-bit code */
-void emtop(base){ int seg, t=peek(); long v=0;
+static void emtop(int base){ int seg, t=peek(); long v=0;
 	if(t!=TNL && t!=';' && t!=TEOF) v=expr(&seg);
 	emitword(base|(v&0377),SABS,0,0); }
-void branchop(base){ int seg; long v=expr(&seg); long off=(v-(dot[curseg]+2))/2;
+static void branchop(int base){ int seg; long v=expr(&seg); long off=(v-(dot[curseg]+2))/2;
 	if(pass==2 && (off<-128||off>127)) aerror("branch out of range");
 	emitword(base|(off&0377),SABS,0,0); }
-void eisop(base){ struct operand s,d; getop(&s); if(lex()!=',')aerror("missing ,"); getop(&d);
+static void eisop(int base){ struct operand s,d; getop(&s); if(lex()!=',')aerror("missing ,"); getop(&d);
 	/* src first then reg: opcode | reg<<6 | src */
 	emitword(base|((d.mode&07)<<6)|(s.mode&077),SABS,0,0); putop(&s); }
-void sobop(base){ struct operand r; int seg; long v;
+static void sobop(int base){ struct operand r; int seg; long v;
 	getop(&r); if(lex()!=',')aerror("missing ,"); v=expr(&seg);
 	{ long off=(dot[curseg]+2-v)/2; emitword(base|((r.mode&07)<<6)|(off&077),SABS,0,0); } }
 /* record this span item's geometry; a span is short-eligible only when its
  * operand is a pc-relative reference (the form a branch can take) to a text
  * label, and the code itself is in text */
-int spanrec(struct operand *d){
+static int spanrec(struct operand *d){
 	int sidx=spanidx++, shortok = (d->mode==067 && d->pcrel && curseg==0);
 	if(sidx<MAXSPAN){
 		spanloc[sidx]=dot[curseg]; spantarg[sidx]=d->xval;
@@ -743,7 +740,7 @@ int spanrec(struct operand *d){
 			if(r0 > 0) r0 -= brdelt;
 			spanlong[sidx] = (r0 < -254 || r0 > 256);
 			if(getenv("AS_SPAN_DEBUG"))
-				fprintf(stderr,"decide %d loc=%o targ=%o brdelt=%d r0=%d %s\n",
+				fprintf(stderr,"decide %d loc=%o targ=%lo brdelt=%d r0=%d %s\n",
 					sidx,dot[curseg],d->xval,brdelt,r0,spanlong[sidx]?"LONG":"short");
 		}
 	}
@@ -751,7 +748,7 @@ int spanrec(struct operand *d){
 }
 /* a short branch's 8-bit displacement; flagged if it ever falls out of range
  * in the emit pass (the relaxation should have grown it to long first) */
-int brdisp(int targ){
+static int brdisp(int targ){
 	int off=(targ-(dot[curseg]+2))/2;
 	if(pass==2 && (off<-128||off>127)) aerror("span branch out of range");
 	return off&0377;
@@ -760,34 +757,34 @@ int brdisp(int targ){
  * (mode 037), not jmp target(pc) (067): the short form is a PC-relative br, the
  * long form an absolute jmp -- matching authentic 2BSD as.  (rogue's encrypt /
  * _doprnt carry these where a jgt/jbr fell out of short-branch range.) */
-void emit_longjmp(struct operand *d){
+static void emit_longjmp(struct operand *d){
 	emitword(0000100|037,SABS,0,0); emitextra(d->xval,d->xseg,d->xsym,0);
 }
 /* jbr addr -> br addr (1 word) when near, else jmp addr */
-void jbrop(){ struct operand d; int sidx; getop(&d); sidx=spanrec(&d);
+static void jbrop(){ struct operand d; int sidx; getop(&d); sidx=spanrec(&d);
 	if(sidx<MAXSPAN && !spanlong[sidx]) emitword(000400|brdisp(d.xval),SABS,0,0);	/* br */
 	else emit_longjmp(&d);								/* jmp */
 }
 /* jxxx addr -> b<cond> addr (1 word) when near, else b<not-cond> .+6 ; jmp addr */
-void jxxxop(brbase){ struct operand d; int sidx, comp=brbase^0400; getop(&d); sidx=spanrec(&d);
+static void jxxxop(int brbase){ struct operand d; int sidx, comp=brbase^0400; getop(&d); sidx=spanrec(&d);
 	if(sidx<MAXSPAN && !spanlong[sidx]) emitword(brbase|brdisp(d.xval),SABS,0,0);	/* b<cond> */
 	else { emitword(comp|2,SABS,0,0);						/* b<not-cond> .+6 */
 	       emit_longjmp(&d); }							/* jmp addr */
 }
 
-void dobyte(){ int seg; for(;;){ if(peek()==TSTR){lex(); int i;for(i=0;i<tokslen;i++)emitbyte(tokstr[i]);}
+static void dobyte(){ int seg; for(;;){ if(peek()==TSTR){lex(); int i;for(i=0;i<tokslen;i++)emitbyte(tokstr[i]);}
 	else { long v=expr(&seg); emitbyte(v&0377);} if(peek()==',') lex(); else break; } }
-void doascii(){ if(lex()==TSTR){ int i; for(i=0;i<tokslen;i++) emitbyte(tokstr[i]); } else aerror("bad .ascii"); }
-void doglobl(){ for(;;){ if(peek()!=TID) return;	/* bare .globl is a no-op separator */
+static void doascii(){ if(lex()==TSTR){ int i; for(i=0;i<tokslen;i++) emitbyte(tokstr[i]); } else aerror("bad .ascii"); }
+static void doglobl(){ for(;;){ if(peek()!=TID) return;	/* bare .globl is a no-op separator */
 	/* `.globl ~name' mints a FRESH UNHASHED global (the `~' marker
 	 * bypasses the table): an undefined external whose name is an
 	 * OPCODE (m11's `div'/`mul') must not shadow the instruction */
 	lex(); (toklocal ? tildesym(tokname) : lookup(tokname))->flags|=SF_GLOBL;
 	if(peek()==',')lex(); else break; } }
-void docomm(){ struct sym*sp; int seg; long sz; if(lex()!=TID){aerror(".comm name");return;} sp=lookup(tokname);
+static void docomm(){ struct sym*sp; int seg; long sz; if(lex()!=TID){aerror(".comm name");return;} sp=lookup(tokname);
 	if(lex()!=',')aerror(".comm ,"); sz=expr(&seg); sp->flags|=SF_GLOBL; if(!(sp->flags&SF_DEF)){sp->value=sz;} }
-void even(){ if(dot[curseg]&1){ emitbyte(0);} }
-void doword(long v,int seg,struct sym*sym){
+static void even(){ if(dot[curseg]&1){ emitbyte(0);} }
+static void doword(long v,int seg,struct sym*sym){
 	if(ovasflag && sym && (sym->flags&(SF_GLOBL|SF_DEF))==(SF_GLOBL|SF_DEF)
 	    && seg==STEXT && !(sym->flags&SF_REG)){
 		/* ovas: data words naming global text symbols (e.g. function-
@@ -804,7 +801,7 @@ void doword(long v,int seg,struct sym*sym){
 
 int ifdepth, ifoff;	/* .if nesting depth; depth at which assembly is switched off (0=on) */
 
-void assemble()
+static void assemble()
 {
 	int t;
 	ifdepth=0; ifoff=0;
@@ -1007,9 +1004,9 @@ void assemble()
 }
 
 /* ---------------- output ---------------- */
-void putw_(FILE*f,int w){ putc(w&0377,f); putc((w>>8)&0377,f); }
+static void putw_(FILE*f,int w){ putc(w&0377,f); putc((w>>8)&0377,f); }
 
-void writeout()
+static void writeout()
 {
 	FILE *f; struct sym *sp; int i, nsym=0, ssize;
 	/* segments are even-sized in the file (data must start at txtsize); the
@@ -1145,8 +1142,7 @@ void writeout()
 	fclose(f);
 }
 
-main(argc,argv)
-char**argv;
+int main(int argc, char **argv)
 {
 	int i; long flen; FILE*f;
 	/* collect input files: as concatenates several (e.g. the syscall stubs
