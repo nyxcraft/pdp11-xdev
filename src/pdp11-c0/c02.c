@@ -293,20 +293,9 @@ void setinit(struct hshtab *anp)
 /*
  * Process one statement in a function.
  */
-/* statement() reuses o1 (declared struct hshtab *) as an int label holder in
- * the keyword branches -- the original PDP-11 "everything is a 16-bit word"
- * idiom, where a symbol pointer and a small label number occupy one register
- * interchangeably.  On an LP64 host that mixes int and pointer widths; the
- * value always round-trips (labels are small and never alias the pointer
- * uses), so the emitted intermediate code is byte-identical.  Scope the
- * int<->pointer diagnostic off for this one function rather than double-cast
- * every use. */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wint-conversion"
 void statement(void)
 {
-	register int o, o2;
-	register struct hshtab *o1;
+	register int o, o2, o1;		/* o1 holds a label number or token */
 	int o3;
 	struct tnode *np;
 	int sauto, sreg;
@@ -355,7 +344,7 @@ stmt:
 		case IF:
 			np = pexpr();
 			o2 = 0;
-			if ((int)(long)(o1=symbol())==KEYW) switch (cval) {
+			if ((o1=symbol())==KEYW) switch (cval) {
 			case GOTO:
 				if (o2=simplegoto())
 					goto simpif;
@@ -387,7 +376,7 @@ stmt:
 			hardif:
 				if ((o=symbol())!=SEMI)
 					goto syntax;
-				if ((int)(long)(o1=symbol())==KEYW && cval==ELSE)
+				if ((o1=symbol())==KEYW && cval==ELSE)
 					goto stmt;
 				peeksym = o1;
 				return;
@@ -505,24 +494,24 @@ stmt:
 
 	case NAME:
 		if (nextchar()==':') {
+			struct hshtab *lp = csym;
 			peekc = 0;
-			o1 = csym;
-			if (o1->hclass>0) {
-				if (o1->hblklev==0) {
-					pushdecl((struct phshtab *)o1);
-					o1->hoffset = 0;
+			if (lp->hclass>0) {
+				if (lp->hblklev==0) {
+					pushdecl((struct phshtab *)lp);
+					lp->hoffset = 0;
 				} else {
-					defsym = o1;
+					defsym = lp;
 					redec();
 					goto stmt;
 				}
 			}
-			o1->hclass = STATIC;
-			o1->htype = ARRAY;
-			o1->hflag |= FLABL;
-			if (o1->hoffset==0)
-				o1->hoffset = isn++;
-			label(o1->hoffset);
+			lp->hclass = STATIC;
+			lp->htype = ARRAY;
+			lp->hflag |= FLABL;
+			if (lp->hoffset==0)
+				lp->hoffset = isn++;
+			label(lp->hoffset);
 			goto stmt;
 		}
 	}
@@ -536,7 +525,6 @@ syntax:
 	error("Statement syntax");
 	errflush(o);
 }
-#pragma GCC diagnostic pop
 
 /*
  * Process a for statement.

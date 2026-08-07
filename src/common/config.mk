@@ -6,8 +6,9 @@
 # tools have been modernized to clean C99 (ANSI prototypes, explicit types, no
 # BSD types); every function they call is either ISO C99 or POSIX, and the
 # POSIX ones come from their standard headers -- no hand-written prototypes.
-# The whole tree builds warning-free with NO -Wno-* suppressions.  (libc stays
-# K&R -- it is target code for our own cc.)  The dialect + correctness flags:
+# The whole tree builds warning-free with NO -Wno-* flags and NO in-source
+# `#pragma GCC diagnostic' suppressions.  (libc stays K&R -- it is target code
+# for our own cc.)  The dialect + correctness flags:
 #
 #   -std=c99                   strict ISO C99
 #   -D_POSIX_C_SOURCE=200809L  request the POSIX.1-2008 standard, so the
@@ -24,11 +25,6 @@
 #                              functions, 16-bit arithmetic emulation)
 #   -fcommon                   tentative definitions appear in several .c
 #                              files of the same tool (pre-C99 linkage model)
-#
-# One tool (c0) carries a single scoped `#pragma GCC diagnostic' for a
-# genuinely-deliberate pattern: the expression parser reuses a `hshtab *' slot
-# as an int across ~23 sites, so -Wint-conversion is scoped off around that one
-# function rather than casting every use.  grep the sources.
 
 HOSTCC ?= cc
 OPT    ?= -O
