@@ -66,9 +66,7 @@ negative `int` and break the magic test).
    re-emits with `putw`; its `int *p` cursor becomes `uint16_t *p`.
 
 No `MENLO_OVLY` (auto-overlay) support is built; the overlay globals are left
-declared-but-unused (they compile fine). The original `#else MENLO_OVLY` /
-`#endif MENLO_OVLY` token-after-directive style is tolerated with
-`-Wno-endif-labels`.
+declared-but-unused (they compile fine).
 
 ### LP64 pointer issues
 
@@ -81,9 +79,9 @@ surfaced no truncation sites once the buffers were retyped.
 
 ### One host-libc fix
 
-`mktemp(tfname)` needs a template ending in **six** `X`s on glibc (the
-original `/tmp/ldaXXXXX` has five; glibc returns an empty string and the
-`creat` then fails with "cannot create temp"). Added one `X`.
+`mkstemp(tfname)` needs a template ending in **six** `X`s (the original
+`/tmp/ldaXXXXX` had five). `mkstemp` reserves the name and creates+opens the
+file 0600, returning an fd (replacing the old `mktemp` + `creat`).
 
 ## Two `as` bugs found while verifying ld
 

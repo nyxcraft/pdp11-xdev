@@ -1,12 +1,12 @@
 #!/bin/sh
 # Cross-universe test matrix: exercise every tool across every universe it
-# can reach.  The two "full" universes (bsd28, bsd29) carry a libc, so the
-# whole compiler pipeline + binutils run in each; the "sim" universes
-# (v1, v5, v6, v7, bsd210, bsd211) have real vintage binaries, so apsim and
-# das are tested against those.  Prints a pass/fail line per (tool, universe)
-# and a summary; exits nonzero on any failure.
+# can reach.  All registered universes now carry a libc, so the whole compiler
+# pipeline + binutils run in each; where real vintage binaries are available
+# (see the trees below) apsim and das are additionally tested against them.
+# Prints a pass/fail line per (tool, universe) and a summary; exits nonzero on
+# any failure.
 #
-# Trees the sim tiers read (skipped cleanly if absent):
+# Trees the native-comparison sections read (skipped cleanly if absent):
 #   v1     ~/unix/v1/unix72/fs/root      (First Edition, 0405)
 #   v5/6/7 ~/unix/v{5,6,7}
 #   bsd210 ~/bsd/2.10/root   bsd211 ~/bsd/2.11/root

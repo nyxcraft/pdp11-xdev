@@ -23,7 +23,7 @@ system ar.  This port therefore uses the canonical ar (`opt="uvnbail"`,
   `int32 ar_date; int16 ar_mode; int32 ar_size` → exactly 26 bytes).
 - **`tmpnam` clash**: the global temp-name variable shadowed `<stdio.h>`'s
   `tmpnam()` — renamed; templates made writable arrays with 6 trailing X
-  (glibc `mktemp`).
+  (glibc `mkstemp`, which creates+opens the temp and returns an fd).
 - **`select` clash**: the local mode-printing helper renamed (POSIX `select`).
 - **`struct stat`**: `stats()` uses the host `fstat`/`stat`; member date/uid/
   gid/mode/size copied from `st_*` (truncated to the 16/32-bit on-disk fields).

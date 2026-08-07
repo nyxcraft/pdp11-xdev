@@ -1,6 +1,8 @@
-# Shared build configuration, included by every tool Makefile as its first
-# line (include ../common/config.mk).  Paths are relative to a tool directory
-# (src/pdp11-<tool>/).
+# Shared build configuration, included as its first line by every
+# compiler/binutils tool Makefile (include ../common/config.mk).  Paths are
+# relative to a tool directory (src/pdp11-<tool>/).  (pdp11-s5fs is the one
+# self-contained exception -- it defines its own CFLAGS and does not include
+# this file.)
 #
 # HOSTCC is the host C compiler used to build the tools themselves.  The host
 # tools have been modernized to clean C99 (ANSI prototypes, explicit types, no

@@ -35,15 +35,19 @@ file.c …`.
    pass paths (caught by AddressSanitizer / the stack canary). Fixed to the
    standard rule: **a name containing `/` is exec'd directly, without a
    `$PATH` search** (and `fname` enlarged).
-3. **Pointer-returning libc functions** (`strchr`, `strstr`, `strncpy`)
-   declared explicitly — `<string.h>`/`<unistd.h>` could not be included
-   because they clash with cc's own `exec*` wrappers, and without
-   declarations LP64 truncates the returned pointers.
+3. **`<string.h>`/`<unistd.h>` included directly.** cc now includes both
+   headers with no hand-written prototypes, so the pointer-returning libc
+   functions it calls (`strchr`, `strstr`, `strncpy`, …) get their real
+   declarations and LP64 no longer truncates the returned pointers. This
+   became possible once cc's private path-search exec was renamed
+   `cc_execvp` (and made static): it no longer shadows libc's `execvp`, so
+   the standard headers pull in without a clash.
 4. **`-Dunix -Dpdp11` passed to cpp.** The native PDP-11 cpp predefined
    these; ours does not, so cc supplies them (so `#ifdef pdp11` etc. work).
-5. **Temp files.** `mktemp` template grown to six `X`s (modern requirement);
-   `creat(tmp0)` given its missing mode argument; the temp-fd variable
-   changed from `char` to `int`.
+5. **Temp files.** The active `UCB_UQTEMP` path builds a six-`X` template
+   and calls `FD = mkstemp(tmp0)`, which both creates and opens the temp
+   file 0600 and returns its fd (replacing the old `mktemp` + `creat`
+   dance); the temp-fd variable is an `int`, not a `char`.
 6. **`execat` made non-static** to match its earlier non-static
    declaration (modern C rejects the mismatch).
 

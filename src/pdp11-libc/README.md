@@ -41,7 +41,7 @@ Products (installed **flat**, not per-universe): `libc.a`, the crt0 flavours
   pristine V7 stub, reading the 4.x numbers from `tools/sysnums.tsv` (extracted
   from the target trees' own `syscall.h`) and the V1 inline shapes from a small
   table.  The battery (hello/arith/str/float) compiles once per universe and
-  runs under all **fourteen** (`oracle/cross-universe.sh`).  The 2.10/2.11
+  runs under all **twenty** (`oracle/cross-universe.sh`).  The 2.10/2.11
   calls that diverge from V7 are all handled now: `stat`/`fstat`/`lstat` trap
   the 4.x number into a 52-byte 4.3-shape scratch and repack it into the one
   universal V7-shape `struct stat` (so the header stays flat — no per-universe

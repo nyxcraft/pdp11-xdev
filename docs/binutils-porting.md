@@ -37,13 +37,14 @@ real change is one portability bug in `strip`:
   `mktemp("/tmp/sXXXXX")`, and `mktemp` rewrites its argument in place.
   On the PDP-11, program text was writable, so this worked. On Linux a
   string literal lives in read-only `.rodata` and the write segfaults.
-  Fix: give it a writable buffer. Modern `mktemp` also requires **six**
-  trailing `X`s (the original used five):
+  Fix: give it a writable buffer with **six** trailing `X`s (the original
+  used five) and switch to `mkstemp`, which creates *and* opens the temp
+  file 0600 and returns an fd:
 
   ```c
   char tnamebuf[] = "/tmp/sXXXXXX";   /* writable, 6 X's */
   ...
-  tname = mktemp(tnamebuf);
+  int fd = mkstemp(tnamebuf);         /* reserves the name; creates it 0600 */
   ```
 
 `nm` and `size` needed no source changes beyond the `cross/` headers.
