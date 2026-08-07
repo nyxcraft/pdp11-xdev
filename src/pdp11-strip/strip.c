@@ -77,6 +77,14 @@ main(int ac, char **av)
 			 * keep the 12-byte header + text, zero the symtab/reloc
 			 * sizes, preserve the data-area word (a_syms, the bss). */
 			unsigned short h[6];
+			/* a_text INCLUDES the 12-byte header, so a valid 0405 has
+			 * a_text >= 12; a smaller (crafted) value would drive the
+			 * `a_text - 12' copy length below negative. */
+			if (exec.a_text < 12) {
+				printf("%s:  not in a.out format\n", *av);
+				errs++;
+				goto err;
+			}
 			if (exec.a_data == 0 && exec.a_bss == 0) {
 				printf("%s:  already stripped\n", *av);
 				errs++;
@@ -203,6 +211,11 @@ copy(char *name, int fromfd, int tofd, off_t size)
 	register int s, n;
 	char buf[BSIZE];
 
+	if (size < 0) { /* a corrupt header drove a length negative */
+		printf("%s:  corrupt object (negative length)\n", name);
+		errs++;
+		return (-1);
+	}
 	while (size) {
 		s = sizeof(buf);
 		if (size < (off_t)sizeof(buf))
