@@ -361,7 +361,10 @@ again:
 		 * Sign-extend PDP-11 characters
 		 */
 		if (p->op == CON) {
-			p->value = p->value << 8 >> 8;
+			/* LP64: `value << 8 >> 8' sign-extends from bit 23 on a
+			 * 32-bit host, not bit 7; cast to signed char so bit-7-set
+			 * constants (e.g. (char)0300 == -0100) match the PDP-11. */
+			p->value = (signed char)p->value;
 			return (p);
 		}
 		else if (p->op == NAME) {
@@ -505,7 +508,7 @@ again:
 				tree->op = LCON;
 				tree->type = LONG;
 				if (subtre->tr1->type == UNSIGN)
-					tree->lvalue = ~(long)(unsigned)subtre->tr1->value;
+					tree->lvalue = ~(long)(unsigned short)subtre->tr1->value;
 				else
 					tree->lvalue = ~subtre->tr1->value;
 				return (tree);
@@ -537,7 +540,7 @@ again:
 			tree->op = LCON;
 			tree->type = LONG;
 			if (subtre->tr1->type == UNSIGN)
-				tree->lvalue = -(long)(unsigned)subtre->tr1->value;
+				tree->lvalue = -(long)(unsigned short)subtre->tr1->value;
 			else
 				tree->lvalue = -subtre->tr1->value;
 			return (tree);
@@ -880,7 +883,7 @@ lconst(int op, register struct tnode *lp, register struct tnode *rp)
 		if (lp->tr1->type == INT)
 			l = lp->tr1->value;
 		else
-			l = (unsigned)lp->tr1->value;
+			l = (unsigned short)lp->tr1->value;
 	}
 	else
 		return (0);
@@ -890,7 +893,7 @@ lconst(int op, register struct tnode *lp, register struct tnode *rp)
 		if (rp->tr1->type == INT)
 			r = rp->tr1->value;
 		else
-			r = (unsigned)rp->tr1->value;
+			r = (unsigned short)rp->tr1->value;
 	}
 	else
 		return (0);

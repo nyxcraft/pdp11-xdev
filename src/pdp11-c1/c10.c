@@ -873,7 +873,8 @@ reorder(struct tnode **treep, struct table *table, int reg)
 	register int r, o;
 	register struct tnode *p;
 
-	p = *treep;
+	if ((p = *treep) == 0) /* PDP-11 read low memory harmlessly; guard on LP64 */
+		return (0);
 	o = p->op;
 	if (opdope[o] & LEAF || o == LOGOR || o == LOGAND)
 		return (0);
@@ -905,7 +906,8 @@ sreorder(struct tnode **treep, struct table *table, int reg, int recurf)
 {
 	register struct tnode *p, *p1;
 
-	p = *treep;
+	if ((p = *treep) == 0) /* PDP-11 read low memory harmlessly; guard on LP64 */
+		return (0);
 	if (opdope[p->op] & LEAF)
 		return (0);
 	if (p->op == PLUS && recurf)

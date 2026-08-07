@@ -444,7 +444,7 @@ pswitch(struct swtab *afp, struct swtab *alp, int deflab)
 			poctab[j] = 0;
 		for (swp = fp; swp <= lp; swp++)
 			/* lrem(0, swp->swval, i) */
-			poctab[(unsigned)swp->swval % i]++;
+			poctab[(unsigned short)swp->swval % i]++;
 		worst = 0;
 		for (j = 0; j < i; j++)
 			if (poctab[j] > worst)
@@ -464,9 +464,9 @@ pswitch(struct swtab *afp, struct swtab *alp, int deflab)
 		printf("L%d:", isn++);
 		for (swp = fp; swp <= lp; swp++) {
 			/* lrem(0, swp->swval, tabs) */
-			if ((unsigned)swp->swval % tabs == i) {
+			if ((unsigned short)swp->swval % tabs == i) {
 				/* ldiv(0, swp->swval, tabs) */
-				breq((unsigned)swp->swval / tabs, swp->swlab);
+				breq((unsigned short)swp->swval / tabs, swp->swlab);
 			}
 		}
 		printf("jbr	L%d\n", deflab);
@@ -1112,11 +1112,18 @@ getree(void)
 			*sp++ = (struct tnode *)fp;
 			break;
 
-		case FSEL:
-			*sp = tnode(FSEL, geti(), *--sp, NULL);
+		case FSEL: {
+			/* sequence the stack pop and the input read: `*sp = tnode(...,
+			 * *--sp, ...)' modifies sp (via --sp) and reads it (the *sp=
+			 * target) unsequenced -- UB on LP64.  (Matches the binary-op
+			 * case below, which the port already fixed this way.) */
+			struct tnode *fo = *--sp;
+			int fb = geti();
+			*sp = tnode(FSEL, fb, fo, NULL);
 			t = geti();
 			(*sp++)->tr2 = tnode(COMMA, INT, tconst(geti(), INT), tconst(t, INT));
 			break;
+		}
 
 		case STRASG:
 			sap = (struct fasgn *)getblk(sizeof(*sap));
