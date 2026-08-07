@@ -1878,10 +1878,10 @@ decode(long o, int addr, char *buf)
 	Optarg = -1;
 	CFsysargs = 0;
 	CFjsrinline = 0;
-	SpliceRaw = 0;	    /* control-flow of this instruction */
-	long po = o + 2;    /* offset just past the opcode word */
-	int adr = addr + 2; /* PC value while reading index words */
-	char o1[96], o2[96]; /* fit a 2.11 NewFmt symbol (~39) + "$"/offset decoration */
+	SpliceRaw = 0;		   /* control-flow of this instruction */
+	long po = o + 2;	   /* offset just past the opcode word */
+	int adr = addr + 2;	   /* PC value while reading index words */
+	char o1[96], o2[96];	   /* fit a 2.11 NewFmt symbol (~39) + "$"/offset decoration */
 	int b = (instr >> 15) & 1; /* byte bit (for double/single op groups) */
 
 	/* no-operand */

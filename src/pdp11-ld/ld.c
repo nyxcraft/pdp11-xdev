@@ -1070,7 +1070,8 @@ tcreat(struct buf *buf, int tempflg)
 			error(2, "cannot create temp");
 		buf->fildes = ufd;
 		unlink(tfname);
-	} else {
+	}
+	else {
 		if ((ufd = creat(ofilename, 0666)) < 0)
 			error(2, "cannot create output");
 		close(ufd);

@@ -257,8 +257,9 @@ gclamp(unsigned addr, unsigned len)
 	addr &= 0xffff;
 	return len > (unsigned)0x10000 - addr ? (unsigned)0x10000 - addr : len;
 }
-static unsigned char *Isp = M;	  /* where instructions are fetched: M (shared) or MI (sep I&D) */
-static unsigned short R[8];	  /* R6=sp, R7=pc */
+
+static unsigned char *Isp = M; /* where instructions are fetched: M (shared) or MI (sep I&D) */
+static unsigned short R[8];    /* R6=sp, R7=pc */
 #define SP R[6]
 #define PC R[7]
 static int FN, FZ, FV, FC; /* condition codes */

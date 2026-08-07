@@ -47,6 +47,7 @@ nmname(char *fn)
 	}
 	return fn;
 }
+
 FILE *fi;
 long off;
 static int compare(const void *a, const void *b);

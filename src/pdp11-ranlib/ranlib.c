@@ -34,7 +34,7 @@ static int nextel(FILE *af);
 static void stash(struct nlist *s);
 static int fixsize(void);
 static void fixdate(char *s);
-static int  run_ar(char *first, char *archive, char *temp);
+static int run_ar(char *first, char *archive, char *temp);
 
 /* Resolve this toolchain's ar (e.g. .../usr/bin/pdp11-bsd29-ar) relative to
  * the ranlib binary, so `ar rlb' invokes the matching ar -- the same
@@ -99,7 +99,6 @@ run_ar(char *first, char *archive, char *temp)
 int
 main(int argc, char **argv)
 {
-
 	setup_ar();
 	--argc;
 	while (argc--) {
