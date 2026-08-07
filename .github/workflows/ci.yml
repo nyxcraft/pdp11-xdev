@@ -1,0 +1,72 @@
+name: CI
+
+# Build the host toolchain and run the HERMETIC checks -- everything that
+# needs nothing on disk beyond this repo.  The full byte-exact oracle suite
+# (oracle/*.sh, and the cross-universe matrix in `make check`) compares against
+# native ~/bsd and ~/unix trees that a runner does not have, so it stays a
+# local/maintainer gate; what runs here is the self-contained subset:
+#   * a warning-checked build of every tool,
+#   * the BSD-KNF format gate (clang-format --dry-run --Werror),
+#   * the target libc build (from in-repo 2.9 sources),
+#   * the end-to-end suite (cc -> apsim on in-repo programs),
+#   * the objcopy and s5fs tool tests (build their own fixtures),
+#   * the apsim loader fuzz under ASan+UBSan (hostile a.out corpus, generated),
+#   * a staged `make install` smoke.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format-18
+        run: sudo apt-get update && sudo apt-get install -y clang-format-18
+
+      - name: Build every tool
+        run: make
+
+      - name: Format gate (BSD KNF)
+        run: |
+          fail=0
+          for cf in $(git ls-files '*.clang-format'); do
+            dir=$(dirname "$cf")
+            for f in $(git ls-files "$dir/*.c" "$dir/*.h"); do
+              case "$f" in */universe.h) continue ;; esac  # generated, not formatted
+              clang-format-18 --dry-run --Werror "$f" || fail=1
+            done
+          done
+          exit $fail
+
+      - name: Build target libc
+        run: make libc
+
+      - name: End-to-end suite (cc -> apsim)
+        run: sh tests/run.sh
+
+      - name: Tool tests (objcopy, s5fs)
+        run: |
+          make -C src/pdp11-objcopy check
+          make -C src/pdp11-s5fs check
+
+      - name: apsim loader fuzz under ASan+UBSan
+        run: |
+          make -C src/pdp11-apsim SAN=1 clean all
+          ASAN_OPTIONS=detect_leaks=0:abort_on_error=1 \
+          UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+            make -C src/pdp11-apsim fuzz-smoke
+          make -C src/pdp11-apsim clean all
+
+      - name: Install smoke (staged DESTDIR)
+        run: |
+          make install DESTDIR="$PWD/_stage"
+          test -x "$PWD/_stage/usr/local/share/pdp11-xdev/bin/pdp11-cc"
+          test -L "$PWD/_stage/usr/local/bin/pdp11-cc"
