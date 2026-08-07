@@ -16,3 +16,8 @@ Removes the symbol table and relocation from an a.out — the 2.9BSD
     make          # builds ../../bin/pdp11-strip
     make check    # covered by tests/binutils/size_nm_strip.sh at the
                   # repo root
+
+## Documentation
+
+- **[Design](docs/design.md)** — symbol and relocation removal and the per-magic header rewrite.
+- **[User guide](docs/user-guide.md)** — usage and what each format drops.

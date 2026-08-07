@@ -25,3 +25,8 @@ and auto-overlay (`0430`/`0431`) images have a different on-disk layout, so
 extraction from them is refused rather than producing the wrong bytes. The
 header's segment sizes are validated against the actual file length before any
 slice is written.
+
+## Documentation
+
+- **[Design](docs/design.md)** — the object read/rewrite pipeline and the format conversions.
+- **[User guide](docs/user-guide.md)** — the options and conversion examples.

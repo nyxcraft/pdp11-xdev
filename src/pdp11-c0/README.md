@@ -17,6 +17,8 @@ the intermediate expression-tree stream that c1 turns into PDP-11 code.
 
 ## Documentation
 
+- **[Design](docs/design.md)** — the first pass -- the lexer, the expression trees, and the intermediate emission.
+- **[User guide](docs/user-guide.md)** — how cc drives it and how to run it standalone.
 - [docs/porting.md](docs/porting.md) — the porting guide: the anonymous-
   union tree nodes, pointer-in-int, and the stack-frame story.
 

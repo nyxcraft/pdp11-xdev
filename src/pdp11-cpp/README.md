@@ -20,6 +20,8 @@ binary.
 
 ## Documentation
 
+- **[Design](docs/design.md)** — the macro and table model, FLEXNAMES, and the include machinery.
+- **[User guide](docs/user-guide.md)** — the options and preprocessing examples.
 - [docs/porting.md](docs/porting.md) — the LP64 porting guide (K&R
   varargs, the yacc'd `#if` grammar, table sizes).
 

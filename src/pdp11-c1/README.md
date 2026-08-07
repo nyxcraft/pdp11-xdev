@@ -20,6 +20,8 @@ stream and emits 2BSD assembler for `as`.
 
 ## Documentation
 
+- **[Design](docs/design.md)** — the second pass -- code generation from the c0 intermediate.
+- **[User guide](docs/user-guide.md)** — invocation and the temp-file protocol.
 - [docs/porting.md](docs/porting.md) — the porting guide, including the
   cvopt/mktab table pipeline.
 

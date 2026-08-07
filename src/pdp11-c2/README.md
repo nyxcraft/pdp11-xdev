@@ -14,6 +14,8 @@ it.
 
 ## Documentation
 
+- **[Design](docs/design.md)** — the optional peephole optimizer and the transforms it applies.
+- **[User guide](docs/user-guide.md)** — what -O turns on and how to run it.
 - [docs/porting.md](docs/porting.md) — the porting guide.
 
 ## Build and test

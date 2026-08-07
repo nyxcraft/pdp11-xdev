@@ -15,6 +15,8 @@ members regardless of order — the canonical V7/2.9 ranlib paired with our
 
 ## Documentation
 
+- **[Design](docs/design.md)** — how the __.SYMDEF symbol directory is built and kept in step with the ar format.
+- **[User guide](docs/user-guide.md)** — usage and when an archive needs a fresh ranlib.
 - [docs/porting.md](docs/porting.md) — porting notes.
 
 ## Build and test

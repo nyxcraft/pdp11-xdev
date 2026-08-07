@@ -21,6 +21,8 @@ and 0430 auto-overlay images.
 
 ## Documentation
 
+- **[Design](docs/design.md)** — the two-pass link model, segment and overlay layout, and relocation resolution.
+- **[User guide](docs/user-guide.md)** — options, overlay control, library search, and examples.
 - [docs/porting.md](docs/porting.md) — the 16-bit-I/O porting story
   (every on-disk word pinned to uint16_t).
 

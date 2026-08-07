@@ -18,6 +18,8 @@ layout to what the native tool wrote.
 
 ## Documentation
 
+- **[Design](docs/design.md)** — the archive-format layouts, detection, the reader, and the one member-list writer.
+- **[User guide](docs/user-guide.md)** — the operations and modifiers, choosing a write format per universe, and examples.
 - [docs/porting.md](docs/porting.md) — the header-layout porting guide.
 
 ## Build and test

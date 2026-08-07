@@ -95,3 +95,8 @@ the byte-exact reconstructed rogue.
 `apsim.c` was developed in the pdp11-bsd28-toolchain repository (split out
 at toolchain commit 9d30f45); history prior to the split lives there.  The
 2.8BSD-derived runtime content falls under the Caldera ancient-Unix license.
+
+## Documentation
+
+- **[Design](docs/design.md)** — the PDP-11 CPU emulation, the a.out loader, and the syscall personality.
+- **[User guide](docs/user-guide.md)** — running guest binaries, the guest root, and the options.

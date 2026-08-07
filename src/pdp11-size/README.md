@@ -14,3 +14,8 @@ Prints the text/data/bss sizes (and their sum) of a.out files — the
     make          # builds ../../bin/pdp11-size
     make check    # covered by tests/binutils/size_nm_strip.sh at the
                   # repo root
+
+## Documentation
+
+- **[Design](docs/design.md)** — the a.out segment tally across the magic variants.
+- **[User guide](docs/user-guide.md)** — the options and per-format examples.

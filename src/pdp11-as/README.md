@@ -27,6 +27,8 @@ Edition UNIX (1972) to 2.11BSD.
 
 ## Documentation
 
+- **[Design](docs/design.md)** — the token pipeline, the two-pass symbol/segment model, and the a.out + relocation emitter.
+- **[User guide](docs/user-guide.md)** — invocation, the ISA/sys dialect flags, and per-universe examples.
 - [docs/std.md](docs/std.md) — the era-axis user guide.
 - [docs/porting.md](docs/porting.md) — design and porting notes.
 

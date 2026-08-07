@@ -18,6 +18,8 @@ objects, executables, archives, and kernels.
 
 ## Documentation
 
+- **[Design](docs/design.md)** — the decode tables, the symbol/nearest-label anchoring, and the stripped-binary walk.
+- **[User guide](docs/user-guide.md)** — invocation and how to read a listing.
 - [docs/fieldguide.md](docs/fieldguide.md) — the field guide to the
   reassembly engine and its edge cases.
 - [docs/porting.md](docs/porting.md) — (historical) the porting guide of

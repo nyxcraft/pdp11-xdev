@@ -26,6 +26,8 @@ in): old-style definitions, implicit int, and so on.
 
 ## Documentation
 
+- **[Design](docs/design.md)** — the driver: pass sequencing, universe selection, and temp-file management.
+- **[User guide](docs/user-guide.md)** — the options, universe selection, and examples.
 - [docs/porting.md](docs/porting.md) — the LP64 porting guide inherited
   from the source project.
 

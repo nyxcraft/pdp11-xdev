@@ -17,3 +17,8 @@ Lists the symbol table of a.out objects, executables, and archives — the
     make          # builds ../../bin/pdp11-nm
     make check    # covered by tests/binutils/size_nm_strip.sh at the
                   # repo root
+
+## Documentation
+
+- **[Design](docs/design.md)** — the nlist decoders and the sort/format machinery.
+- **[User guide](docs/user-guide.md)** — the options and the output formats.

@@ -18,3 +18,8 @@ classic text-space saver for big BSD programs.
 
     make          # builds ../../bin/pdp11-xstr
     make check    # exercised via the rogue overlay reproduction
+
+## Documentation
+
+- **[Design](docs/design.md)** — the string-extraction pass and how xs.c and strings are emitted.
+- **[User guide](docs/user-guide.md)** — using it inside a build.
