@@ -1913,7 +1913,11 @@ writeout()
 		 * reference words hold the SYMBOL TABLE OFFSET (12*index). */
 		int nw = (tsize + dsize) / 2, w, bit = 0;
 		unsigned char *body = malloc(tsize + dsize ? tsize + dsize : 1);
-		unsigned char *stream = calloc(nw / 2 + 8, 1);
+		/* worst case is 20 bits/word (4-bit code + 16-bit addend extension
+		 * for an external-with-addend), i.e. ~2.5 bytes/word; the old
+		 * nw/2+8 assumed ~2 bits/word and overran on addend-heavy objects.
+		 * fwrite below uses the computed rsz, so oversizing is harmless. */
+		unsigned char *stream = calloc((size_t)nw * 3 + 16, 1);
 		memcpy(body, segbuf[0], tsize);
 		memcpy(body + tsize, segbuf[1], dsize);
 		for (w = 0; w < nw; w++) {
