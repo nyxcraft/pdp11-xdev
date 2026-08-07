@@ -29,7 +29,8 @@ file.c …`.
    `…/usr/lib/`. A bare `argv[0]` is resolved through `/proc/self/exe`.
    Mirrors the VAX project. The `passN` buffers were enlarged from 20 to
    1024 bytes to hold absolute paths.
-2. **cc's homegrown `execvp`.** cc ships its own `execvp`/`execat` that
+2. **cc's homegrown path-search exec.** cc ships its own exec (`cc_execvp`,
+   renamed from `execvp` -- see point 3) plus `execat`, which
    searches `$PATH`. It unconditionally prepended each `$PATH` element to
    the program name, overflowing the 128-byte `fname` once we pass absolute
    pass paths (caught by AddressSanitizer / the stack canary). Fixed to the
@@ -48,8 +49,9 @@ file.c …`.
    and calls `FD = mkstemp(tmp0)`, which both creates and opens the temp
    file 0600 and returns its fd (replacing the old `mktemp` + `creat`
    dance); the temp-fd variable is an `int`, not a `char`.
-6. **`execat` made non-static** to match its earlier non-static
-   declaration (modern C rejects the mismatch).
+6. **Scratch temps** live in a per-run private `mkdtemp()` directory
+   (0700), so the pass files have fixed names but no symlink/TOCTOU race;
+   `dexit()`/`idexit()` unlink them and `rmdir` the directory.
 
 ## Build
 

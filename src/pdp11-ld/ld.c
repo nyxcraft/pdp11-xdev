@@ -998,11 +998,6 @@ setupout(void)
 	if (v1out)
 		sflag = 1; /* First Edition exes here carry no symtab */
 	tcreat(&toutb, 0);
-	{
-		int fd = mkstemp(tfname);
-		if (fd >= 0)
-			close(fd);
-	} /* reserve the name (tcreat makes the file) */
 	tcreat(&doutb, 1);
 	if (sflag == 0 || xflag == 0)
 		tcreat(&soutb, 1);
@@ -1065,14 +1060,22 @@ static void
 tcreat(struct buf *buf, int tempflg)
 {
 	register int ufd;
-	char *nam;
-	nam = (tempflg ? tfname : ofilename);
-	if ((ufd = creat(nam, 0666)) < 0)
-		error(2, tempflg ? "cannot create temp" : "cannot create output");
-	close(ufd);
-	buf->fildes = open(nam, 2);
-	if (tempflg)
+
+	if (tempflg) {
+		/* a fresh anonymous mkstemp temp per segment: created+opened 0600
+		 * atomically, then unlinked -- no predictable-name creat/symlink
+		 * race (the fd keeps the now-nameless file alive) */
+		strcpy(tfname, "/tmp/ldaXXXXXX");
+		if ((ufd = mkstemp(tfname)) < 0)
+			error(2, "cannot create temp");
+		buf->fildes = ufd;
 		unlink(tfname);
+	} else {
+		if ((ufd = creat(ofilename, 0666)) < 0)
+			error(2, "cannot create output");
+		close(ufd);
+		buf->fildes = open(ofilename, 2);
+	}
 	buf->nleft = sizeof(buf->iobuf) / sizeof(*buf->iobuf);
 	buf->xnext = buf->iobuf;
 }
