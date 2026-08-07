@@ -9,10 +9,12 @@
 /* Forward prototypes for this file's own functions (use-before-def).
  * Original K&R return/param types are preserved: an implicit-int return
  * that never yields a value becomes void; every declared param keeps its
- * original type (no declarator == int).  abs() comes from <stdlib.h>. */
+ * original type (no declarator == int).  A local iabs() replaces the K&R
+ * abs() -- defining the <stdlib.h> name `abs' ourselves would be UB. */
 int toofar(struct node *p);
 int ilen(struct node *p);
 int adrlen(char *s);
+int iabs(int x);
 void savereg(int ai, char *as);
 void dest(char *as, int flt);
 void singop(struct node *ap);
@@ -278,7 +280,7 @@ jumpsw(void)
 		p->refc = ++t;
 	for (p = first.forw; p != 0; p = p1) {
 		p1 = p->forw;
-		if (p->op == CBR && p1->op == JBR && p->ref && p1->ref && abs(p->refc - p->ref->refc) > abs(p1->refc - p1->ref->refc)) {
+		if (p->op == CBR && p1->op == JBR && p->ref && p1->ref && iabs(p->refc - p->ref->refc) > iabs(p1->refc - p1->ref->refc)) {
 			if (p->ref == p1->ref)
 				continue;
 			p->subop = revbr[p->subop];
@@ -367,7 +369,7 @@ adrlen(register char *s)
 }
 
 int
-abs(int x)
+iabs(int x)
 {
 	return (x < 0 ? -x : x);
 }

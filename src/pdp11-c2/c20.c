@@ -87,7 +87,6 @@ int
 main(int argc, char **argv)
 {
 	register int niter, maxiter, isend;
-	extern int end;
 	int nflag;
 
 	if (argc > 1 && argv[1][0] == '+') {

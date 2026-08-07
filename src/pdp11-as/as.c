@@ -322,7 +322,7 @@ tildesym(char *name)
 	struct sym *sp;
 	char nb[NCPS];
 	int i;
-	if (tildeidx < ntilde)
+	if (tildeidx < ntilde && tildeidx < MAXTILDE) /* ntilde can exceed the array */
 		return tildesyms[tildeidx++];
 	for (i = 0; i < ncps && name[i]; i++)
 		nb[i] = name[i];
