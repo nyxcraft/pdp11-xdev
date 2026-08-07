@@ -30,7 +30,7 @@ tests/work/
 __pycache__/
 src/pdp11-libc/build/
 
-# das/dcc dump per-object listings into the cwd when run against symboled
+# das dumps per-object listings into the cwd when run against symboled
 # binaries; they are debugging work products, never tree content.
 *.dis
 

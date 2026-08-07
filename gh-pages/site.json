@@ -59,9 +59,6 @@
     { "id": "das",  "group": "object-tools", "name": "pdp11-das",
       "tagline": "The disassembler",
       "blurb": "The inverse of as, covering every era the assembler does; it splits a symboled a.out into per-object listings and goes linear on a stripped one." },
-    { "id": "dcc",  "group": "object-tools", "name": "pdp11-dcc",
-      "tagline": "The decompile driver",
-      "blurb": "Disassembles a compiled object — or a whole archive or executable — back toward source: das paired with the compiler's own knowledge." },
 
     { "id": "strip", "group": "object-editing", "name": "pdp11-strip",
       "tagline": "Remove symbols",

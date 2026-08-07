@@ -15,7 +15,7 @@ here=$(cd "$(dirname "$0")" && pwd); BIN="$here/../bin"
 CC="$BIN/pdp11-cc"; AS="$BIN/pdp11-as"; LD="$BIN/pdp11-ld"
 NM="$BIN/pdp11-nm"; SIZE="$BIN/pdp11-size"; STRIP="$BIN/pdp11-strip"
 DAS="$BIN/pdp11-das"; AR="$BIN/pdp11-ar"; RANLIB="$BIN/pdp11-ranlib"
-APSIM="$BIN/pdp11-apsim"; XSTR="$BIN/pdp11-xstr"; DCC="$BIN/pdp11-dcc"
+APSIM="$BIN/pdp11-apsim"; XSTR="$BIN/pdp11-xstr"
 pass=0; fail=0; failed=''
 tmp=$(mktemp -d) || exit 1; trap 'rm -rf "$tmp"' EXIT
 ok()  { pass=$((pass+1)); printf '  %-9s %-8s ok    %s\n' "$1" "$2" "$3"; }
