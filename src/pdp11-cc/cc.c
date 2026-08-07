@@ -6,24 +6,16 @@ static	char	sccsid[] = "@(#)cc.c	2.6";	/*	SCCS id keyword	*/
 # include <stdlib.h>
 # include <string.h>
 # include <fcntl.h>
+# include <unistd.h>
 # include <sys/types.h>
 # include <sys/wait.h>
 # include <whoami.h>
 # include "universe.h"
 
-/* OS entry points that live in <unistd.h>, declared individually: cc supplies
- * its own execvp below whose signature is incompatible with libc's, so
- * <unistd.h> (which would prototype it) cannot be included.  Real prototypes
- * here keep the pointer returns from being truncated under LP64. */
-ssize_t	readlink(const char *, char *, size_t);
-int	close(int);
-pid_t	fork(void);
-int	execv(const char *, char *const *);
-unsigned int sleep(unsigned int);
-int	unlink(const char *);
-
-/* forward prototypes for the file-local helpers; cc's own execvp keeps
- * external linkage so it shadows libc. */
+/* forward prototypes for the file-local helpers.  cc_execvp is cc's private
+ * path-searching exec (historically the external `execvp'); it is renamed and
+ * made static so it no longer shadows libc's execvp, which lets cc include
+ * <unistd.h> for its POSIX prototypes like every other tool. */
 static char	*tmpdir_(void);
 static void	setup_tools(char *av0);
 static void	resolve_universe(void);
@@ -37,7 +29,7 @@ static char	*copy(char *as);
 static int	nodup(char **l, char *os);
 static void	cunlink(char *f);
 static char	*execat(char *s1, char *s2, char *si);
-int	execvp(char *name, char **argv);
+static int	cc_execvp(char *name, char **argv);
 
 /* cc command */
 
@@ -645,7 +637,7 @@ callsys(char f[], char *v[])
 	int t, status;
 
 	if ((t=fork())==0) {
-		execvp(f, v);
+		cc_execvp(f, v);
 		printf("Can't find %s\n", f);
 		exit(100);
 	} else
@@ -713,16 +705,18 @@ cunlink(char *f)
 }
 
 /*
- *	The following version is like the standard one, but does
- * 	not check against slashes in the name.
+ *	cc's private path-searching exec (historically named execvp; see the
+ *	forward decl above).  Like the standard execvp but with cc-specific
+ *	handling: a name with '/' is used directly, ENOEXEC re-runs via /bin/sh,
+ *	and ETXTBSY is retried.
  *
- *	execvp(name, argv)	(like execv, but does path search)
+ *	cc_execvp(name, argv)	(like execv, but does path search)
  */
 #include <errno.h>
 
 static	char shell[] =	"/bin/sh";
 
-int execvp(char *name, char **argv)
+static int cc_execvp(char *name, char **argv)
 {
 	char *pathstr;
 	register char *cp;
