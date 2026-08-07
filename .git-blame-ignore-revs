@@ -1,3 +1,4 @@
 # Pure-whitespace/formatting commits -- skipped by git blame.
 # Enable once with:  git config blame.ignoreRevsFile .git-blame-ignore-revs
 70e0a24e2d30d30d2cf3ba440e85a338d20831b5  style: reformat the host toolchain to BSD KNF (vax11 house style)
+e313d0afb0c756bd78e629d333cf1e99be6110f6  style: re-run clang-format on files edited since the KNF pass
