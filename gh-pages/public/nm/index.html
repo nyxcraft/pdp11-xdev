@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-nm | pdp11-xdev</title>
+  <meta name="description" content="Lists the symbol table of a.out objects, executables, and archives — the 2.9BSD nm.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-nm</span>
+    </nav>
+
+    <!-- Simple full-width page (no left rail, no section viewer) -- used for the docs index. -->
+    <main id="main-content" class="page-main" tabindex="-1">
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-nm</h1>
+          <p class="docs-article__summary">Lists the symbol table of a.out objects, executables, and archives — the 2.9BSD nm.</p>
+        </header>
+        <div class="prose">
+<p>Lists the symbol table of a.out objects, executables, and archives — the
+2.9BSD <code>nm</code>.</p>
+<pre><code>pdp11-nm [-g] [-n] [-o] [-p] [-r] [-u] [file ...]
+</code></pre>
+<ul>
+<li><strong>Reads what the era wrote:</strong> 12-byte fixed-name nlist entries, the
+16-bit <code>n_type</code> with overlay numbers, and <code>__.SYMDEF</code>-bearing archives
+(the 0177545 magic compares correctly on LP64 via an unsigned-short
+pin — a real host bug fixed in this revision).</li>
+<li>Sorts alphabetically by default; <code>-n</code> by value, <code>-p</code> in table order,
+<code>-u</code> undefined only, <code>-g</code> externals only.</li>
+</ul>
+<h2 id="build-and-test">Build and test</h2>
+<pre><code>make          # builds ../../bin/pdp11-nm
+make check    # covered by tests/binutils/size_nm_strip.sh at the
+              # repo root
+</code></pre>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+</body>
+</html>

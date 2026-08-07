@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-cc | pdp11-xdev</title>
+  <meta name="description" content="The compiler driver: runs cpp → c0 → c1 [→ c2 with -O] → as → ld to turn C into a runnable PDP-11 a.out. This is the authentic 2.9BSD cc, extended with universe selection.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-cc</span>
+    </nav>
+
+    <!-- Simple full-width page (no left rail, no section viewer) -- used for the docs index. -->
+    <main id="main-content" class="page-main" tabindex="-1">
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-cc</h1>
+          <p class="docs-article__summary">The compiler driver: runs cpp → c0 → c1 [→ c2 with -O] → as → ld to turn C into a runnable PDP-11 a.out. This is the authentic 2.9BSD cc, extended with universe selection.</p>
+        </header>
+        <div class="prose">
+<p>The compiler driver: runs <code>cpp → c0 → c1 [→ c2 with -O] → as → ld</code> to turn
+C into a runnable PDP-11 <code>a.out</code>.  This is the authentic 2.9BSD <code>cc</code>,
+extended with universe selection.</p>
+<pre><code>pdp11-cc [--universe=U | -u U] [-c|-S|-E|-P] [-O] [-o out] [-v]
+         [-D -I -U -C options] [-V overlay mode] file.c ... [-lx ...]
+</code></pre>
+<ul>
+<li><strong>One driver, every era.</strong>  <code>--universe</code> (or <code>$PDP11_UNIVERSE</code>, default
+<code>bsd29</code>) is validated against <code>src/common/universes.tsv</code> and exported to
+the child passes, so cpp reads <code>include/&lt;universe&gt;/</code> and ld links
+<code>lib/&lt;universe&gt;/{crt0.o, libc.a}</code> without flags of their own.</li>
+<li><strong>No compiled-in paths.</strong>  The passes are resolved relative to the
+driver's own location: a <code>&lt;prefix&gt;-cc</code> runs its sibling <code>&lt;prefix&gt;-cpp</code>,
+<code>&lt;prefix&gt;-c0</code>, ... — the prefix is everything through the last <code>-</code> in
+<code>argv[0]</code>, so the whole toolchain relocates as a unit.</li>
+<li><strong>The overlay pipeline is built in.</strong>  <code>-V</code> compiles for text overlays
+(<code>-DC_OVERLAY</code>, <code>as -V</code> ovas mode, <code>-lovc</code>), matching 2.9's MENLO_OVLY
+toolchain; there is no separate ovcc/ovas/ovld.</li>
+<li><strong>Host-porting fixes over the vintage source:</strong> <code>$TMPDIR</code> honoured for
+pass temporaries, and the <code>-E</code>/<code>-P</code> null-temp crash fixed.</li>
+</ul>
+<p><code>cc</code> accepts K&amp;R / pre-1977 C (the C the 2.9BSD compiler itself is written
+in): old-style definitions, implicit int, and so on.</p>
+<h2 id="documentation">Documentation</h2>
+<ul>
+<li><a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-cc/docs/porting.md">docs/porting.md</a> — the LP64 porting guide inherited
+from the source project.</li>
+</ul>
+<h2 id="build-and-test">Build and test</h2>
+<pre><code>make          # (repo root or this dir) builds ../../bin/pdp11-cc
+make check    # covered by the end-to-end suite (tests/cc/*.sh at the
+              # repo root): compile/link/run under apsim, both
+              # universes, plain and -O
+</code></pre>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+</body>
+</html>

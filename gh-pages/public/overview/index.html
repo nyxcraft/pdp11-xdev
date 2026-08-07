@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Overview | pdp11-xdev</title>
+  <meta name="description" content="What the toolchain is, the one-idea universe model, the tools by role, and how to build and run.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">Overview</span>
+    </nav>
+
+    <!-- Simple full-width page (no left rail, no section viewer) -- used for the docs index. -->
+    <main id="main-content" class="page-main" tabindex="-1">
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>Overview</h1>
+          <p class="docs-article__summary">What the toolchain is, the one-idea universe model, the tools by role, and how to build and run.</p>
+        </header>
+        <div class="prose">
+<p><a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-blue.svg?style=flat-square" alt="license: BSD-3-Clause" /></a>
+<a href="https://nyxcraft.github.io/pdp11-xdev/"><img src="https://img.shields.io/badge/docs-nyxcraft.github.io-ffb64d.svg?style=flat-square" alt="docs" /></a>
+<a href="#"><img src="https://img.shields.io/badge/host-LP64%20Linux-informational.svg?style=flat-square" alt="host: LP64 Linux" /></a>
+<a href="#"><img src="https://img.shields.io/badge/target-PDP--11%20a.out-orange.svg?style=flat-square" alt="target: PDP-11 a.out" /></a>
+<a href="#the-one-idea-universes"><img src="https://img.shields.io/badge/universes-First%20Edition%20%E2%86%92%202.11BSD-8a2be2.svg?style=flat-square" alt="universes: 1e → 2.11BSD" /></a></p>
+<p>📖 <strong>Documentation site: <a href="https://nyxcraft.github.io/pdp11-xdev/">https://nyxcraft.github.io/pdp11-xdev/</a></strong></p>
+<p><em>Software architecture, design &amp; engineering by Nicholas J. Kisseberth.</em></p>
+<p>A host-side, <strong>multi-universe PDP-11 cross-development toolchain</strong>.  On a
+modern LP64 Linux host it builds PDP-11 programs — preprocess, compile,
+optimize, assemble, link — into real 2BSD <code>a.out</code> binaries, and runs them,
+unmodified, under a user-mode PDP-11 UNIX simulator.  The compiler is
+<strong>Ritchie's <code>cc</code></strong> (the authentic <code>c0</code>/<code>c1</code>/<code>c2</code> multi-pass compiler, not
+PCC), ported from the 2.9BSD sources; the whole pipeline is proven against
+the original PDP-11 binaries down to the byte.</p>
+<pre><code class="language-sh">make &amp;&amp; make libc                          # tools -&gt; ./bin, era libs -&gt; ./lib
+echo 'int main(){ printf(&quot;hello, pdp-11!\n&quot;); return 0; }' &gt; hi.c
+bin/pdp11-cc --universe=bsd29 hi.c -o hi
+bin/pdp11-apsim ./hi
+#  -&gt; hello, pdp-11!
+</code></pre>
+<h2 id="the-one-idea-universes">The one idea: universes</h2>
+<p>&quot;Which UNIX&quot; is a parameter, not a fork of the toolchain.  One set of host
+tools serves every supported era; <code>--universe=NAME</code> (or the exported
+<code>PDP11_UNIVERSE</code>) selects the target runtime — and one <strong>universal</strong>
+<code>libc.a</code> + <code>crt0</code> serve every era from <code>lib/</code>, with the universe chosen at
+<em>link</em> time: <code>ld</code> stamps an absolute <code>__univ</code> = the era id into the
+executable, <code>crt0</code> records it, and any libc routine whose ABI moved branches
+on it.  So <code>--universe</code> picks which system headers <code>cpp</code> reads, the <code>__univ</code>
+value <code>ld</code> stamps, and which personality <code>apsim</code> provides.  The universe
+names live in one table, <code>src/common/universes.tsv</code>, so a name means the
+same thing everywhere.</p>
+<table>
+<thead>
+<tr>
+<th>universe</th>
+<th>status</th>
+<th>what it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bsd29</code></td>
+<td>full (default)</td>
+<td>2.9BSD (1983): overlays, split I&amp;D, the most-verified era</td>
+</tr>
+<tr>
+<td><code>bsd28</code></td>
+<td>full</td>
+<td>2.8BSD (1981): the Ritchie-cc era rogue was built in</td>
+</tr>
+<tr>
+<td><code>v7</code> <code>v6</code> <code>v5</code></td>
+<td>full</td>
+<td>Fifth/Sixth/Seventh Edition: the rest of the V7-syscall-convention family the one universal libc compiles and runs</td>
+</tr>
+<tr>
+<td><code>v4</code></td>
+<td>full</td>
+<td>Fourth Edition (1973): the first C kernel; 0407/0410 load-at-0 (V5/V6 personality). apsim runs the rediscovered native binaries, and our compiler + libc target it</td>
+</tr>
+<tr>
+<td><code>v3</code></td>
+<td>full</td>
+<td>Third Edition (Feb 1973): no native binaries survive, but the manual confirms the 8-word 0407 (load-at-0, entry 0) + FP11 — matching our ld output and the V5/V6 personality; core syscalls match (its mid-range names are a First-Edition/modern hybrid)</td>
+</tr>
+<tr>
+<td><code>bsd1</code> <code>bsd2</code></td>
+<td>full</td>
+<td>1BSD (1978) &amp; 2BSD (1979): the first two Berkeley distributions — userland layered on Sixth/Seventh Edition (no kernel of their own), so their personalities <em>are</em> V6/V7. Our compiler + libc target them; a native V6/V7 binary is byte-identical under <code>bsd1</code>/<code>bsd2</code> and <code>v6</code>/<code>v7</code>, and native <code>ex</code> (1BSD) / <code>csh</code> (2BSD) run under apsim</td>
+</tr>
+<tr>
+<td><code>bsd279</code></td>
+<td>full</td>
+<td>2.79BSD (1980): the last pre-kernel Berkeley release — userland for <em>both</em> V6 and V7, still the V7 personality. Our compiler + libc target it; a native V7 binary is byte-identical under <code>bsd279</code> and <code>v7</code>, and 2.79's own updated <code>csh</code> runs under apsim</td>
+</tr>
+<tr>
+<td><code>bsd211</code></td>
+<td>full</td>
+<td>2.11BSD (porting base): the 4BSD stack-arg convention + 4.x numbers, dispatched on <code>__univ</code> by the same libc</td>
+</tr>
+<tr>
+<td><code>bsd210</code></td>
+<td>full</td>
+<td>2.10BSD: the same 4BSD-convention personality</td>
+</tr>
+<tr>
+<td><code>v1</code> <code>v2</code></td>
+<td>full</td>
+<td>First &amp; Second Edition UNIX (1971-72): the third convention — inline-arg traps; <code>ld</code> emits the 0405 format at 040014 and the same libc's <code>printf</code> runs on it</td>
+</tr>
+<tr>
+<td><code>sys3</code></td>
+<td>full</td>
+<td>System III (1980): the PWB/V7-derived commercial line — the V7 inline/indirect syscall convention (its <code>utssys</code>/<code>fcntl</code>/<code>ulimit</code>/<code>nap</code> additions remapped in apsim), <code>0407</code>/<code>0410</code>/<code>0411</code> a.out. Our compiler + libc target it; native System III binaries run under apsim</td>
+</tr>
+<tr>
+<td><code>sys5v2</code></td>
+<td>full</td>
+<td>System V Release 2 (1984): the last System V with PDP-11 support — System III plus the SysV IPC suite, same V7 convention. No PDP-11 SVR2 binaries survive (only the VAX source kit), so best-guess like <code>v3</code>: our compiler + libc target it, and apsim serves it with the System III personality (SVR2's direct ancestor)</td>
+</tr>
+<tr>
+<td><code>ultrix1</code> <code>ultrix2</code> <code>ultrix3</code> <code>ultrix31</code></td>
+<td>full</td>
+<td>DEC Ultrix-11 1.0 (= V7M-11 1.0, 1982/83), 2.0 (1984), 3.0 (1986, which merged 4.2BSD TCP/IP as an Executive-mode driver) and 3.1 (1987, the last release) — DEC's productized Version 7 for the PDP-11. The local 3.1 <code>sysent.c</code> is authoritative: V7 core numbers (1–48) plus DEC/SysV additions (<code>msgsys</code>/<code>utssys</code>/<code>fcntl</code>/<code>ulimit</code>/<code>nap</code>… at 49+) and the <code>UCB_NET</code> Berkeley socket block (101–119, used by real clients like <code>rdate</code>/<code>tftp</code>), <code>0407</code>/<code>0410</code>/<code>0411</code> a.out, apsim's Ultrix personality. <strong>Native-validated</strong>: real V7M-11 1.0 <code>/bin</code> (<code>echo</code>/<code>cat</code>/<code>wc</code>/<code>sum</code>/<code>ls</code>/<code>od</code>…), carved from the <code>agn453/V7M-11</code> disk image into <code>~/unix/ultrix11/1.0</code>, runs under <code>-u ultrix1</code> and byte-identically across all four, <code>wc</code>/<code>sum</code> matching the host. The 2.0 install tape carves too (134 native <code>/bin</code> from a UNIX <code>dump</code>), and those run under <code>-u ultrix2</code> — they use Ultrix's stack-argument syscall variant (`sys N</td>
+</tr>
+</tbody>
+</table>
+<p>Independently of the universe, the <strong>assembler</strong> is historically
+parameterized: <code>--isa=</code>, <code>--sys=</code>, and <code>--aout=</code> select the instruction
+set, syscall keyword table, and object format from First Edition (1972)
+through 2.11BSD string-table objects — see
+<a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-as/docs/std.md">src/pdp11-as/docs/std.md</a>.</p>
+<h2 id="the-tools">The tools</h2>
+<p>The full Berkeley pipeline — <code>cpp → c0 → c1 [→ c2] → as → ld</code>, driven by
+<code>cc</code> — plus the matching binutils, the per-era C libraries, the simulator,
+and disk-image tooling:</p>
+<table>
+<thead>
+<tr>
+<th>role</th>
+<th>tools</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>compiler chain</td>
+<td><code>cc</code> <code>cpp</code> <code>c0</code> <code>c1</code> <code>c2</code> <code>as</code> <code>ld</code></td>
+</tr>
+<tr>
+<td>C library</td>
+<td>one universal <code>libc.a</code> + <code>crt0.o</code>, universe selected at link via <code>__univ</code></td>
+</tr>
+<tr>
+<td>object tools</td>
+<td><code>nm</code> <code>size</code> <code>strip</code> <code>das</code> (disassembler, V1→2.11BSD) <code>objcopy</code> (copy / extract)</td>
+</tr>
+<tr>
+<td>archives</td>
+<td><code>ar</code> <code>ranlib</code> (byte-identical 2BSD archive format)</td>
+</tr>
+<tr>
+<td>sources</td>
+<td><code>xstr</code> (shared-strings extractor)</td>
+</tr>
+<tr>
+<td>media</td>
+<td><code>s5fs</code> (V7/2.8/2.9/2.10 disk images: mkfs, fsck, tar, restore, …)</td>
+</tr>
+<tr>
+<td>execution</td>
+<td><code>apsim</code> (user-mode simulator: EIS, FIS, CIS, bit-faithful FP11, overlays, V1 personality)</td>
+</tr>
+</tbody>
+</table>
+<p>Each tool lives in <code>src/pdp11-&lt;tool&gt;/</code> with its own Makefile and tests.</p>
+<h2 id="build-and-test">Build and test</h2>
+<pre><code class="language-sh">make            # every host tool -&gt; ./bin/pdp11-*
+make libc       # matched headers -&gt; ./include/, one universal libc.a -&gt; ./lib/
+make check      # per-tool suites + the end-to-end pipeline suite + the
+                # cross-universe matrix (compile/link/run under apsim)
+make check-san  # apsim under ASan+UBSan: the suite + the loader fuzz corpus
+</code></pre>
+<p>Requires a host C compiler (<code>cc</code>/<code>gcc</code>/<code>clang</code>), <code>make</code>, <code>yacc</code>, and
+<code>python3</code>.  Nothing else — no PDP-11 hardware, no external trees.</p>
+<p>The opt-in <a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/oracle/README.md">oracle suites</a> go further: they run the
+<strong>original 1981/1983 PDP-11 tool binaries</strong> under <code>apsim</code> and byte-compare
+our output against them (compiler passes, <code>as</code> over whole source trees,
+<code>ar</code>/<code>ranlib</code> archive layout, <code>ld</code> down to a byte-identical overlay
+kernel).  Fixtures regenerate locally from the vintage distribution trees.</p>
+<h2 id="layout">Layout</h2>
+<pre><code>src/
+  common/        single source of truth: the universe table (universes.tsv -&gt;
+                 universe.h), host-side a.out/ar structs (cross/), the
+                 relocatable-path helpers (ucbpath/), shared config.mk
+  pdp11-*/       one directory per tool: Makefile, sources, docs/, tests/
+  pdp11-libc/    one universal target C library (common/{gen,stdio,sys,csu,
+                 nonfpcrt}, headers, fpsim); __univ-selected
+bin/ include/ lib/   build products (git-ignored)
+tests/           the end-to-end pipeline suite (make check runs it last)
+oracle/          opt-in native-binary verification (fixtures not committed)
+docs/            cross-cutting design and user guide
+</code></pre>
+<h2 id="provenance">Provenance</h2>
+<p>Merged from three sibling projects — <code>pdp11-bsd28-toolchain</code>,
+<code>pdp11-bsd29-toolchain</code> (its direct descendant, the merge base), and
+<code>pdp11-bsd28-apsim</code> — taking the most capable version of every tool.  2.11BSD
+(<code>~/bsd/2.11</code>, patch level 431) is the designated porting base for tools we
+add from here on.  Sources are BSD-licensed (see <a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/LICENSE">LICENSE</a>); the
+vintage UNIX content the tools operate on is under the Caldera
+ancient-UNIX license.</p>
+<h2 id="credits">Credits</h2>
+<p>Software architecture, design &amp; engineering by <strong>Nicholas J. Kisseberth</strong>.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+</body>
+</html>

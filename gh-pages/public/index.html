@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-xdev | PDP-11 cross-development tools</title>
+  <meta name="description" content="Build PDP-11 programs on a modern host — preprocess, compile, optimize, assemble, link — into real 2BSD a.out binaries, and run them unmodified under a user-mode PDP-11 UNIX simulator, faithfully across every era from the First Edition and Sixth and Seventh Editions through 2.11BSD, from one set of tools.">
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body class="site-home">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header">
+      <a class="brand" href="index.html">
+        <img class="brand__icon" src="assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="overview/index.html">Overview</a>
+        <a href="design/index.html">Design</a>
+        <a href="user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="main-content" tabindex="-1">
+      <section class="hero">
+        <div class="hero__copy">
+          <h1>Build for every PDP-11 UNIX era, and run what you build.</h1>
+          <div class="hero__attr"><p>Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p></div>
+          <p class="hero__lede">Build PDP-11 programs on a modern host — preprocess, compile, optimize, assemble, link — into real 2BSD a.out binaries, and run them unmodified under a user-mode PDP-11 UNIX simulator, faithfully across every era from the First Edition and Sixth and Seventh Editions through 2.11BSD, from one set of tools.</p>
+          <div class="hero__actions">
+            <a class="button button--primary" href="user-guide/index.html">Start here</a>
+            <a class="button" href="design/index.html">How it works</a>
+          </div>
+        </div>
+        <div class="hero__visual" role="img" aria-label="Source runs through the preprocessor, compiler, optimizer, assembler and linker into a PDP-11 a.out executable in the target era's native format, which the simulator runs. Choosing a universe steers the whole pipeline.">
+          <div class="flow">
+            <div class="flow__node flow__node--hub"><span>choose a universe</span><strong>V6 · V7 · 2.11BSD · …</strong></div>
+            <div class="flow__arrow" aria-hidden="true">↓</div>
+            <div class="flow__fan">
+              <span>cpp</span><span>c0</span><span>c1</span><span>c2</span><span>as</span><span>ld</span>
+            </div>
+            <div class="flow__arrow" aria-hidden="true">↓</div>
+            <div class="flow__node"><span>native a.out (0407–0431)</span><strong>run under pdp11-apsim</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="feature-strip" aria-label="Core ideas">
+        <article>
+          <h2>One toolchain, every era</h2>
+          <p>The same tools build for the First Edition through 2.11BSD. A universe — chosen with <code>--universe</code> or <code>PDP11_UNIVERSE</code> — selects that era's headers, C library and system-call personality; the objects and archives stay one a.out family, so everything links together and the simulator runs the result.</p>
+        </article>
+        <article>
+          <h2>One source of truth for the ISA</h2>
+          <p>The assembler's own operand tables define every instruction's operand count, access class and data type. The disassembler and the simulator read the same tables, so all three agree about the machine by construction rather than by care.</p>
+        </article>
+        <article>
+          <h2>No host floating point</h2>
+          <p>The PDP-11 FP11 (and the FIS instructions) are evaluated bit-exactly in software. Results do not depend on the host FPU, so the same program produces the same bits on every machine that can build the tools.</p>
+        </article>
+      </section>
+
+      <section class="docs-panel">
+        <div class="section-heading">
+          <p class="eyebrow">The tools</p>
+          <h2>A full pipeline, plus the pieces around it.</h2>
+        </div>
+        <div class="tool-catalog">
+      <section class="tool-group">
+        <h3 class="tool-group__title">Compiler chain</h3>
+        <div class="tool-grid">
+          <article class="tool-card">
+            <h4><a href="cc/index.html">pdp11-cc</a></h4>
+            <p class="tool-card__tagline">The compiler driver</p>
+            <p>Runs cpp → c0 → c1 [→ c2 with -O] → as → ld in order and propagates the chosen universe to each pass. Ritchie&#x27;s own cc, made cross and universe-aware.</p>
+
+          </article>
+          <article class="tool-card">
+            <h4><a href="cpp/index.html">pdp11-cpp</a></h4>
+            <p class="tool-card__tagline">The C preprocessor</p>
+            <p>The pristine 2.9BSD cpp (Reiser lineage) — the one the PDP-11 cc was built against, and where an era&#x27;s #ifdefs are dated.</p>
+
+          </article>
+          <article class="tool-card">
+            <h4><a href="c0/index.html">pdp11-c0</a></h4>
+            <p class="tool-card__tagline">cc pass 1 — the parser</p>
+            <p>Ritchie cc&#x27;s front end: reads preprocessed C and writes the intermediate form the code generator consumes.</p>
+
+          </article>
+          <article class="tool-card">
+            <h4><a href="c1/index.html">pdp11-c1</a></h4>
+            <p class="tool-card__tagline">cc pass 2 — code generator</p>
+            <p>Ritchie cc&#x27;s PDP-11 code generator: turns c0&#x27;s intermediate form into assembly.</p>
+
+          </article>
+          <article class="tool-card">
+            <h4><a href="c2/index.html">pdp11-c2</a></h4>
+            <p class="tool-card__tagline">The peephole optimizer</p>
+            <p>Ritchie cc&#x27;s object-code improver, run over c1&#x27;s assembly under -O.</p>
+
+          </article>
+          <article class="tool-card">
+            <h4><a href="as/index.html">pdp11-as</a></h4>
+            <p class="tool-card__tagline">The assembler</p>
+            <p>A C reimplementation of the 2BSD as, with historical --isa and --aout axes. It owns the operand tables das and apsim read, so all three agree about the machine.</p>
+
+          </article>
+          <article class="tool-card">
+            <h4><a href="ld/index.html">pdp11-ld</a></h4>
+            <p class="tool-card__tagline">The link editor</p>
+            <p>The authentic 2.9BSD ld on an LP64 host: resolves, lays out and relocates into the era&#x27;s native a.out — including the 0430/0431 auto-overlay formats.</p>
+
+          </article>
+          <article class="tool-card">
+            <h4><a href="xstr/index.html">pdp11-xstr</a></h4>
+            <p class="tool-card__tagline">Extract string literals</p>
+            <p>Bill Joy&#x27;s 1978 xstr: pulls a C program&#x27;s string literals into one shared strings file and hashes them.</p>
+
+          </article>
+        </div>
+      </section>
+      <section class="tool-group">
+        <h3 class="tool-group__title">C library</h3>
+        <div class="tool-grid">
+          <article class="tool-card">
+            <h4><a href="libc/index.html">pdp11-libc</a></h4>
+            <p class="tool-card__tagline">One universal C library</p>
+            <p>A single libc.a and crt0 that serve every era: the universe is chosen at link (ld stamps __univ), crt0 records it, and the routines whose ABI moved branch on it at run time. Plus curses and termlib.</p>
+
+          </article>
+        </div>
+      </section>
+      <section class="tool-group">
+        <h3 class="tool-group__title">Object inspection</h3>
+        <div class="tool-grid">
+          <article class="tool-card">
+            <h4><a href="nm/index.html">pdp11-nm</a></h4>
+            <p class="tool-card__tagline">List symbols</p>
+            <p>The symbol table of a.out objects, executables and archives.</p>
+
+          </article>
+          <article class="tool-card">
+            <h4><a href="size/index.html">pdp11-size</a></h4>
+            <p class="tool-card__tagline">Segment sizes</p>
+            <p>Text, data and bss sizes, and their sum, of a.out files.</p>
+
+          </article>
+          <article class="tool-card">
+            <h4><a href="das/index.html">pdp11-das</a></h4>
+            <p class="tool-card__tagline">The disassembler</p>
+            <p>The inverse of as, covering every era the assembler does; it splits a symboled a.out into per-object listings and goes linear on a stripped one.</p>
+
+          </article>
+        </div>
+      </section>
+      <section class="tool-group">
+        <h3 class="tool-group__title">Object editing</h3>
+        <div class="tool-grid">
+          <article class="tool-card">
+            <h4><a href="strip/index.html">pdp11-strip</a></h4>
+            <p class="tool-card__tagline">Remove symbols</p>
+            <p>Removes the symbol table and relocation from an a.out — the 2.9BSD strip.</p>
+
+          </article>
+          <article class="tool-card">
+            <h4><a href="objcopy/index.html">pdp11-objcopy</a></h4>
+            <p class="tool-card__tagline">Copy / extract</p>
+            <p>Copies an a.out, or extracts its loadable image (-O binary) or a single text/data segment (-j) — the a.out-only analogue of objcopy.</p>
+
+          </article>
+        </div>
+      </section>
+      <section class="tool-group">
+        <h3 class="tool-group__title">Archives</h3>
+        <div class="tool-grid">
+          <article class="tool-card">
+            <h4><a href="ar/index.html">pdp11-ar</a></h4>
+            <p class="tool-card__tagline">The archiver</p>
+            <p>Authentic 2BSD ar, producing archives byte-identical to the originals.</p>
+
+          </article>
+          <article class="tool-card">
+            <h4><a href="ranlib/index.html">pdp11-ranlib</a></h4>
+            <p class="tool-card__tagline">The archive index</p>
+            <p>Builds the __.SYMDEF table of contents in an archive, so ld resolves it in one pass.</p>
+
+          </article>
+        </div>
+      </section>
+      <section class="tool-group">
+        <h3 class="tool-group__title">Filesystem images</h3>
+        <div class="tool-grid">
+          <article class="tool-card">
+            <h4><a href="s5fs/index.html">pdp11-s5fs</a></h4>
+            <p class="tool-card__tagline">Disk-image tools</p>
+            <p>A single host multi-tool for building and inspecting the traditional PDP-11 (2.9BSD-family) filesystem images.</p>
+
+          </article>
+        </div>
+      </section>
+      <section class="tool-group">
+        <h3 class="tool-group__title">Execution</h3>
+        <div class="tool-grid">
+          <article class="tool-card">
+            <h4><a href="apsim/index.html">pdp11-apsim</a></h4>
+            <p class="tool-card__tagline">The PDP-11 UNIX simulator</p>
+            <p>Interprets PDP-11 instructions and translates the guest&#x27;s sys traps into host ones, in one process. Runs unmodified binaries across the whole lineage — First Edition through 2.11BSD — with auto-overlays, job control, sockets, a bit-exact FP11 softfloat and a real adb debug channel.</p>
+
+          </article>
+        </div>
+      </section>
+        </div>
+      </section>
+
+      <section class="docs-panel">
+        <div class="section-heading">
+          <p class="eyebrow">Documentation</p>
+          <h2>Start here.</h2>
+        </div>
+        <div class="doc-grid">
+<article class="doc-card">
+  <h3><a href="overview/index.html">Overview</a></h3>
+  <p>What the toolchain is, the one-idea universe model, the tools by role, and how to build and run.</p>
+  <a class="doc-card__link" href="overview/index.html">Open</a>
+</article>
+<article class="doc-card">
+  <h3><a href="design/index.html">Design</a></h3>
+  <p>How the merged toolchain is put together: the universe mechanism, the shared a.out object model, the pipeline, and faithfulness as the correctness standard.</p>
+  <a class="doc-card__link" href="design/index.html">Open</a>
+</article>
+<article class="doc-card">
+  <h3><a href="user-guide/index.html">User guide</a></h3>
+  <p>Build the toolchain, pick a universe, compile and run PDP-11 programs, and drive the pipeline by hand.</p>
+  <a class="doc-card__link" href="user-guide/index.html">Open</a>
+</article>
+<article class="doc-card">
+  <h3><a href="apsim-parity/index.html">apsim: syscall parity</a></h3>
+  <p>A category-by-category comparison of pdp11-apsim&#x27;s system-call coverage against the reference vax11-apsim, and the calls both deliberately refuse.</p>
+  <a class="doc-card__link" href="apsim-parity/index.html">Open</a>
+</article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+</body>
+</html>

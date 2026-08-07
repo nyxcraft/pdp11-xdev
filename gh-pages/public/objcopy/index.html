@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-objcopy | pdp11-xdev</title>
+  <meta name="description" content="Copy or extract a PDP-11 a.out.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-objcopy</span>
+    </nav>
+
+    <!-- Simple full-width page (no left rail, no section viewer) -- used for the docs index. -->
+    <main id="main-content" class="page-main" tabindex="-1">
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-objcopy</h1>
+          <p class="docs-article__summary">Copy or extract a PDP-11 a.out.</p>
+        </header>
+        <div class="prose">
+<p>Copy or extract a PDP-11 <code>a.out</code>.</p>
+<pre><code>pdp11-objcopy [-O binary] [-j text|data] infile outfile
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>invocation</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>(no options)</em></td>
+<td>copy <code>infile</code> → <code>outfile</code> unchanged (identity <code>a.out</code> copy)</td>
+</tr>
+<tr>
+<td><code>-O binary</code></td>
+<td>the loadable image: text + initialized data, no header or symbols</td>
+</tr>
+<tr>
+<td><code>-j text</code></td>
+<td>the text segment only, raw</td>
+</tr>
+<tr>
+<td><code>-j data</code></td>
+<td>the initialized-data segment only, raw</td>
+</tr>
+</tbody>
+</table>
+<p>PDP-11 is an <code>a.out</code>-only world — there is no ELF target the modern binutils
+understand — so, unlike the VAX tree's <code>objcopy</code>, the useful operations here
+are loadable-image and segment <strong>extraction</strong>. Removing the symbol table and
+relocation is <a href="https://github.com/nyxcraft/pdp11-xdev/tree/main/src/pdp11-strip"><code>pdp11-strip</code></a>'s job; disassembly is
+<a href="https://github.com/nyxcraft/pdp11-xdev/tree/main/src/pdp11-das"><code>pdp11-das</code></a>'s.</p>
+<p>Extraction supports the ordinary magics <code>0407</code>/<code>0410</code>/<code>0411</code>, whose text and
+data are contiguous on disk after the 16-byte header. First Edition (<code>0405</code>)
+and auto-overlay (<code>0430</code>/<code>0431</code>) images have a different on-disk layout, so
+extraction from them is refused rather than producing the wrong bytes. The
+header's segment sizes are validated against the actual file length before any
+slice is written.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+</body>
+</html>
