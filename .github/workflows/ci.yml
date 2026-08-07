@@ -65,6 +65,9 @@ jobs:
             make -C src/pdp11-apsim fuzz-smoke
           make -C src/pdp11-apsim clean all
 
+      - name: Object-parser fuzz under ASan+UBSan (ld/ar/nm/size/strip/objcopy)
+        run: make fuzz
+
       - name: Install smoke (staged DESTDIR)
         run: |
           make install DESTDIR="$PWD/_stage"

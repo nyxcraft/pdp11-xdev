@@ -68,6 +68,11 @@ check: libc
 check-san:
 	@$(MAKE) -C src/pdp11-apsim check-san
 
+# Fuzz the object parsers (ld/ar/nm/size/strip/objcopy) on a malformed a.out +
+# archive corpus, built under ASan+UBSan.  Hermetic; restores plain builds.
+fuzz:
+	@sh tests/fuzz/run.sh
+
 # Rebuild the static documentation site into gh-pages/public/ (committed) and
 # fail on any broken internal link.  Needs markdown-it-py: pip install markdown-it-py
 docs:
@@ -80,4 +85,4 @@ clean:
 	@$(MAKE) -C src/common clean
 	rm -rf bin include lib
 
-.PHONY: all libc headers install uninstall check check-san docs clean $(TOOLS)
+.PHONY: all libc headers install uninstall check check-san fuzz docs clean $(TOOLS)
