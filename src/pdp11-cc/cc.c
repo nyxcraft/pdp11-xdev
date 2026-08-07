@@ -49,8 +49,7 @@ char *tmp2;
 char *tmp3;
 char *tmp4;
 char *tmp5;
-int tmpdig = 8; /* index of the pass digit in tmp0 ("/tmp/ctm0.."); recomputed
-		 * for $TMPDIR since the prefix length varies */
+char *tmpdir_priv; /* per-run private 0700 temp dir; rmdir'd on exit */
 char *outfile;
 
 /* temp directory: $TMPDIR else /tmp.  The 2.8 cc hardcoded /tmp; honouring
@@ -374,49 +373,40 @@ main(int argc, char **argv)
 	if (pflag == 0) {
 		char tb[1024];
 		char *td = tmpdir_();
-		tmpdig = strlen(td) + 4; /* the '0' in "<td>/ctm0..." */
-#ifdef UCB_UQTEMP
-		int FD; /* a file descriptor, not a char */
 
-		sprintf(tb, "%s/ctm0XXXXXX", td);
-		tmp0 = copy(tb);
-		FD = mkstemp(tmp0); /* POSIX: makes the name AND the 0600 file */
-		if (FD < 0) {
-			error("cc: cannot create temp", NULL);
+		/* One private 0700 temp directory per cc run.  The scratch files
+		 * inside have fixed names, but no other user can traverse a 0700
+		 * directory, so the passes may open them by path (creat/open) with
+		 * no symlink/TOCTOU race -- and with no reliance on a sticky /tmp.
+		 * dexit()/idexit() unlink the files and rmdir the directory. */
+		sprintf(tb, "%s/ccXXXXXX", td);
+		if (mkdtemp(tb) == NULL) {
+			error("cc: cannot create temp directory", NULL);
 			exit(1);
 		}
-		close(FD);
-#else
-		sprintf(tb, "%s/ctm0a", td);
+		tmpdir_priv = copy(tb);
+		sprintf(tb, "%s/0", tmpdir_priv);
 		tmp0 = copy(tb);
-		while (access(tmp0, 0) == 0)
-			tmp0[tmpdig + 1]++;
-		while ((creat(tmp0, 0400)) < 0) {
-			if (tmp0[tmpdig + 1] == 'z') {
-				error("cc: cannot create temp", NULL);
-				exit(1);
-			}
-			tmp0[tmpdig + 1]++;
+		sprintf(tb, "%s/1", tmpdir_priv);
+		tmp1 = copy(tb);
+		sprintf(tb, "%s/2", tmpdir_priv);
+		tmp2 = copy(tb);
+		sprintf(tb, "%s/3", tmpdir_priv);
+		tmp3 = copy(tb);
+		sprintf(tb, "%s/4", tmpdir_priv);
+		tmp4 = copy(tb);
+		if (oflag) {
+			sprintf(tb, "%s/5", tmpdir_priv);
+			tmp5 = copy(tb);
 		}
-#endif
 	}
 	if (signal(SIGINT, SIG_IGN) != SIG_IGN)
 		signal(SIGINT, idexit);
 	if (signal(SIGTERM, SIG_IGN) != SIG_IGN)
 		signal(SIGTERM, idexit);
-	/* tmp0 is only created when pflag==0 (see above); the tmp1..tmp5 names
-	 * are derived from it via copy(tmp0).  For -E/-P (pflag) tmp0 is NULL and
-	 * these compile-pass temporaries are unused (tmp4 is set from the source
-	 * name at the cpp step below), so guard them -- otherwise copy(NULL)
-	 * dereferences a null pointer and cc crashes. */
-	if (pflag == 0) {
-		(tmp1 = copy(tmp0))[tmpdig] = '1';
-		(tmp2 = copy(tmp0))[tmpdig] = '2';
-		(tmp3 = copy(tmp0))[tmpdig] = '3';
-		if (oflag)
-			(tmp5 = copy(tmp0))[tmpdig] = '5';
-		(tmp4 = copy(tmp0))[tmpdig] = '4';
-	}
+	/* For -E/-P (pflag) no temp directory is made and tmp0..tmp5 stay NULL;
+	 * they are unused there (tmp4 is set from the source name at the cpp step
+	 * below), so nothing to guard. */
 	pvt = pv;
 	for (i = 0; i < nc; i++) {
 		if (nc > 1 || vflag)
@@ -614,6 +604,8 @@ dexit(void)
 		cunlink(tmp4);
 		cunlink(tmp5);
 		cunlink(tmp0);
+		if (tmpdir_priv)
+			rmdir(tmpdir_priv);
 	}
 	exit(eflag);
 }
