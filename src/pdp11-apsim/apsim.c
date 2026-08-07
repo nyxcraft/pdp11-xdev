@@ -246,6 +246,17 @@ tty_apply(int sgf)
 
 static unsigned char M[1 << 16];  /* data space (also the shared I&D space) */
 static unsigned char MI[1 << 16]; /* separate instruction space (0411 only) */
+
+/* Clamp a guest bulk-transfer length to what fits from `addr' to the end of
+ * the 64 KB emulated core, so a syscall copy (read/write/...) can never run
+ * off M[]/MI[] on the host.  addr is masked to 16 bits like every guest
+ * access; valid guests (buf+count within 64 KB) are unaffected. */
+static unsigned
+gclamp(unsigned addr, unsigned len)
+{
+	addr &= 0xffff;
+	return len > (unsigned)0x10000 - addr ? (unsigned)0x10000 - addr : len;
+}
 static unsigned char *Isp = M;	  /* where instructions are fetched: M (shared) or MI (sep I&D) */
 static unsigned short R[8];	  /* R6=sp, R7=pc */
 #define SP R[6]
@@ -2081,7 +2092,7 @@ do_syscall(int num, int argaddr)
 		return;
 	}
 	case 4: /* write(r0=fd, a1=buf, a2=count) */
-		r = write(fd0, M + (a1 & 0xffff), a2 & 0xffff);
+		r = write(fd0, M + (a1 & 0xffff), gclamp(a1, a2 & 0xffff));
 		break;
 	case 3: { /* read(r0=fd, a1=buf, a2=count) */
 		struct gdir *g = dir_find(fd0);
@@ -2091,12 +2102,13 @@ do_syscall(int num, int argaddr)
 				n = g->len - g->pos;
 			if (n < 0)
 				n = 0;
+			n = (int)gclamp(a1, (unsigned)n);
 			memcpy(M + (a1 & 0xffff), g->buf + g->pos, n);
 			g->pos += n;
 			r = n;
 			break;
 		}
-		r = read(fd0, M + (a1 & 0xffff), a2 & 0xffff);
+		r = read(fd0, M + (a1 & 0xffff), gclamp(a1, a2 & 0xffff));
 		break;
 	}
 	case 5: { /* open(a1=path, a2=mode) */
@@ -5753,7 +5765,9 @@ load_aout_env(const char *path, int nargs, char **args, int nenv, char **env)
 		 * overlay-header find), so cap every one at the slot size */
 		for (j = 1; j <= novl; j++) {
 			ov_siz[j] = ovh[j];
-			if (ov_siz[j] > 16384) {
+			/* the EMT handler memcpy's ov_siz bytes at ov_base; ov_base+ov_max
+			 * was checked but ov_siz can exceed ov_max, so bound it to core */
+			if (ov_siz[j] > 16384 || ov_base + ov_siz[j] > 0x10000) {
 				fclose(f);
 				return -1;
 			}

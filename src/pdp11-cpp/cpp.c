@@ -150,7 +150,8 @@ STATIC char *dirnams[MAXINC]; /* actual directory of #include files */
 STATIC int fins[MAXINC];
 STATIC int lineno[MAXINC];
 
-STATIC char *dirs[10]; /* -I and <> directories */
+STATIC char *dirs[32]; /* -I and <> directories (the `nd > 8' -I cap plus the
+			* ~7 unconditional trailing appends below must all fit) */
 struct symtab;
 char *strdex(char *s, char c), *copy(char *s), *subst(char *p, struct symtab *sp), *trmdir(char *s);
 struct symtab *stsym(char *s);
@@ -1753,7 +1754,7 @@ main(int argc, char **argv)
 				passcom++;
 				continue;
 			case 'D':
-				if (predef > prespc + NPREDEF) {
+				if (predef >= prespc + NPREDEF) {
 					pperror("too many -D options, ignoring %s", argv[i]);
 					continue;
 				}
@@ -1762,7 +1763,7 @@ main(int argc, char **argv)
 					*predef++ = argv[i] + 2;
 				continue;
 			case 'U':
-				if (prund > punspc + NPREDEF) {
+				if (prund >= punspc + NPREDEF) {
 					pperror("too many -U options, ignoring %s", argv[i]);
 					continue;
 				}

@@ -625,7 +625,10 @@ load1arg(char *acp)
 	/* table of contents */
 	case 2:
 		tnum = archdr.asize / sizeof(struct tab);
-		if (tnum >= TABSZ) {
+		/* archdr.asize is an int32_t read from the archive; a crafted
+		 * __.SYMDEF with bit 31 set yields a negative tnum that a signed
+		 * `>= TABSZ' would pass, then read() overruns tab[TABSZ]. */
+		if (tnum < 0 || tnum >= TABSZ) {
 			error(2, "fast load buffer too small");
 		}
 		lseek(infil, (long)(sizeof(filhdr.fmagic) + sizeof(archdr)), 0);
