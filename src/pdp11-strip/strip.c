@@ -41,18 +41,16 @@ main(int ac, char **av)
 	signal(SIGHUP, SIG_IGN);
 	signal(SIGINT, SIG_IGN);
 	signal(SIGQUIT, SIG_IGN);
-	{
-		int fd = mkstemp(tnamebuf);
-		if (fd >= 0)
-			close(fd);
-	} /* POSIX: reserve the name */
 	tname = tnamebuf;
 	while (*++av) {
 		rellen = (off_t)0;
 		reloffset = (off_t)0;
 		ovlsizes = (off_t)0;
 		filesize = (off_t)0;
-		if ((out = creat(tname, 0600)) < 0) {
+		/* a fresh mkstemp temp per file: atomic, 0600, no symlink-follow --
+		 * unlike recreating one predictable name with creat() each pass */
+		strcpy(tnamebuf, "/tmp/sXXXXXX");
+		if ((out = mkstemp(tname)) < 0) {
 			printf("Cannot create temporary file for %s\n", *av);
 			exit(EX_TEMPFAIL);
 		}
