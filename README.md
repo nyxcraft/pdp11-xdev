@@ -71,7 +71,7 @@ and disk-image tooling:
 |---|---|
 | compiler chain | `cc` `cpp` `c0` `c1` `c2` `as` `ld` |
 | C library | one universal `libc.a` + `crt0.o`, universe selected at link via `__univ` |
-| object tools | `nm` `size` `strip` `das` (disassembler, V1→2.11BSD) |
+| object tools | `nm` `size` `strip` `das` (disassembler, V1→2.11BSD) `objcopy` (copy / extract) |
 | archives | `ar` `ranlib` (byte-identical 2BSD archive format) |
 | sources | `xstr` (shared-strings extractor) |
 | media | `s5fs` (V7/2.8/2.9/2.10 disk images: mkfs, fsck, tar, restore, …) |

@@ -64,6 +64,10 @@
       "tagline": "Remove symbols",
       "blurb": "Removes the symbol table and relocation from an a.out — the 2.9BSD strip." },
 
+    { "id": "objcopy", "group": "object-editing", "name": "pdp11-objcopy",
+      "tagline": "Copy / extract",
+      "blurb": "Copies an a.out, or extracts its loadable image (-O binary) or a single text/data segment (-j) — the a.out-only analogue of objcopy." },
+
     { "id": "ar",     "group": "archives", "name": "pdp11-ar",
       "tagline": "The archiver",
       "blurb": "Authentic 2BSD ar, producing archives byte-identical to the originals." },

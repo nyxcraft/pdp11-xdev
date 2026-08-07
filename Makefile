@@ -12,7 +12,7 @@
 # table is src/common/universes.tsv (see docs/design.md).
 
 TOOLS = pdp11-as pdp11-ld pdp11-ar pdp11-ranlib pdp11-nm pdp11-size \
-	pdp11-strip pdp11-das pdp11-xstr pdp11-cpp pdp11-c0 \
+	pdp11-strip pdp11-das pdp11-objcopy pdp11-xstr pdp11-cpp pdp11-c0 \
 	pdp11-c1 pdp11-c2 pdp11-cc pdp11-s5fs pdp11-apsim
 
 all: $(TOOLS)
