@@ -16,7 +16,6 @@
     { "id": "object-tools",   "name": "Object inspection" },
     { "id": "object-editing", "name": "Object editing" },
     { "id": "archives",       "name": "Archives" },
-    { "id": "media",          "name": "Filesystem images" },
     { "id": "execution",      "name": "Execution" }
   ],
 
@@ -74,10 +73,6 @@
     { "id": "ranlib", "group": "archives", "name": "pdp11-ranlib",
       "tagline": "The archive index",
       "blurb": "Builds the __.SYMDEF table of contents in an archive, so ld resolves it in one pass." },
-
-    { "id": "s5fs", "group": "media", "name": "pdp11-s5fs",
-      "tagline": "Disk-image tools",
-      "blurb": "A single host multi-tool for building and inspecting the traditional PDP-11 (2.9BSD-family) filesystem images." },
 
     { "id": "apsim", "group": "execution", "name": "pdp11-apsim",
       "tagline": "The PDP-11 UNIX simulator",

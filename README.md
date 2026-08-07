@@ -74,7 +74,6 @@ and disk-image tooling:
 | object tools | `nm` `size` `strip` `das` (disassembler, V1→2.11BSD) `objcopy` (copy / extract) |
 | archives | `ar` `ranlib` (byte-identical 2BSD archive format) |
 | sources | `xstr` (shared-strings extractor) |
-| media | `s5fs` (V7/2.8/2.9/2.10 disk images: mkfs, fsck, tar, restore, …) |
 | execution | `apsim` (user-mode simulator: EIS, FIS, CIS, bit-faithful FP11, overlays, V1 personality) |
 
 Each tool lives in `src/pdp11-<tool>/` with its own Makefile and tests.

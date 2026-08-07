@@ -9,7 +9,7 @@ name: CI
 #   * the BSD-KNF format gate (clang-format --dry-run --Werror),
 #   * the target libc build (from in-repo 2.9 sources),
 #   * the end-to-end suite (cc -> apsim on in-repo programs),
-#   * the objcopy and s5fs tool tests (build their own fixtures),
+#   * the objcopy tool test (builds its own fixtures),
 #   * the apsim loader fuzz under ASan+UBSan (hostile a.out corpus, generated),
 #   * a staged `make install` smoke.
 
@@ -67,10 +67,8 @@ jobs:
       - name: End-to-end suite (cc -> apsim)
         run: sh tests/run.sh
 
-      - name: Tool tests (objcopy, s5fs)
-        run: |
-          make -C src/pdp11-objcopy check
-          make -C src/pdp11-s5fs check
+      - name: Tool test (objcopy)
+        run: make -C src/pdp11-objcopy check
 
       - name: apsim loader fuzz under ASan+UBSan
         run: |

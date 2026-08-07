@@ -103,14 +103,7 @@ For example, `APSIM_ROOT=~/unix/v6 bin/pdp11-apsim -u v6 ~/unix/v6/bin/ls /`.
 `src/pdp11-apsim/root/` is a minimal guest root skeleton; `mkroot.sh`
 populates `/tmp` and can install rogue.
 
-## 7. Disk images
-
-`bin/pdp11-s5fs` manipulates V7/2.8/2.9/2.10 s5fs disk images without
-mounting: `mkfs`, `mktree`, `tar`, `restore`, `dump`, `fsck`, `ls/cat/
-get/put/shell`, `manifest`, `verify`, and VHD wrapping for SIMH.  See
-`src/pdp11-s5fs/README.md`.
-
-## 8. Verifying against the originals
+## 7. Verifying against the originals
 
 The opt-in oracle suites compare the toolchain to the native 1981/1983
 binaries executed under apsim — see [../oracle/README.md](../oracle/README.md)

@@ -12,7 +12,6 @@ src/pdp11-c1/mktab
 src/pdp11-c1/table.i
 src/pdp11-c1/table.c
 src/pdp11-cpp/cpy.c
-src/pdp11-s5fs/bin/
 
 # apsim guest-root content is installed by mkroot.sh, not tracked
 # (only the checked-in skeleton under src/pdp11-apsim/root is tracked)

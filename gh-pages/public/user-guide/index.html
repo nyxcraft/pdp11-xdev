@@ -40,8 +40,7 @@
 <li><a class="section-nav__link section-nav__link--l2" href="#4-overlays">4. Overlays</a></li>
 <li><a class="section-nav__link section-nav__link--l2" href="#5-the-assembler-s-historical-axes">5. The assembler&#x27;s historical axes</a></li>
 <li><a class="section-nav__link section-nav__link--l2" href="#6-running-vintage-binaries">6. Running vintage binaries</a></li>
-<li><a class="section-nav__link section-nav__link--l2" href="#7-disk-images">7. Disk images</a></li>
-<li><a class="section-nav__link section-nav__link--l2" href="#8-verifying-against-the-originals">8. Verifying against the originals</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-verifying-against-the-originals">7. Verifying against the originals</a></li>
 </ul>
         </nav>
       </aside>
@@ -138,11 +137,7 @@ APSIM_PTRACE=1    enable the cooperative ptrace channel (runs adb)
 <p>For example, <code>APSIM_ROOT=~/unix/v6 bin/pdp11-apsim -u v6 ~/unix/v6/bin/ls /</code>.
 <code>src/pdp11-apsim/root/</code> is a minimal guest root skeleton; <code>mkroot.sh</code>
 populates <code>/tmp</code> and can install rogue.</p>
-<h2 id="7-disk-images">7. Disk images</h2>
-<p><code>bin/pdp11-s5fs</code> manipulates V7/2.8/2.9/2.10 s5fs disk images without
-mounting: <code>mkfs</code>, <code>mktree</code>, <code>tar</code>, <code>restore</code>, <code>dump</code>, <code>fsck</code>, <code>ls/cat/ get/put/shell</code>, <code>manifest</code>, <code>verify</code>, and VHD wrapping for SIMH.  See
-<code>src/pdp11-s5fs/README.md</code>.</p>
-<h2 id="8-verifying-against-the-originals">8. Verifying against the originals</h2>
+<h2 id="7-verifying-against-the-originals">7. Verifying against the originals</h2>
 <p>The opt-in oracle suites compare the toolchain to the native 1981/1983
 binaries executed under apsim — see <a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/oracle/README.md">../oracle/README.md</a>
 for fixture setup and the full battery (compiler corpus, tree-wide as
