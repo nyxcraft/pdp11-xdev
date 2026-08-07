@@ -21,9 +21,8 @@ $(TOOLS):
 	@$(MAKE) -C src/$@
 
 # Target-side: the matched headers into include/ and one universal C
-# library, crt0, curses, termlib into lib/ (flat -- the universe is selected
-# at link via __univ).  Built with the cross tools themselves, so it depends
-# on `all`.
+# library + crt0 into lib/ (flat -- the universe is selected at link via
+# __univ).  Built with the cross tools themselves, so it depends on `all`.
 libc: all
 	@$(MAKE) -C src/pdp11-libc
 

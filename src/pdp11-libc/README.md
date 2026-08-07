@@ -6,11 +6,11 @@ chosen when a program is **linked**, not when the library is built.  This
 is the [vax11-libc](../../gh-pages/site.json) mechanism, ported to the
 PDP-11.
 
-    make libc       # from the repo root: builds lib/libc.a + crt0 + curses/termlib
+    make libc       # from the repo root: builds lib/libc.a + crt0
 
 Products (installed **flat**, not per-universe): `libc.a`, the crt0 flavours
-`crt0.o`/`mcrt0.o`/`fcrt0.o`/`fmcrt0.o`, `libcurses.a`, `libtermlib.a`
-(+ `libtermcap.a`), and the matched header set into `include/`.
+`crt0.o`/`mcrt0.o`/`fcrt0.o`/`fmcrt0.o`, and the matched header set into
+`include/`.
 
 ## How one library serves every era
 
@@ -65,7 +65,7 @@ by *what kind* of code a file is, not by universe:
                     default; fpsim (the FP interpreter) rides along
     common/csu      crt0 and its variants (each stamps __univ at startup)
     include/        the matched header set, installed flat into ../../include
-    curses/ termlib/ fpsim/   the screen libraries and the FP interpreter
+    fpsim/          the FP interpreter
 
 Byte-for-byte reproduction of the native per-era `libc.a` is deliberately
 **not** a goal (that was the old per-universe build), so the archive member

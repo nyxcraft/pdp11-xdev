@@ -70,7 +70,7 @@ and disk-image tooling:
 | role | tools |
 |---|---|
 | compiler chain | `cc` `cpp` `c0` `c1` `c2` `as` `ld` |
-| C library | one universal `libc.a` + `crt0.o`, universe selected at link via `__univ` (+ curses, termlib) |
+| C library | one universal `libc.a` + `crt0.o`, universe selected at link via `__univ` |
 | object tools | `nm` `size` `strip` `das` (disassembler, V1→2.11BSD) `dcc` (decompile driver) |
 | archives | `ar` `ranlib` (byte-identical 2BSD archive format) |
 | sources | `xstr` (shared-strings extractor) |
@@ -107,7 +107,7 @@ src/
                  relocatable-path helpers (ucbpath/), shared config.mk
   pdp11-*/       one directory per tool: Makefile, sources, docs/, tests/
   pdp11-libc/    one universal target C library (common/{gen,stdio,sys,csu,
-                 nonfpcrt}, headers, curses, termlib, fpsim); __univ-selected
+                 nonfpcrt}, headers, fpsim); __univ-selected
 bin/ include/ lib/   build products (git-ignored)
 tests/           the end-to-end pipeline suite (make check runs it last)
 oracle/          opt-in native-binary verification (fixtures not committed)

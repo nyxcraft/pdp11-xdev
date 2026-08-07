@@ -9,8 +9,8 @@ For how it is put together, see [design.md](design.md).
 
     make            # every host tool -> ./bin/pdp11-*
     make libc       # matched headers -> ./include/, one universal libc.a
-                    # + crt0 (and curses/termlib) -> ./lib/  (both FLAT:
-                    # the universe is chosen at link, see design.md)
+                    # + crt0 -> ./lib/  (both FLAT: the universe is
+                    # chosen at link, see design.md)
     make check      # full gate: per-tool suites + end-to-end pipeline +
                     # the cross-universe matrix
     make check-san  # apsim under ASan+UBSan: the suite + the loader fuzz

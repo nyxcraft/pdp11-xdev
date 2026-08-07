@@ -70,7 +70,7 @@ SYS_O	= $(addprefix common/sys/,   $(addsuffix .o, ${SYS}))
 CRT_O	= $(addprefix common/nonfpcrt/, $(addsuffix .o, csv cerror ${ARITH}))
 ARCHIVE	= ${GEN_O} ${STDIO_O} ${SYS_O} ${CRT_O} fpsim/fpsim.o
 
-all: headers libc curses termlib
+all: headers libc
 
 dirs:
 	mkdir -p ${LIB} ${INC}
@@ -113,26 +113,10 @@ libc: headers dirs
 	${AR} rc ${LIB}/libc.a ${ARCHIVE}
 	${RANLIB} ${LIB}/libc.a
 
-# curses + termlib -- single libraries too (byte-repro dropped, so the ordinary
-# cross ar/ranlib, not the old-format archivers, and archive order is free).
-curses: headers dirs
-	cd curses && ${CURDIR}/${CC} -O -c *.c
-	rm -f ${LIB}/libcurses.a
-	${AR} rc ${LIB}/libcurses.a curses/*.o
-	${RANLIB} ${LIB}/libcurses.a
-
-termlib: headers dirs
-	cd termlib && ${CURDIR}/${CC} -O -DCM_N -DCM_GT -DCM_B -DCM_D -c termcap.c tgoto.c tputs.c
-	rm -f ${LIB}/libtermlib.a
-	${AR} rc ${LIB}/libtermlib.a termlib/*.o
-	${RANLIB} ${LIB}/libtermlib.a
-	rm -f ${LIB}/libtermcap.a
-	cp ${LIB}/libtermlib.a ${LIB}/libtermcap.a
-
 check:
 	@echo "pdp11-libc: exercised by the cc end-to-end suite (../../tests) and oracle/cross-universe.sh"
 
 clean:
-	rm -f common/*/*.o fpsim/*.o curses/*.o termlib/*.o
+	rm -f common/*/*.o fpsim/*.o
 
-.PHONY: all dirs headers libc curses termlib check clean
+.PHONY: all dirs headers libc check clean

@@ -13,8 +13,8 @@ The toolchain answers "which UNIX" twice, deliberately separately.
 **The universe** (`--universe=NAME`, `-u NAME`, or the exported
 `PDP11_UNIVERSE`; default `bsd29`) is the *target runtime era*.  One
 **universal** C library serves every era: a single `libc.a` + `crt0.o`
-(and the `-p`/`-f` profiling and no-FPU startup variants), curses, and
-termlib live FLAT in `lib/`, and one header set lives FLAT in `include/`.
+(and the `-p`/`-f` profiling and no-FPU startup variants) live FLAT in
+`lib/`, and one header set lives FLAT in `include/`.
 The era is chosen at **link time**, not build time:
 
 - `cc` validates the name against the generated table, normalizes aliases
