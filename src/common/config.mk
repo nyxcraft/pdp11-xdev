@@ -25,9 +25,10 @@
 #   -fcommon                   tentative definitions appear in several .c
 #                              files of the same tool (pre-C99 linkage model)
 #
-# Two tools carry a single scoped `#pragma GCC diagnostic' each for a
-# genuinely-deliberate low-level pattern (word-wise packed on-disk struct
-# access, a provably-contradictory sprintf-buffer cycle); grep the sources.
+# One tool (c0) carries a single scoped `#pragma GCC diagnostic' for a
+# genuinely-deliberate pattern: the expression parser reuses a `hshtab *' slot
+# as an int across ~23 sites, so -Wint-conversion is scoped off around that one
+# function rather than casting every use.  grep the sources.
 
 HOSTCC ?= cc
 OPT    ?= -O

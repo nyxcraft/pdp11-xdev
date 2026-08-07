@@ -24,14 +24,6 @@
  * no such collision.  (ld reads via get(), so getw needs no shim.) */
 #define putw ld_putw
 
-/* The on-disk ar header (archdr) is a packed, middle-endian PDP-11 record; ld
- * reads/writes it word-wise via mget() through explicit (uint16_t *) casts as
- * part of the LP64 16-bit-I/O port.  Once mget() has a prototype (C99) the host
- * flags that packed->uint16_t* cast for possible unaligned access; the cast is
- * deliberate and the layout is fixed, so silence the note here.  archdr is the
- * only packed struct in this file, and x86-64 handles the 16-bit access. */
-#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
-
 /*	Layout of a.out file :
  *
  *	header of 8 words	magic number 405, 407, 410, 411
@@ -294,8 +286,8 @@ static void	finishout(void);
 static int	adrof(char *s);
 static void	copy(struct buf *buf);
 static void	mkfsym(char *s);
-static void	mget(uint16_t *aloc, int an);
-static void	mput(struct buf *buf, uint16_t *aloc, int an);
+static void	mget(void *aloc, int an);
+static void	mput(struct buf *buf, void *aloc, int an);
 static void	dseek(struct stream *asp, long aloc, int s);
 static int	half(int i);
 static int	get(struct stream *asp);
@@ -658,7 +650,7 @@ step(long nloc)
 		libp++;
 		return(0);
 	}
-	mget((uint16_t *)&archdr, sizeof archdr);
+	mget(&archdr, sizeof archdr);
 	archdr.asize = PDPL(archdr.asize); archdr.atime = PDPL(archdr.atime);
 	if (load1(1, nloc + (sizeof archdr) / 2)) {
 		libp->loc = nloc;
@@ -722,7 +714,7 @@ load1(int libflg, long loc)
 	loc += (sizeof filhdr)/2 + filhdr.tsize + filhdr.dsize;
 	dseek(&text, loc, filhdr.ssize);
 	while (text.size > 0) {
-		mget((uint16_t *)&cursym, sizeof cursym);
+		mget(&cursym, sizeof cursym);
 		type = cursym.stype;
 		if (Sflag) {
 			mtype = type&037;
@@ -1026,7 +1018,7 @@ setupout(void)
 		h[0]=0405; h[1]=12+tsize+dsize; h[2]=0; h[3]=0; h[4]=bsize; h[5]=0;
 		mput(&toutb, h, sizeof h);
 	} else
-		mput(&toutb, (uint16_t *)&filhdr, sizeof filhdr);
+		mput(&toutb, &filhdr, sizeof filhdr);
 /* wnj added */
 	if (numov) {
 		register int i;
@@ -1068,7 +1060,7 @@ load2arg(char *acp)
 	} else {	/* scan archive members referenced */
 		for (lp = libp; lp->loc != -1; lp++) {
 			dseek(&text, lp->loc, sizeof archdr);
-			mget((uint16_t *)&archdr, sizeof archdr);
+			mget(&archdr, sizeof archdr);
 	archdr.asize = PDPL(archdr.asize); archdr.atime = PDPL(archdr.atime);
 			mkfsym(archdr.aname);
 			load2(lp->loc + (sizeof archdr) / 2);
@@ -1100,7 +1092,7 @@ load2(long loc)
 	dseek(&text, loc + filhdr.tsize + filhdr.dsize, filhdr.ssize);
 	while (text.size > 0) {
 		symno++;
-		mget((uint16_t *)&cursym, sizeof cursym);
+		mget(&cursym, sizeof cursym);
 		symreloc();
 		type = cursym.stype;
 		if (Sflag) {
@@ -1113,7 +1105,7 @@ load2(long loc)
 				/* mostly for adb.   mjk 7/81 */
 				if ((type==TEXT) && inov)
 					cursym.sovly = curov;
-				mput(&soutb, (uint16_t *)&cursym, sizeof cursym);
+				mput(&soutb, &cursym, sizeof cursym);
 			}
 			continue;
 		}
@@ -1335,11 +1327,11 @@ mkfsym(char *s)
 	cp8c(s, cursym.sname);
 	cursym.stype = 037;
 	cursym.svalue = torigin;
-	mput(&soutb, (uint16_t *)&cursym, sizeof cursym);
+	mput(&soutb, &cursym, sizeof cursym);
 }
 
 static void
-mget(uint16_t *aloc, int an)
+mget(void *aloc, int an)
 {
 	register uint16_t *loc, *p;
 	register int n;
@@ -1366,7 +1358,7 @@ mget(uint16_t *aloc, int an)
 }
 
 static void
-mput(struct buf *buf, uint16_t *aloc, int an)
+mput(struct buf *buf, void *aloc, int an)
 {
 	register uint16_t *loc;
 	register int n;
@@ -1450,16 +1442,12 @@ getfile(char *acp)
 	infil = -1;
 	archdr.aname[0] = '\0';
 	filname = cp;
-	/* The library-path buffers below form a cyclic sprintf dependency
-	 * (libpath -> libdir via "%slib", then libdir -> libpath via
-	 * "%s/lib%s.a"), and udir must stay the same size as libdir so the
-	 * strcpy(libdir, udir) back-copy cannot overflow.  No capacity-only
-	 * enlargement can clear every -Wformat-overflow here (the two ends of
-	 * the cycle impose opposite size constraints), and the format strings
-	 * and arguments must not change, so scope the diagnostic off for this
-	 * block only.  Behaviour and buffer sizes are unchanged. */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-overflow"
+	/* The library-path buffers below (libpath, libdir, udir) are built with
+	 * strcpy/strcat -- the same idiom the rest of getfile uses -- rather than
+	 * sprintf: the paths are short in practice but their compile-time bound is
+	 * cyclic (libpath -> libdir -> libpath) with one unbounded input (the -l
+	 * name from argv), which no sprintf buffer size can prove safe.  Output is
+	 * byte-identical to the sprintf form. */
 	if (cp[0]=='-' && cp[1]=='l') {
 		static char libpath[1024], libdir[1024];
 		if(cp[2] == '\0')
@@ -1477,7 +1465,7 @@ getfile(char *acp)
 			if (sl-libpath >= 4 &&
 			    sl[-4]=='b' && sl[-3]=='i' && sl[-2]=='n' && sl[-1]=='/') {
 				sl[-4] = '\0';
-				sprintf(libdir, "%slib", libpath);
+				strcpy(libdir, libpath); strcat(libdir, "lib");
 			}
 		  }
 		}
@@ -1488,16 +1476,16 @@ getfile(char *acp)
 		  if (univ == 0 || *univ == 0)
 			univ = PDP11_UNIV_DEFAULT_NAME;
 		  if (strlen(libdir) + strlen(univ) + 2 < sizeof udir) {
-			sprintf(udir, "%s/%s", libdir, univ);
+			strcpy(udir, libdir); strcat(udir, "/"); strcat(udir, univ);
 			if (stat(udir, &ub) == 0)
 				strcpy(libdir, udir);
 		  }
 		}
-		sprintf(libpath, "%s/lib%s.a", libdir, cp + 2);
+		strcpy(libpath, libdir); strcat(libpath, "/lib");
+		strcat(libpath, cp + 2); strcat(libpath, ".a");
 		filname = libpath;
 		infil = open(filname, 0);
 	}
-#pragma GCC diagnostic pop
 	if (infil == -1 && (infil = open(filname, 0)) < 0)
 		error(2, "cannot open");
 	page[0].bno = page[1].bno = -1;
@@ -1512,7 +1500,7 @@ getfile(char *acp)
 	dseek(&text, 1L, sizeof archdr);	/* word addressing */
 	if(text.size <= 0)
 		return(1);	/* regular archive */
-	mget((uint16_t *)&archdr, sizeof archdr);
+	mget(&archdr, sizeof archdr);
 	archdr.asize = PDPL(archdr.asize); archdr.atime = PDPL(archdr.atime);
 	if(strncmp(archdr.aname, goodnm, 14) != 0)
 		return(1);	/* regular archive */
@@ -1653,7 +1641,7 @@ readhdr(long loc)
 	register int st, sd;
 
 	dseek(&text, loc, sizeof filhdr);
-	mget((uint16_t *)&filhdr, sizeof filhdr);
+	mget(&filhdr, sizeof filhdr);
 	if (filhdr.fmagic != FMAGIC)
 		error(2, "Bad format");
 	st = (filhdr.tsize+01) & ~01;

@@ -12,9 +12,9 @@ static	char	sccsid[] = "@(#)cc.c	2.6";	/*	SCCS id keyword	*/
 # include "universe.h"
 
 /* OS entry points that live in <unistd.h>, declared individually: cc supplies
- * its own execvp/execlp below whose signatures are incompatible with libc's,
- * so <unistd.h> (which would prototype those) cannot be included.  Real
- * prototypes here keep the pointer returns from being truncated under LP64. */
+ * its own execvp below whose signature is incompatible with libc's, so
+ * <unistd.h> (which would prototype it) cannot be included.  Real prototypes
+ * here keep the pointer returns from being truncated under LP64. */
 ssize_t	readlink(const char *, char *, size_t);
 int	close(int);
 pid_t	fork(void);
@@ -22,8 +22,8 @@ int	execv(const char *, char *const *);
 unsigned int sleep(unsigned int);
 int	unlink(const char *);
 
-/* forward prototypes for the file-local helpers; cc's own execvp/execlp keep
- * external linkage so they shadow libc. */
+/* forward prototypes for the file-local helpers; cc's own execvp keeps
+ * external linkage so it shadows libc. */
 static char	*tmpdir_(void);
 static void	setup_tools(char *av0);
 static void	resolve_universe(void);
@@ -716,23 +716,11 @@ cunlink(char *f)
  *	The following version is like the standard one, but does
  * 	not check against slashes in the name.
  *
- *	execlp(name, arg,...,0)	(like execl, but does path search)
  *	execvp(name, argv)	(like execv, but does path search)
  */
 #include <errno.h>
 
 static	char shell[] =	"/bin/sh";
-
-/* deliberately K&R-simple, forwarding to execvp; its two fixed args cannot
- * match libc's variadic execlp builtin, so the builtin-mismatch warning is
- * suppressed only around this definition. */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wbuiltin-declaration-mismatch"
-int execlp(char *name, char *argv)
-{
-	return(execvp(name, &argv));
-}
-#pragma GCC diagnostic pop
 
 int execvp(char *name, char **argv)
 {

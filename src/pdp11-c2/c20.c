@@ -161,12 +161,10 @@ main(int argc, char **argv)
 		fprintf(stderr, "%d redundant tst's\n", nrtst);
 		fprintf(stderr, "%d literals eliminated\n", nlit);
 /* Diagnostic-only core estimate emitted under -n to stderr, never the
- * byte-compared stdout.  The (int) cast is original (PDP-11: int==pointer==
- * 16 bits); keep it verbatim and silence the host's wider-pointer note. */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpointer-to-int-cast"
-		fprintf(stderr, "%dK core\n", (((int)lastr+01777)>>10)&077);
-#pragma GCC diagnostic pop
+ * byte-compared stdout.  The original `(int)lastr' pun (PDP-11: int ==
+ * pointer == 16 bits) is written `(int)(long)lastr' -- pointer to long to
+ * int, the standard idiom for the low address bits, so no cast note. */
+		fprintf(stderr, "%dK core\n", (((int)(long)lastr+01777)>>10)&077);
 	}
 	exit(0);
 }
