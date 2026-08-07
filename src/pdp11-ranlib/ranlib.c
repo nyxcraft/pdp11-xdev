@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <stdint.h>
 #include <time.h>
@@ -33,6 +34,7 @@ static int nextel(FILE *af);
 static void stash(struct nlist *s);
 static int fixsize(void);
 static void fixdate(char *s);
+static int  run_ar(char *first, char *archive, char *temp);
 
 /* Resolve this toolchain's ar (e.g. .../usr/bin/pdp11-bsd29-ar) relative to
  * the ranlib binary, so `ar rlb' invokes the matching ar -- the same
@@ -66,10 +68,37 @@ setup_ar(void)
 	}
 }
 
+/* Run `<ar> r[l]b? [first] archive temp' via fork/exec, NOT system(): the
+ * member name `first' comes straight from an on-disk ar_name and must never
+ * be interpreted as shell text (a crafted name could inject commands). */
+static int
+run_ar(char *first, char *archive, char *temp)
+{
+	char *av[8];
+	int n = 0, st;
+	pid_t pid;
+
+	av[n++] = arcmd;
+	av[n++] = first ? "rlb" : "rl";
+	if (first)
+		av[n++] = first;
+	av[n++] = archive;
+	av[n++] = temp;
+	av[n] = 0;
+	if ((pid = fork()) == 0) {
+		execvp(arcmd, av);
+		_exit(127);
+	}
+	if (pid < 0)
+		return (-1);
+	while (waitpid(pid, &st, 0) < 0)
+		;
+	return (st);
+}
+
 int
 main(int argc, char **argv)
 {
-	char buf[2048];
 
 	setup_ar();
 	--argc;
@@ -140,12 +169,8 @@ main(int argc, char **argv)
 		}
 		fwrite((char *)tab, tnum, sizeof(struct tab), fo);
 		fclose(fo);
-		if (new)
-			sprintf(buf, "%s rlb %s %s %s\n", arcmd, firstname, *argv, tempnm);
-		else
-			sprintf(buf, "%s rl %s %s\n", arcmd, *argv, tempnm);
-		if (system(buf))
-			fprintf(stderr, "can't execute %s\n", buf);
+		if (run_ar(new ? firstname : NULL, *argv, tempnm))
+			fprintf(stderr, "can't run %s\n", arcmd);
 		else
 			fixdate(*argv);
 		unlink(tempnm);
