@@ -667,5 +667,5 @@ conexp(void)
 			error("Constant required");
 	initflg--;
 	curbase = funcbase;
-	return (t->value);
+	return (t ? t->value : 0); /* tree() returns 0 on a syntax error */
 }

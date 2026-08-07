@@ -641,6 +641,8 @@ load1arg(char *acp)
 		}
 		while (ldrand())
 			;
+		if (libp >= &liblist[NROUT])
+			error(2, "too many library members referenced");
 		libp->loc = -1;
 		libp++;
 		break;
@@ -660,6 +662,8 @@ step(long nloc)
 {
 	dseek(&text, nloc, sizeof archdr);
 	if (text.size <= 0) {
+		if (libp >= &liblist[NROUT])
+			error(2, "too many library members referenced");
 		libp->loc = -1;
 		libp++;
 		return (0);
@@ -668,6 +672,8 @@ step(long nloc)
 	archdr.asize = PDPL(archdr.asize);
 	archdr.atime = PDPL(archdr.atime);
 	if (load1(1, nloc + (sizeof archdr) / 2)) {
+		if (libp >= &liblist[NROUT])
+			error(2, "too many library members referenced");
 		libp->loc = nloc;
 		libp++;
 	}

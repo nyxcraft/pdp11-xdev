@@ -336,7 +336,9 @@ dogoto(void)
 {
 	register struct tnode *np;
 
-	*cp++ = tree();
+	if ((*cp = tree()) == 0) /* syntax error already diagnosed; don't deref NULL */
+		return;
+	cp++;
 	build(STAR);
 	chkw(np = *--cp, -1);
 	rcexpr(block(JUMP, 0, NULL, NULL, np, NULL));
@@ -353,14 +355,16 @@ doret(void)
 
 	if (nextchar() != ';') {
 		t = tree();
-		*cp++ = &funcblk;
-		*cp++ = t;
-		build(ASSIGN);
-		cp[-1] = cp[-1]->tr2;
-		if (funcblk.type == CHAR)
-			cp[-1] = block(ITOC, INT, NULL, NULL, cp[-1], NULL);
-		build(RFORCE);
-		rcexpr(*--cp);
+		if (t) { /* skip the conversion on a syntax error (tree() == 0) */
+			*cp++ = &funcblk;
+			*cp++ = t;
+			build(ASSIGN);
+			cp[-1] = cp[-1]->tr2;
+			if (funcblk.type == CHAR)
+				cp[-1] = block(ITOC, INT, NULL, NULL, cp[-1], NULL);
+			build(RFORCE);
+			rcexpr(*--cp);
+		}
 	}
 	branch(retlab);
 }

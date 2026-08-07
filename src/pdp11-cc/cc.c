@@ -126,6 +126,8 @@ setup_tools(char *av0)
 	/* base = everything up to and including the final "/" */
 	{
 		int len = name - av0;
+		if (len > (int)sizeof base - 1)
+			len = sizeof base - 1;
 		strncpy(base, av0, len);
 		base[len] = 0;
 	}
@@ -136,6 +138,8 @@ setup_tools(char *av0)
 			dash = p;
 	if (dash) {
 		int n = dash - name + 1;
+		if (n > (int)sizeof prefix - 1)
+			n = sizeof prefix - 1;
 		strncpy(prefix, name, n);
 		prefix[n] = 0;
 	}
