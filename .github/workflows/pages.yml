@@ -37,10 +37,10 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Install markdown-it-py
-        run: pip install markdown-it-py
+      - name: Install pinned doc deps
+        run: pip install -r gh-pages/requirements.txt
       - name: Build site
-        run: python3 gh-pages/build_site.py
+        run: SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct) python3 gh-pages/build_site.py
       - name: Check for broken internal links
         run: python3 gh-pages/check_links.py
       - name: Upload Pages artifact

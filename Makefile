@@ -74,9 +74,13 @@ fuzz:
 	@sh tests/fuzz/run.sh
 
 # Rebuild the static documentation site into gh-pages/public/ (committed) and
-# fail on any broken internal link.  Needs markdown-it-py: pip install markdown-it-py
+# fail on any broken internal link.  Deps are pinned for a reproducible build:
+# pip install -r gh-pages/requirements.txt.  SOURCE_DATE_EPOCH (from the HEAD
+# commit) fixes the footer year so the snapshot doesn't drift with the clock;
+# regenerate and commit gh-pages/public whenever docs or site.json change (CI
+# enforces that the tracked snapshot matches a fresh build).
 docs:
-	@python3 gh-pages/build_site.py
+	@SOURCE_DATE_EPOCH=`git log -1 --pretty=%ct` python3 gh-pages/build_site.py
 	@python3 gh-pages/check_links.py
 
 clean:

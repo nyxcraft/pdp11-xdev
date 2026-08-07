@@ -439,7 +439,13 @@ def main() -> int:
     license_page = pages_by_slug.get("license")
     hero_primary = href_from(output_dir / "index.html", "user-guide")
     hero_secondary = href_from(output_dir / "index.html", "design")
-    year = str(datetime.date.today().year)
+    # Reproducible: honor SOURCE_DATE_EPOCH (set from the HEAD commit by
+    # `make docs' and CI) so the built footer year is a function of the source,
+    # not the wall clock -- otherwise the committed gh-pages/public would drift
+    # every New Year and the CI sync-gate would false-fail.
+    _sde = os.environ.get("SOURCE_DATE_EPOCH")
+    year = str((datetime.datetime.fromtimestamp(int(_sde), datetime.timezone.utc)
+                if _sde else datetime.date.today()).year)
     copyright_holder = config.get("copyright", config["site_name"])
     status = config.get("status")
     status_badge = f'<span class="brand__badge">{escape(status)}</span>' if status else ""

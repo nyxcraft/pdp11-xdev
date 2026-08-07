@@ -31,6 +31,10 @@ jobs:
       - name: Install clang-format-18
         run: sudo apt-get update && sudo apt-get install -y clang-format-18
 
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
       - name: Build every tool
         run: make
 
@@ -45,6 +49,17 @@ jobs:
             done
           done
           exit $fail
+
+      - name: Docs snapshot in sync (gh-pages/public == fresh build)
+        run: |
+          pip install -r gh-pages/requirements.txt
+          SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct) python3 gh-pages/build_site.py >/dev/null
+          if [ -n "$(git status --porcelain -- gh-pages/public)" ]; then
+            echo "::error::gh-pages/public is out of sync with source -- run 'make docs' and commit it"
+            git status --porcelain -- gh-pages/public
+            git --no-pager diff --stat -- gh-pages/public
+            exit 1
+          fi
 
       - name: Build target libc
         run: make libc

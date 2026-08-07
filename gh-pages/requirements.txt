@@ -1,0 +1,6 @@
+# Pinned so the built gh-pages/public is byte-reproducible across machines and
+# CI (the sync-gate in .github/workflows/ci.yml compares the tracked snapshot
+# to a fresh build).  build_site.py renders the docs Markdown with markdown-it,
+# whose HTML output is version-specific.
+markdown-it-py==3.0.0
+mdurl==0.1.2
