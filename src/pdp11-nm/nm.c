@@ -21,7 +21,7 @@ struct nnlist {		/* symbol table entry */
 	unsigned n_value; /* value */
 };
 #endif /* MENLO_OVLY */
-#define SELECT arch_flg ? arp.ar_name : *argv
+#define SELECT nmname(*argv)
 int numsort_flg;
 int undef_flg;
 int revsort_flg = 1;
@@ -31,6 +31,22 @@ int arch_flg;
 int prep_flg;
 struct ar_hdr arp;
 struct exec exph;
+
+/* Return a NUL-terminated name: an archive member's ar_name[14] is not
+ * terminated when a name fills all 14 bytes, so `%s' would over-read into
+ * ar_date; bound it.  Plain file names (fn == *argv) are C strings already. */
+static char *
+nmname(char *fn)
+{
+	static char nb[15];
+
+	if (arch_flg) {
+		memcpy(nb, arp.ar_name, 14);
+		nb[14] = 0;
+		return nb;
+	}
+	return fn;
+}
 FILE *fi;
 long off;
 static int compare(const void *a, const void *b);
