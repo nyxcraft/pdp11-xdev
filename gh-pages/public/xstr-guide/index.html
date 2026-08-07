@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-xstr — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-xstr is Bill Joy&#x27;s 1978 xstr: it reads a C program, pulls its string literals out into one shared, read-only data file (strings), and rewrites the program so each literal becomes a reference (&amp;xstr[N]) into that po…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-xstr — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-options">2. Options</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-files-it-produces">3. Files it produces</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-exit-status">4. Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-examples">5. Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-xstr — user guide</h1>
+          <p class="docs-article__summary">pdp11-xstr is Bill Joy&#x27;s 1978 xstr: it reads a C program, pulls its string literals out into one shared, read-only data file (strings), and rewrites the program so each literal becomes a reference (&amp;xstr[N]) into that po…</p>
+          <p class="docs-article__source">pdp11-xstr — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-xstr</code> is Bill Joy's 1978 <code>xstr</code>: it reads a C program, pulls its string
+literals out into one shared, read-only data file (<code>strings</code>), and rewrites the
+program so each literal becomes a reference <code>(&amp;xstr[N])</code> into that pool. Identical
+strings are stored once — and a string that is a trailing substring of another
+is not stored at all — which is how it saved text and data space on the memory-
+constrained PDP-11. It runs on your host as part of the 2.9BSD build.</p>
+<p>For how it works inside — the scan, the hashing, the pool layout — see the
+<a href="../xstr-design/index.html">design document</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-xstr [ -v ] [ -c ] [ - ] [ name ... ]
+</code></pre>
+<p>(The tool's own usage line still spells itself <code>xstr</code>.) Each <code>name</code> is a C source
+file; a bare <code>-</code> reads the program from standard input instead.</p>
+<p><code>xstr</code> is normally used in <strong>two phases</strong>, in place of the compile step:</p>
+<pre><code>xstr -c foo.c        # per source: append its strings to the pool, rewrite -&gt; x.c
+cc -c x.c            #             compile the rewritten source
+mv x.o foo.o
+...                  # repeat -c for every source
+xstr                 # once at the end: emit xs.c from the finished pool
+cc -c xs.c           #             compile the shared pool, link xs.o with the rest
+</code></pre>
+<p>Given a <code>name</code> <strong>without</strong> <code>-c</code>, it runs one-shot instead: a private pool in
+<code>/tmp</code> (removed afterward) and both <code>x.c</code> and <code>xs.c</code> for that single file.</p>
+<hr />
+<h2 id="2-options">2. Options</h2>
+<table>
+<thead>
+<tr>
+<th>option</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-c</code></td>
+<td>compile mode: seed from and append to the persistent <code>strings</code> pool, rewrite the source to <code>x.c</code>, but do <strong>not</strong> emit <code>xs.c</code> (the final bare <code>xstr</code> does that)</td>
+</tr>
+<tr>
+<td><code>-</code></td>
+<td>read the program from <strong>standard input</strong> instead of a named file</td>
+</tr>
+<tr>
+<td><code>-v</code></td>
+<td>verbose: report each string on stderr as <code>new at N:</code> or <code>found at N:</code> (with the string, control bytes shown as <code>^X</code>, high bytes as <code>\ooo</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Flags may be glued together (<code>xstr -cv foo.c</code>). An unrecognised flag prints the
+usage line to stderr but is otherwise ignored — the run continues.</p>
+<p>With <strong>no operands at all</strong> (<code>xstr</code>), the tool seeds from the existing <code>strings</code>
+pool, processes nothing, and writes <code>xs.c</code> — this is the closing phase of the
+two-step build.</p>
+<hr />
+<h2 id="3-files-it-produces">3. Files it produces</h2>
+<p>All paths are relative to the current directory unless noted.</p>
+<ul>
+<li><strong><code>x.c</code></strong> — the rewritten source: the input C with every string literal
+replaced by <code>(&amp;xstr[N])</code> and a <code>char xstr[];</code> reference added at the top.
+Reopened fresh for each input, so it holds the most recently processed file.</li>
+<li><strong><code>strings</code></strong> — the shared string pool: the decoded literal bytes, each
+NUL-terminated, packed so identical and suffix-sharing strings coincide. It
+persists in the current directory and <strong>accumulates</strong> across <code>-c</code> runs. (When a
+<code>name</code> is given without <code>-c</code>, the pool is instead a temporary <code>/tmp/xstrXXXXXX</code>
+that is deleted on exit.)</li>
+<li><strong><code>xs.c</code></strong> — the pool as C source: <code>char xstr[] = { 0x.., … };</code>. Compile and
+link this once with every object built from an <code>x.c</code>. Not written under <code>-c</code>.</li>
+</ul>
+<p>An interrupt (or a write error) removes any temporary pool, <code>x.c</code>, and <code>xs.c</code>
+before exiting, so a killed run leaves nothing half-written behind.</p>
+<hr />
+<h2 id="4-exit-status">4. Exit status</h2>
+<ul>
+<li><strong>0</strong> — success.</li>
+<li><strong>1</strong> — cannot create <code>x.c</code>.</li>
+<li><strong>2</strong> — cannot open a named input file.</li>
+<li><strong>3</strong> — read error on the input.</li>
+<li><strong>4</strong> — write error on the <code>strings</code> pool.</li>
+<li><strong>5</strong> — cannot reopen <code>strings</code> to build <code>xs.c</code>.</li>
+<li><strong>6</strong> — cannot create <code>xs.c</code>.</li>
+<li><strong>7</strong> — interrupted, or an output error mid-run (temporaries cleaned up first).</li>
+<li><strong>8</strong> — cannot open <code>strings</code> for writing.</li>
+</ul>
+<hr />
+<h2 id="5-examples">5. Examples</h2>
+<pre><code>xstr -c foo.c                 # phase 1: extract foo.c's strings, rewrite to x.c
+xstr                          # phase 2: build xs.c from the accumulated pool
+xstr foo.c                    # one-shot: x.c and xs.c for foo.c, no persistent pool
+cat foo.c | xstr -            # same, reading the program from standard input
+xstr -v -c foo.c              # narrate each string as it is added to the pool
+</code></pre>
+<p>A full 2.9BSD-style build of several sources:</p>
+<pre><code>rm -f strings
+for f in *.c; do xstr -c $f &amp;&amp; cc -c x.c &amp;&amp; mv x.o ${f%.c}.o; done
+xstr &amp;&amp; cc -c xs.c            # then link every .o together with xs.o
+</code></pre>
+<p>Continue to the <a href="../xstr-design/index.html">design document</a> for the pool layout and the
+suffix-overlap hashing.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

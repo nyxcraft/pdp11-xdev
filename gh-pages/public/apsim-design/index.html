@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-apsim — design | pdp11-xdev</title>
+  <meta name="description" content="This document describes how pdp11-apsim runs a PDP-11 a.out on a modern host: the emulated machine, the instruction interpreter, the bit-faithful FP11, the loader, and the per-era syscall layer that turns guest sys traps…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-apsim — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-the-emulated-machine">1. The emulated machine</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-the-instruction-interpreter">2. The instruction interpreter</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-fp11-floating-point-bit-faithful-no-host-fp">3. FP11 floating point (bit-faithful, no host FP)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-the-loader">4. The loader</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-universes-and-kernel-personalities">5. Universes and kernel personalities</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-the-syscall-layer">6. The syscall layer</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-the-first-edition-personality">7. The First Edition personality</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#8-memory-safety-discipline">8. Memory-safety discipline</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#testing">Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#for-a-maintainer">For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-apsim — design</h1>
+          <p class="docs-article__summary">This document describes how pdp11-apsim runs a PDP-11 a.out on a modern host: the emulated machine, the instruction interpreter, the bit-faithful FP11, the loader, and the per-era syscall layer that turns guest sys traps…</p>
+          <p class="docs-article__source">pdp11-apsim — design</p>
+        </header>
+        <div class="prose">
+<p>This document describes how <code>pdp11-apsim</code> runs a PDP-11 <code>a.out</code> on a modern
+host: the emulated machine, the instruction interpreter, the bit-faithful
+FP11, the loader, and the per-era syscall layer that turns guest <code>sys</code> traps
+into host system calls. For how to <em>use</em> it, see the <a href="../apsim-guide/index.html">user guide</a>.</p>
+<p>apsim is a <strong>user-mode</strong> simulator, in the spirit of Apout and <code>qemu-user</code>: it
+loads one <code>a.out</code>, executes its instructions, and services the <code>sys</code> traps its
+libc stubs make — it does <strong>not</strong> boot a kernel or model the MMU, the Unibus,
+or any device. There is one guest process image, no supervisor mode, no page
+tables; &quot;the kernel&quot; is a C switch statement. The tool is one file, <code>apsim.c</code>
+(~6,100 lines), plus <code>../common/universe.h</code> (generated) for the universe list —
+kept self-contained because it is the execution engine the tree's
+<a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/oracle/README.md">oracle suites</a> run their ground-truth binaries under,
+and it builds with nothing but a host C compiler.</p>
+<hr />
+<h2 id="1-the-emulated-machine">1. The emulated machine</h2>
+<p>Core is two fixed 64 KB byte arrays: <code>M[]</code> (data, and the shared I&amp;D space) and
+<code>MI[]</code> (the separate instruction space, used only by 0411/0431 binaries).
+<code>Isp</code> points at whichever array instruction fetches read. <strong>Every guest memory
+access masks its address to 16 bits</strong> (<code>a &amp;= 0xffff</code>) in <code>ld2</code>/<code>st2</code>/<code>ld1</code>/
+<code>st1</code>/<code>ifetch</code>, so a guest can never index outside its own 64 KB — a wild
+pointer wraps, exactly as the hardware would.</p>
+<p>The register file is <code>unsigned short R[8]</code> with <code>SP=R[6]</code>, <code>PC=R[7]</code>, and the
+four condition codes <code>FN/FZ/FV/FC</code> as separate ints. There is no PSW word kept
+as such; it is assembled only where one is observed (a signal frame, <code>RTI</code>).</p>
+<p><code>ifetch</code> reads I-space; the data loads/stores read D-space. On shared-I&amp;D
+binaries the two arrays are the same pointer, so the distinction is free; on
+separate-I&amp;D it is what lets a 0411 program address a full 64 KB of code <em>and</em>
+64 KB of data.</p>
+<hr />
+<h2 id="2-the-instruction-interpreter">2. The instruction interpreter</h2>
+<p><code>step()</code> fetches one word at <code>PC</code>, advances <code>PC</code>, and dispatches in an order
+chosen so overlapping encodings resolve correctly:</p>
+<table>
+<thead>
+<tr>
+<th>order</th>
+<th>class</th>
+<th>note</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>conditional branches</td>
+<td>high bits overlap other groups, so tested first</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>sys</code>/<code>trap</code> (<code>0104400|n</code>)</td>
+<td>into <code>do_sys</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>EMT</code> (<code>0104000|n</code>)</td>
+<td>overlay switch, V1 validated-<code>rts</code>, else SIGEMT</td>
+</tr>
+<tr>
+<td>4</td>
+<td>late hardware</td>
+<td><code>late_insn</code>: MFPT/SPL/TSTSET/WRTLCK, FIS, CIS</td>
+</tr>
+<tr>
+<td>5</td>
+<td>FP11 group (<code>017xxxx</code>)</td>
+<td>into <code>do_fp</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td>double-operand</td>
+<td>MOV/CMP/BIT/BIC/BIS/ADD/SUB, <code>+010</code> = byte forms</td>
+</tr>
+<tr>
+<td>7</td>
+<td>single-operand &amp; the rest</td>
+<td>CLR/INC/JSR/JMP/…</td>
+</tr>
+</tbody>
+</table>
+<p>Addressing is resolved once, by <code>operand(spec, byte)</code>, which returns a
+&quot;location&quot; — either <code>ISREG|n</code>, an <code>ISIMM</code> literal, or a 16-bit memory address —
+and performs auto-increment/decrement and index/absolute word fetches as a side
+effect. Index and absolute words come from <strong>I-space</strong> (<code>ifetch</code>), the pointers
+they yield are dereferenced in <strong>D-space</strong> (<code>ld2</code>). <code>getv</code>/<code>putv</code> then read or
+write through the location. The one deliberate special case is <code>MOVB</code> into a
+register, which sign-extends the byte into the high half (every other byte
+instruction leaves it alone) — without it a <code>movb</code> of a NUL leaves stale high
+bits and a <code>printf %d</code> format loop never terminates.</p>
+<hr />
+<h2 id="3-fp11-floating-point-bit-faithful-no-host-fp">3. FP11 floating point (bit-faithful, no host FP)</h2>
+<p>The FP11 is simulated with <strong>true soft D/F arithmetic</strong>, not host <code>double</code>s.
+An accumulator is a <code>struct fpv {sign, exp, frac}</code> carrying a 56-bit mantissa
+in D mode (24 in F). Every operation normalizes a 128-bit intermediate and
+rounds by adding one at the first discarded bit — the FP11's round-half-up
+rule, with no sticky bit and no round-to-even. A host <code>double</code> has only 53
+mantissa bits and rounds differently, so it silently mis-rounds the last bits
+(caught against <code>ecvt.c</code>'s constant conversion: <code>...c3</code> on the real machine,
+<code>...c0</code> under host-double emulation). The KEV11 <strong>FIS</strong> instructions share the
+exact same engine at F width, so <strong>no host floating point is used anywhere</strong> in
+apsim and there is no <code>libm</code> dependency.</p>
+<p><code>bits2fpv</code>/<code>fpv2bits</code> convert to and from the on-disk DEC layout exactly both
+ways; <code>rdfloat</code>/<code>wrfloat</code> move 2 or 4 guest words. The FPS word tracks D/L/T
+mode; <code>FT</code> (chop) truncates instead of rounding, exercised by the <code>factor</code>
+regression.</p>
+<p><code>late_insn</code> covers the instructions later PDP-11s added over the base set:
+<code>MFPT</code>, <code>SPL</code>, <code>TSTSET</code>/<code>WRTLCK</code>, the FIS group, and the <strong>Commercial
+Instruction Set</strong> — CIS being packed/zoned <strong>decimal</strong> arithmetic on 128-bit
+intermediates (<code>dec_read</code>/<code>dec_write</code>/<code>dec_cc</code>), enough of the ADDN/SUBN/CMPN/CVT
+family for the corpus. The whole group is the subject of the <code>cistest.s</code> golden
+probe (§Testing).</p>
+<hr />
+<h2 id="4-the-loader">4. The loader</h2>
+<p><code>load_aout_env</code> is shared by the initial exec and by guest <code>exec(2)</code>. It reads
+the eight-word header a word at a time, <strong>masking each to 16 bits</strong> so a
+short or hostile file cannot turn a size into a negative int and thence a huge
+<code>size_t</code>. It recognises:</p>
+<table>
+<thead>
+<tr>
+<th>magic</th>
+<th>form</th>
+<th>load</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0405</code></td>
+<td>First Edition</td>
+<td>whole file image at core <code>040000</code>, entry <code>040000</code></td>
+</tr>
+<tr>
+<td><code>0407</code></td>
+<td>shared I&amp;D, unsplit</td>
+<td>text then data at 0 (V7 lineage) / at <code>040000</code> under a V1/V2 universe</td>
+</tr>
+<tr>
+<td><code>0410</code></td>
+<td>shared I&amp;D, read-only text</td>
+<td>data on the next 8 KB boundary</td>
+</tr>
+<tr>
+<td><code>0411</code></td>
+<td><strong>separate I&amp;D</strong></td>
+<td>text into <code>MI[]</code>, data into <code>M[]</code>, both from 0</td>
+</tr>
+<tr>
+<td><code>0430</code></td>
+<td>auto-overlay, shared I&amp;D</td>
+<td>overlay window above text, data above it</td>
+</tr>
+<tr>
+<td><code>0431</code></td>
+<td>auto-overlay, <strong>separate I&amp;D</strong></td>
+<td>base text <em>and</em> the window in I-space, data at D:0</td>
+</tr>
+</tbody>
+</table>
+<p>Segments are read by <code>loadseg</code>, which <strong>clamps</strong> the count so <code>off+count</code> can
+never exceed <code>0x10000</code> — a short file just leaves the tail zero (core was
+<code>memset</code> first).</p>
+<p><strong>Overlays.</strong> A 0430/0431 header carries <code>max_ovl</code> and an <code>ov_siz[]</code> array (7
+slots through 2.9, 15 from 2.10). Each image reads into a fixed 16 KB <code>ov_img[]</code>
+slot, and the loader <strong>bounds every <code>ov_siz</code> to the slot and to core</strong> because
+the run-time <code>EMT</code> handler <code>memcpy</code>s <code>ov_siz</code> bytes into the window. That handler
+(<code>ovno</code> in <code>r0</code>, the 2.9 <code>csv.s</code> protocol) zeroes the <code>ov_max</code> window and copies
+the image in; for 0431 the window lives in I-space (<code>MI[]</code>), which is how 2.11
+csh fits (55 K base + window + data) into 64 K.</p>
+<p><strong>Scripts.</strong> A <code>#!</code> file execs the named interpreter with the classic argv
+rewrite (one optional argument, one level). A shebang-less <em>text</em> file on
+apsim's <strong>own</strong> command line runs through the guest <code>/bin/sh</code> — the <code>execvp</code>
+courtesy, since there is no calling shell to do the <code>ENOEXEC</code> fallback — while a
+<em>guest</em> exec of such a file fails authentically.</p>
+<p>The exec stack is laid out where crt0 expects it (<code>setup_stack</code>: <code>argc</code>, argv,
+NULL, envp, NULL, strings near the top of D-space; env from the caller, else
+<code>$APSIM_ENV</code>, else a default). First Edition uses <code>setup_stack_v1</code> (a
+<code>-1</code>-terminated argv near the top of 8 K core — pointers must be positive 16-bit
+values or <code>ar</code>'s member walk breaks). The entry PC is masked with <code>~1</code>: the V7
+lineage treats an odd <code>a_entry</code> as a marker, not an address.</p>
+<hr />
+<h2 id="5-universes-and-kernel-personalities">5. Universes and kernel personalities</h2>
+<p>apsim serves 20 universes (V1–V7, 1BSD/2BSD/2.79/2.8/2.9/2.10/2.11, System III,
+SVR2, Ultrix-11 1.0–3.1), selected by <code>--universe</code>/<code>-u</code> or <code>$PDP11_UNIVERSE</code>;
+the default is <strong>bsd29</strong>. The list lives in the generated <code>universe.h</code>, which
+maps each universe to one of eight <strong>era-ordered</strong> kernel personalities:</p>
+<pre><code>K_V1 &lt; K_V56 &lt; K_V7 &lt; K_SYS3 &lt; K_ULTRIX &lt; K_BSD2X &lt; K_BSD210 &lt; K_BSD211
+</code></pre>
+<p>Because the enum is era-ordered, lineage checks read as ranges — <code>Kern &gt;= PDP11_K_BSD210</code> means &quot;the 4.3-numbered eras&quot; — and one comparison decides, for
+instance, whether <code>stackargs</code> (arguments passed on the C stack rather than
+inline after the trap) is in force. Selecting a universe sets <code>Kern</code>, <code>Univ</code>,
+and <code>stackargs</code>; a <code>0405</code> magic still forces the First Edition personality at
+load time regardless of the universe named.</p>
+<hr />
+<h2 id="6-the-syscall-layer">6. The syscall layer</h2>
+<p><code>do_sys</code> decodes the trap's argument-passing convention, then hands a canonical
+number to <code>do_syscall</code>:</p>
+<ul>
+<li><strong>indirect</strong> (<code>sys 0; .word blk</code>) — the real number and inline args live at
+<code>blk</code>;</li>
+<li><strong>inline</strong> (V1..2.9) — argument words follow the trap; <code>do_sys</code> steps <code>PC</code>
+past <code>sysnargs(num)</code> of them (counts taken verbatim from Apout's <code>v7arg[]</code>);</li>
+<li><strong>stack</strong> (2.10/2.11) — a bare <code>sys N</code> has no inline words; args are read from
+<code>2(sp)…</code>, and a per-call table decides whether the first arg is an fd (which
+still rides in <code>r0</code>);</li>
+<li><strong>Ultrix <code>0200</code></strong> — the 2.0 FP-less <code>/bin</code> sets bit <code>0200</code> to mean &quot;args on
+the C stack&quot; with the call number in the low 7 bits (<code>sys 204</code> = <code>write|0200</code>).</li>
+</ul>
+<p><code>do_syscall</code> is a single <strong>canonical switch in V7 numbering</strong> — the lineage
+trunk, which 2.8/2.9 extend in place — plus synthetic <code>C_*</code> extension ids for
+calls with no V7 ancestor (sockets, <code>sigvec</code>, <code>statfs</code>, …). Each renumbering
+era supplies one <strong>data remap table</strong> (<code>Bsd210Remap</code>, <code>Bsd211Remap</code>,
+<code>Sys3Remap</code>, <code>Ultrix3Remap</code>) mapping its guest numbers onto canonical ones;
+<code>sremap_apply</code> moves a number and, via the <code>SR_STAT</code> flag, records when the era
+wants the newer <code>stat</code> shape. A V5/V6 call that did not yet exist is gated to
+<code>EINVAL</code> by <code>v56_nosys</code>.</p>
+<p>Around that switch:</p>
+<ul>
+<li><strong>struct stat</strong> has three era writers — <code>put_stat_v6</code> (packed 36-byte, 16-bit
+size), <code>put_stat_v7</code> (32-bit size), <code>put_stat_211</code> (52-byte, 4.3 layout) —
+chosen by universe and the <code>SR_STAT</code> flag.</li>
+<li><strong>errno</strong> is mapped host→guest by <code>errno_h2g</code>: the first 34 are the shared V7
+inheritance and pass through; past that the eras diverge (the 4.3 eras moved
+<code>EAGAIN</code> to 35 and gained the socket errno block at 35..68), so an unmappable
+Linux number collapses to a sane in-range meaning rather than leaking through.
+An unknown syscall number returns <code>ENOSYS</code>, never halts.</li>
+<li><strong>directories</strong> — classic Unix reads them with <code>read(2)</code>, which Linux refuses,
+so apsim snapshots an opened directory into the era's on-disk record format
+(V1 10-byte, V5..2.9 16-byte, 2.10/2.11 4.3 variable) and serves reads from
+the snapshot; the real <code>ls</code> works. <strong>Sockets</strong> are real host sockets — 2.11's
+<code>AF_</code>/<code>SOCK_</code> constants and <code>sockaddr_in</code> already match the host, so only the
+option level/name and the <code>AF_UNIX</code> path need translating.</li>
+<li><strong>signals</strong> use the full 4.3 reliable frame: delivery builds the 26-byte
+<code>sendsig</code> frame (including <code>sc_ovno</code>, the overlay mapped when the signal hit,
+so <code>sigreturn</code> restores it), enters the libc <code>sigtramp</code>, and blocks
+<code>sig|hmask</code> until <code>sigreturn</code>. Guest numbers are translated to/from host
+numbers (they agree for most of 1–15 but diverge in the 16–31 job-control
+set). <code>fork</code>/<code>wait</code>/<code>pipe</code> use the <strong>real host</strong> calls, so a child inherits a
+full copy of the guest image for free; host process groups back the guest's,
+so a default-stop signal really stops and <code>SIGCONT</code> resumes it — the genuine
+2.11 csh runs jobs and pipelines.</li>
+<li><strong>ptrace</strong> (opt-in via <code>$APSIM_PTRACE</code>) can't reach a forked tracee's <code>M[]</code>/
+<code>R[]</code> directly, so a traced guest parks on its trap and serves the classic
+ops (<code>PT_READ/WRITE_I/D/U</code>, <code>PT_CONTINUE</code>, <code>PT_STEP</code>, <code>PT_KILL</code>) over an
+abstract <code>AF_UNIX</code> socket named for its pid; the tracer's <code>wait</code> sees a
+synthetic <code>WIFSTOPPED</code>. This drives the real 2.11 <code>adb</code>.</li>
+</ul>
+<p>Every apsim diagnostic goes to <code>Dbg</code>, a private high-numbered close-on-exec dup
+of the startup stderr — <strong>not</strong> raw fd 2 — because the guest owns fds 0/1/2 and
+a program that reassigns fd 2 (csh does) would otherwise mute the simulator.</p>
+<hr />
+<h2 id="7-the-first-edition-personality">7. The First Edition personality</h2>
+<p>A <code>0405</code> binary (or a <code>0407</code> under <code>-u v1</code>/<code>v2</code>) selects the 1971–72 machine.
+The whole file image loads at <code>040000</code> and runs from there — the magic word
+<code>0405</code> <em>is</em> <code>br .+14</code>, branching over its own 12-byte header. Traps follow the
+First Edition convention: no indirect call, per-call inline argument words
+(from <code>v1inl[]</code>, cross-checked against the Nov-1971 manual), fd-style first args
+in <code>r0</code>, the <strong>C bit</strong> signalling error, and <code>time</code> returning in the KE11-A's
+AC/MQ. The machine grows a <strong>KE11-A</strong> extended-arithmetic element at <code>0177300</code>
+(intercepted in <code>ld2</code>/<code>st2</code>), because the 11/20 had no EIS and V1 userland
+multiplies and divides through it. <code>emt n</code> is the V1 kernel's <strong>validated
+<code>rts</code></strong> (it checks the return address is in core, even, and non-null, then
+bounces through it — <code>chown</code> returns from subroutines this way), and
+<code>v1statout</code> writes the 34-byte stat. The three surviving First Edition binaries
+(<code>ar</code>, <code>mv</code>, <code>chown</code>) run.</p>
+<hr />
+<h2 id="8-memory-safety-discipline">8. Memory-safety discipline</h2>
+<p>Because the loader parses vintage and dump-carved binaries and the syscall
+layer copies guest-controlled lengths, hostile input is a first-class concern.
+Three rules contain it: every <code>ld/st/ifetch</code> <strong>masks the address to 16 bits</strong>,
+so no access escapes its 64 KB array; every bulk transfer between core and the
+host goes through <strong><code>gclamp(addr, len)</code></strong>, which clamps the length to what fits
+from <code>addr</code> to the end of core (<code>read</code>/<code>write</code>/<code>readv</code>/<code>writev</code>/<code>send</code>/<code>recv</code>/
+<code>sendto</code>/<code>recvfrom</code>/<code>sendmsg</code>/<code>recvmsg</code> and the ptrace read/write paths); and
+the <strong>loader clamps</strong> every segment read (<code>loadseg</code>), bounds each overlay size
+to its slot and to core, keeps the <code>EMT</code> <code>memcpy</code> within <code>ov_max</code>, and reads the
+header with per-word masking. Valid guests are unaffected by any of it.</p>
+<hr />
+<h2 id="testing">Testing</h2>
+<p><code>make check</code> runs <code>tests/run.sh</code>, a set of golden probes assembled with this
+tree's own <code>pdp11-as</code>:</p>
+<table>
+<thead>
+<tr>
+<th>probe</th>
+<th>asserts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cistest.s</code></td>
+<td>MFPT/SPL/TSTSET/WRTLCK, FIS, and decimal CIS — each case jumps to <code>fail</code> with its number in <code>r5</code>, so the exit code names the first failure</td>
+</tr>
+<tr>
+<td><code>errno.s</code></td>
+<td>a failed <code>open</code> delivers the <strong>era</strong> errno (<code>ENOENT</code>=2), not a blanket 1 or a raw host number</td>
+</tr>
+<tr>
+<td><code>gate211.s</code></td>
+<td>the universe gate <strong>both ways</strong>: <code>sys 64</code> is <code>getpagesize</code> under <code>-u bsd211</code> and must <strong>fail</strong> under the default universe</td>
+</tr>
+<tr>
+<td><code>fpimm.s</code></td>
+<td>FP11 <code>$literal</code> operands and <code>FT</code> chop mode (the <code>factor</code> regression)</td>
+</tr>
+<tr>
+<td><code>timetext.s</code>, <code>ptrace.s</code>, <code>sockpair.s</code></td>
+<td><code>time</code> writes no memory; the ptrace channel; socketpair</td>
+</tr>
+<tr>
+<td>real era binaries</td>
+<td>V5/V6 <code>ls</code>/<code>cat</code> and 2.11 <code>echo</code>/<code>cat</code>, skipped when the distribution trees are absent</td>
+</tr>
+</tbody>
+</table>
+<p><code>make fuzz-smoke</code> runs <code>tests/fuzz-load.sh</code> over a <strong>deterministic 800-case</strong>
+malformed-<code>a.out</code> corpus (<code>mkfuzz.py</code>: every exec- and overlay-header word
+crossed with hostile values, plus a truncation ladder, over one seed per magic).
+A case passes unless apsim dies of a sanitizer abort or its own SIGSEGV — a
+rejected load, a guest fault, a clean exit, and a timeout are all legitimate
+answers to garbage. <code>make check-san</code> rebuilds under <strong>ASan+UBSan</strong>
+(non-recoverable) and runs both the suite and the fuzz smoke under them; leak
+detection is deliberately off (the guest space and tables are never freed by
+design), the value being memory-corruption detection on the hostile-input paths.</p>
+<hr />
+<h2 id="for-a-maintainer">For a maintainer</h2>
+<ul>
+<li><strong>It is one file on purpose.</strong> <code>apsim.c</code> builds with a host C compiler and
+<code>universe.h</code>; keep it self-contained so the oracle suites can run it anywhere.</li>
+<li><strong><code>universe.h</code> is generated</strong> from <code>universes.tsv</code> by <code>mkuniverse.py</code> — add or
+change a universe there, never by editing the header, and map it to one of the
+era-ordered <code>PDP11_K_*</code> personalities.</li>
+<li><strong>The syscall switch is canonical V7 numbering.</strong> A new era gets a <code>sremap</code>
+data table, not a new copy of the switch; a call with no V7 ancestor gets a
+<code>C_*</code> extension id. Shape differences (stat, stack args) travel in flags, not
+forks.</li>
+<li><strong>Honour the memory-safety discipline.</strong> Any new bulk copy between guest core
+and the host must go through <code>gclamp</code> (or an equivalent bound); the loader
+fuzzer and <code>check-san</code> are what keep that honest — run <code>make check-san</code> after
+touching the loader or a copy path.</li>
+<li><strong>No host floating point, ever.</strong> FP11 and FIS share the soft engine; adding a
+host <code>double</code> reintroduces the rounding divergence this design exists to avoid.</li>
+<li><strong>Diagnostics go to <code>Dbg</code>, not stderr</strong> — the guest owns fd 2.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

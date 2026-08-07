@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-ld — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-ld is the link editor: it combines classic 2BSD a.out objects and archives into a single PDP-11 executable (or a relinkable partial object), resolving references between them, laying out the text, data and bss segm…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-ld — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-options">2. Options</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-libraries-and-the-universe">3. Libraries and the universe</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-overlays">4. Overlays</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-exit-status">5. Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-examples">6. Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-ld — user guide</h1>
+          <p class="docs-article__summary">pdp11-ld is the link editor: it combines classic 2BSD a.out objects and archives into a single PDP-11 executable (or a relinkable partial object), resolving references between them, laying out the text, data and bss segm…</p>
+          <p class="docs-article__source">pdp11-ld — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-ld</code> is the link editor: it combines classic 2BSD a.out objects and
+archives into a single PDP-11 executable (or a relinkable partial object),
+resolving references between them, laying out the text, data and bss segments,
+and relocating every address to its final place. It is the authentic 2.9BSD
+<code>ld</code> running on your host, so it also produces the <code>0430</code>/<code>0431</code> auto-overlay
+images the MENLO overlay machinery was built for.</p>
+<p>For how it works inside — the two passes, the 16-bit word I/O, the relocation
+and overlay internals — see the <a href="../ld-design/index.html">design document</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-ld [-o output] [-e entry] [-u sym] [-r] [-d] [-s] [-n|-i] [-O]
+         [-x|-X|-S] [-D size] [-t] [-Z obj ... -L] [-v name] file ... [-lx]
+</code></pre>
+<p>Each <code>file</code> is an object or an archive, linked in the order given. The output
+is written to <code>a.out</code> unless <code>-o</code> names another file. If every external
+reference is resolved the output is made executable; if not, it is left as a
+relinkable object (see <a href="#5-exit-status">Exit status</a>).</p>
+<hr />
+<h2 id="2-options">2. Options</h2>
+<table>
+<thead>
+<tr>
+<th>option</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-o output</code></td>
+<td>name the output file (default <code>a.out</code>)</td>
+</tr>
+<tr>
+<td><code>-e sym</code></td>
+<td>set the entry point to <code>sym</code></td>
+</tr>
+<tr>
+<td><code>-u sym</code></td>
+<td>enter <code>sym</code> as an undefined reference, to force in the library member that defines it</td>
+</tr>
+<tr>
+<td><code>-l x</code></td>
+<td>link the library <code>lib&lt;x&gt;.a</code> (resolved against the universe lib dir — §3)</td>
+</tr>
+<tr>
+<td><code>-r</code></td>
+<td><strong>relinkable</strong> output: keep relocation bits, leave undefined symbols undefined, do not allocate common</td>
+</tr>
+<tr>
+<td><code>-d</code></td>
+<td>allocate common (bss) even under <code>-r</code></td>
+</tr>
+<tr>
+<td><code>-s</code></td>
+<td>strip <strong>all</strong> symbols from the output</td>
+</tr>
+<tr>
+<td><code>-x</code></td>
+<td>discard local symbols</td>
+</tr>
+<tr>
+<td><code>-X</code></td>
+<td>discard local symbols whose names begin with <code>L</code> (compiler temporaries)</td>
+</tr>
+<tr>
+<td><code>-S</code></td>
+<td>keep only ordinary locals and globals; drop other symbol types</td>
+</tr>
+<tr>
+<td><code>-n</code></td>
+<td>pure, read-only shared text (<code>0410</code>)</td>
+</tr>
+<tr>
+<td><code>-i</code></td>
+<td>separate instruction and data space (<code>0411</code>)</td>
+</tr>
+<tr>
+<td><code>-O</code></td>
+<td>force the <code>0405</code> overlay magic (OMAGIC)</td>
+</tr>
+<tr>
+<td><code>-D size</code></td>
+<td>pad the data segment out to <code>size</code> bytes</td>
+</tr>
+<tr>
+<td><code>-t</code></td>
+<td>trace: print each file and symbol as it is processed</td>
+</tr>
+<tr>
+<td><code>-Z</code></td>
+<td>begin a text-overlay segment (§4)</td>
+</tr>
+<tr>
+<td><code>-L</code></td>
+<td>end a text-overlay segment (§4)</td>
+</tr>
+<tr>
+<td><code>-v name</code></td>
+<td>name an overlay node in the overlay tree (§4)</td>
+</tr>
+</tbody>
+</table>
+<p>The default output is <code>0407</code> (FMAGIC) — impure, relocated, executable. Flags may
+be glued to the dash (<code>-rd</code>, <code>-sn</code>). <code>-o</code>, <code>-e</code>, <code>-u</code>, <code>-v</code> and <code>-D</code> each take
+the following argument.</p>
+<hr />
+<h2 id="3-libraries-and-the-universe">3. Libraries and the universe</h2>
+<p><code>-lx</code> names <code>lib&lt;x&gt;.a</code> and does <strong>not</strong> search <code>/usr/lib</code>. The library directory
+is found relative to the <code>pdp11-ld</code> binary (via <code>/proc/self/exe</code>): the tool
+strips the trailing <code>bin/</code> and looks in the sibling <code>lib/</code>. Within it, an era
+subdirectory is preferred:</p>
+<pre><code>.../lib/&lt;universe&gt;/libx.a      # tried first
+.../lib/libx.a                 # flat fallback
+</code></pre>
+<p>The universe is taken from <code>$PDP11_UNIVERSE</code> (default from <code>universe.h</code>, e.g.
+<code>bsd29</code>), so the same command links against the right era's C library just by
+changing that variable. On a final link <code>ld</code> also stamps the chosen era into the
+output as the absolute symbol <code>__univ</code>, letting one universal <code>libc.a</code> pick its
+behaviour at run time.</p>
+<p>An archive carrying a <code>__.SYMDEF</code> directory (built by <code>ranlib</code>) is fast-loaded:
+only the members that resolve a reference are pulled in, regardless of their
+order in the archive. If the directory is out of date, <code>ld</code> warns and scans the
+members in order instead.</p>
+<hr />
+<h2 id="4-overlays">4. Overlays</h2>
+<p>For programs larger than the address space, <code>ld</code> produces overlay images.</p>
+<ul>
+<li><strong><code>-Z obj … -L</code></strong> brackets a run of objects into one text overlay. Their code
+is placed at the shared overlay base and reached through 8-byte JSR thunks in
+the resident text; the output magic becomes <code>0430</code> (with <code>-n</code>) or <code>0431</code> (with
+<code>-i</code>). An overlay link therefore <strong>requires <code>-n</code> or <code>-i</code></strong> — plain <code>0407</code>
+overlays are rejected. Up to 7 overlays.</li>
+<li><strong><code>-v name</code></strong> names a node in an overlay <em>tree</em>: overlays sharing a name share
+everything defined before the node and are laid down as siblings after it.</li>
+</ul>
+<hr />
+<h2 id="5-exit-status">5. Exit status</h2>
+<ul>
+<li><strong>0</strong> — a clean link with no errors; the output is made executable.</li>
+<li><strong>1</strong> — the output was written but with non-fatal errors: undefined symbols
+left, a multiply-defined symbol, or an entry point not in text. The output is
+left non-executable (relink or fix, then rerun).</li>
+<li><strong>4</strong> — a fatal error: no input files, a file that cannot be opened or
+created, a bad object format, a table overflow, too many overlays, or an
+interrupt. No usable output is produced.</li>
+</ul>
+<p>An undefined-symbol list is printed (unless <code>-r</code>), so a partial link tells you
+exactly what is still missing.</p>
+<hr />
+<h2 id="6-examples">6. Examples</h2>
+<pre><code>pdp11-ld -o prog crt0.o prog.o -lc              # link a program against libc
+pdp11-ld -r -o part.o a.o b.o                   # partial, relinkable object
+pdp11-ld -n -o sh crt0.o sh.o -lc               # pure shared text (0410)
+pdp11-ld -i -o big crt0.o big.o -lc             # split I/D space (0411)
+pdp11-ld -n -Z ov1.o -Z ov2.o -L base.o -lc     # auto-overlay image (0430)
+PDP11_UNIVERSE=v7 pdp11-ld -o p crt0.o p.o -lc  # link for the V7 universe
+pdp11-ld -t -o prog crt0.o prog.o -lc           # trace what gets pulled in
+</code></pre>
+<p>Continue to the <a href="../ld-design/index.html">design document</a> for the passes, the word-at-a-time
+I/O, and the relocation and overlay internals.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

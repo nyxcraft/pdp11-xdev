@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-cpp — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-cpp is the C preprocessor the PDP-11 pcc was built against — John Reiser&#x27;s fast cpp of the 2.9BSD line, the pre-ANSI one.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-cpp — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#options">Options</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#what-is-predefined">What is predefined</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#include-search">Include search</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#exit-status">Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#examples">Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-cpp — user guide</h1>
+          <p class="docs-article__summary">pdp11-cpp is the C preprocessor the PDP-11 pcc was built against — John Reiser&#x27;s fast cpp of the 2.9BSD line, the pre-ANSI one.</p>
+          <p class="docs-article__source">pdp11-cpp — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-cpp</code> is the C preprocessor the PDP-11 pcc was built against — John
+Reiser's fast <code>cpp</code> of the 2.9BSD line, the pre-ANSI one. It handles
+<code>#include</code>, <code>#define</code>/<code>#undef</code>, macro expansion, <code>#line</code>, and the <code>#if</code> family,
+and it is a <strong>cross</strong> preprocessor: it looks for headers in the PDP-11 target
+tree, not the host's <code>/usr/include</code>, and it predefines the target's macros. It
+runs on your host and emits <code># line &quot;file&quot;</code> markers for the compiler.</p>
+<p>For why it is pre-ANSI on purpose, how the header search is resolved, and the
+LP64 detail, see the <a href="../cpp-design/index.html">design document</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-cpp [-P] [-E] [-R] [-C] [-Dname[=def]] ... [-Uname] ... [-Idir] ...
+          [infile [outfile]]
+</code></pre>
+<p>With two filenames the first is the input and the second the <strong>output</strong> file;
+with one, the input, output to stdout; with none, stdin to stdout. A third name
+is an error (<code>extraneous name</code>).</p>
+<hr />
+<h2 id="options">Options</h2>
+<p>Read directly from <code>main()</code>; there is no <code>--std</code>, <code>-nostdinc</code>, or <code>-M</code> — the
+PDP-11 cpp is the plain Reiser preprocessor.</p>
+<table>
+<thead>
+<tr>
+<th>option</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-Dname</code> / <code>-Dname=def</code></td>
+<td>define <code>name</code> as <code>1</code>, or as <code>def</code> (bare <code>-D</code> with no name is ignored)</td>
+</tr>
+<tr>
+<td><code>-Uname</code></td>
+<td>undefine <code>name</code>, including a predefined one (an <code>=…</code> tail is stripped)</td>
+</tr>
+<tr>
+<td><code>-Idir</code></td>
+<td>add <code>dir</code> to the header search path, before the defaults (up to eight)</td>
+</tr>
+<tr>
+<td><code>-C</code></td>
+<td>keep comments in the output</td>
+</tr>
+<tr>
+<td><code>-P</code></td>
+<td>no <code># line</code> directives (also implies <code>-E</code>)</td>
+</tr>
+<tr>
+<td><code>-E</code></td>
+<td>accepted, no-op</td>
+</tr>
+<tr>
+<td><code>-R</code></td>
+<td>allow recursive macros (disables the recursion guard)</td>
+</tr>
+<tr>
+<td><code>-</code></td>
+<td>a bare <code>-</code> is accepted and ignored</td>
+</tr>
+</tbody>
+</table>
+<p>Up to 20 <code>-D</code> and 20 <code>-U</code> options are honoured; beyond that cpp warns and
+ignores the excess. An unrecognised <code>-x</code> draws <code>unknown flag</code>.</p>
+<hr />
+<h2 id="what-is-predefined">What is predefined</h2>
+<p><code>pdp11-cpp</code> predefines <strong><code>unix</code></strong> and <strong><code>pdp11</code></strong> (both to <code>1</code>) and the standard
+<strong><code>__LINE__</code></strong> and <strong><code>__FILE__</code></strong>. That is the whole set — the system and the
+machine; everything else (<code>BSD</code>, feature macros, and so on) comes from the
+target headers or from <code>-D</code>. The <code>pdp11-cc</code> driver passes <code>-Dunix -Dpdp11</code> too,
+which is redundant with what cpp already defines.</p>
+<hr />
+<h2 id="include-search">Include search</h2>
+<p>The search order for <code>#include</code> is:</p>
+<ol>
+<li><strong><code>dirs[0]</code></strong> — the directory of the file doing the including (the source
+file's directory, or <code>.</code> for stdin). A <code>#include &quot;…&quot;</code> starts here; a
+<code>#include &lt;…&gt;</code> skips it.</li>
+<li><strong>each <code>-Idir</code></strong>, in command-line order.</li>
+<li><strong>the install include directory</strong>, resolved relative to the cpp binary:
+<code>.../bin/&lt;prefix&gt;-cpp</code> → <code>.../include/&lt;universe&gt;</code>, where <code>&lt;universe&gt;</code> is
+<code>$PDP11_UNIVERSE</code> (default <code>bsd29</code>). If that era subdirectory does not exist,
+a flat <code>.../include</code> is used instead. This is the same binary-relative scheme
+cc and ld use — no installed <code>/usr</code> tree is assumed.</li>
+<li><strong><code>include</code></strong> — a relative path, for build-tree headers before install.</li>
+<li><strong><code>/usr/include</code></strong>.</li>
+</ol>
+<p><code>$PDP11_UNIVERSE</code> therefore selects <em>which era's headers</em> an unqualified
+<code>#include</code> resolves against, without any flag:</p>
+<pre><code>PDP11_UNIVERSE=bsd211 pdp11-cpp prog.c    # resolve &lt;&gt; headers from include/bsd211
+</code></pre>
+<hr />
+<h2 id="exit-status">Exit status</h2>
+<ul>
+<li><strong>0</strong> — success.</li>
+<li><strong>8</strong> — a source or output file could not be opened.</li>
+<li><strong>non-zero</strong> — the count of preprocessing errors (a missing header, an
+unterminated macro call, a bad <code>#include</code>, an unknown flag). Warnings — a
+macro redefinition, a formal/actual mismatch — go to stderr but do not change
+the status.</li>
+</ul>
+<p>All diagnostics are written to standard error (file descriptor 2), prefixed with
+the file and line, exactly as the historic cpp did.</p>
+<hr />
+<h2 id="examples">Examples</h2>
+<pre><code>pdp11-cpp foo.c foo.i                 # preprocess to a file
+pdp11-cpp -DDEBUG -I. foo.c           # define a macro, add a search dir
+pdp11-cpp -C -P foo.c                 # keep comments, drop line directives
+pdp11-cpp -Uunix foo.c                # drop a predefined macro
+PDP11_UNIVERSE=bsd211 pdp11-cpp x.c   # resolve &lt;&gt; headers from the 2.11 tree
+</code></pre>
+<p>Continue to the <a href="../cpp-design/index.html">design document</a> for the pre-ANSI contract, the
+<code>BUFSIZ</code>-512 buffering, the superimposed-code fast path, and the <code>#if</code> parser.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

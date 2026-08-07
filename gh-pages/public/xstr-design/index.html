@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-xstr — design | pdp11-xdev</title>
+  <meta name="description" content="This document describes how pdp11-xstr pulls the string literals out of a C program into one shared, read-only pool and rewrites the program to reference them by offset — the classic 2BSD text-space saver.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-xstr — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-the-problem-a-string-literal-costs-space-in-every-object">1. The problem: a string literal costs space in every object</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-what-each-invocation-does-the-argv-handling">2. What each invocation does (the argv handling)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-the-scan-and-the-rewrite-process-yankstr">3. The scan and the rewrite (`process`, `yankstr`)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-hashing-and-the-suffix-overlap-trick-hashit">4. Hashing, and the suffix-overlap trick (`hashit`)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-seeding-from-an-existing-pool-inithash-fgetnul">5. Seeding from an existing pool (`inithash`, `fgetNUL`)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-writing-the-pool-and-xs-c-flushsh-xsdotc">6. Writing the pool and `xs.c` (`flushsh`, `xsdotc`)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-temp-files-and-interrupt-cleanup-mkstemp-onintr">7. Temp files and interrupt cleanup (`mkstemp`, `onintr`)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#testing">Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#for-a-maintainer">For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-xstr — design</h1>
+          <p class="docs-article__summary">This document describes how pdp11-xstr pulls the string literals out of a C program into one shared, read-only pool and rewrites the program to reference them by offset — the classic 2BSD text-space saver.</p>
+          <p class="docs-article__source">pdp11-xstr — design</p>
+        </header>
+        <div class="prose">
+<p>This document describes how <code>pdp11-xstr</code> pulls the string literals out of a C
+program into one shared, read-only pool and rewrites the program to reference
+them by offset — the classic 2BSD text-space saver. For how to <em>use</em> it, see the
+<a href="../xstr-guide/index.html">user guide</a>.</p>
+<p>The tool is one file, <code>xstr.c</code> — Bill Joy's <code>xstr</code>, UCB, November 1978 — using
+nothing but the C library plus a thin shim. The port's changes are two era-fidelity
+fixes (§6, §7) and the LP64-safe cast macros (§7), not a rewrite.</p>
+<hr />
+<h2 id="1-the-problem-a-string-literal-costs-space-in-every-object">1. The problem: a string literal costs space in every object</h2>
+<p>On the PDP-11 a program's address space is tight, and duplicated string literals
+waste it twice over — once in each object's data, and again when two objects hold
+the same bytes. <code>xstr</code> fixes both by moving every literal into one shared data
+file, <code>strings</code>, and rewriting each source so the literal becomes a reference
+into that pool. Identical strings are then stored <strong>once</strong>, and a string that is
+a trailing substring of another is not stored at all (§4). The pool is compiled
+once, as <code>xstr[]</code>, and linked with everything that references it: <code>&quot;hello&quot;</code> in
+the source becomes <code>(&amp;xstr[N])</code>, where <code>N</code> is the byte offset of <code>hello\0</code> in the
+pool, and each rewritten file carries a <code>char\txstr[];</code> reference at its top.</p>
+<hr />
+<h2 id="2-what-each-invocation-does-the-argv-handling">2. What each invocation does (the argv handling)</h2>
+<p><code>main</code> walks the leading <code>-</code> arguments itself. A bare <code>-</code> sets <code>readstd</code> (read
+the program from standard input); <code>-c</code> sets <code>cflg</code>; <code>-v</code> sets <code>vflg</code>; anything
+else prints the usage line to stderr <strong>but does not exit</strong> — an unknown flag is
+only a warning. What remains in <code>argv</code> are source file names.</p>
+<p>Two decisions follow from the flags, and they are what make <code>xstr</code> a two-phase
+tool. <strong>Which pool file:</strong> <code>if (cflg || (argc == 0 &amp;&amp; !readstd))</code> the persistent
+<code>strings</code> file in the current directory is used and seeded from (§5); otherwise
+the pool is a throwaway <code>/tmp/xstrXXXXXX</code> (§7), unlinked on exit. <strong>Whether to
+emit <code>xs.c</code>:</strong> only when <code>cflg == 0</code>.</p>
+<p>So the standard build is <code>xstr -c foo.c</code> per source (append to <code>strings</code>, emit
+<code>x.c</code>, compile that), then a bare <code>xstr</code> at the end (seed from the finished
+<code>strings</code>, process nothing, emit <code>xs.c</code>). A name <strong>without</strong> <code>-c</code> is the one-shot
+form: a private <code>/tmp</code> pool, both <code>x.c</code> and <code>xs.c</code>, pool removed afterward.</p>
+<hr />
+<h2 id="3-the-scan-and-the-rewrite-process-yankstr">3. The scan and the rewrite (<code>process</code>, <code>yankstr</code>)</h2>
+<p>For each input, <code>stdout</code> is reopened onto <code>x.c</code> and the source is read a line at a
+time. <code>process</code> prints the <code>char\txstr[];</code> forward reference, then copies the
+source through character by character with three things it must recognise so it
+does not mistake them for string literals: <code>/* … */</code> comments (tracked by
+<code>incomm</code>), <code>'c'</code> character constants (copied verbatim, escape and all), and
+<code>#</code>-lines (a <code># &lt;digit&gt;</code> cpp marker is rewritten to <code>#line …</code>, any other passes
+through untouched).</p>
+<p>An unescaped <code>&quot;</code> outside a comment hands the rest of the line to <code>yankstr</code>, which
+consumes the literal up to its closing quote, <strong>decoding escapes as the compiler
+would</strong> — <code>\b \t \r \n \f \\ \&quot;</code>, a dropped <code>\</code>-newline continuation, and one- to
+three-digit octal <code>\ooo</code> — into a NUL-terminated buffer. That decoded byte string,
+not the source text, enters the pool via <code>hashit</code>, and <code>process</code> prints
+<code>(&amp;xstr[N])</code> with the returned offset in its place — so <code>&quot;\n&quot;</code> and a literal
+newline collapse to the same pool byte.</p>
+<hr />
+<h2 id="4-hashing-and-the-suffix-overlap-trick-hashit">4. Hashing, and the suffix-overlap trick (<code>hashit</code>)</h2>
+<p>The pool is addressed by byte offset, so the hash exists only to answer &quot;is this
+exact byte string, or a string that ends the same way, already stored?&quot; The
+bucket is chosen by the <strong>last character</strong> of the string (<code>lastchr(str) &amp; 0177</code>,
+128 buckets, chained) — deliberately, because every candidate for reuse must
+share that final byte.</p>
+<p>Walking the chain, <code>istail(str, of)</code> asks whether <code>str</code> is a <strong>trailing
+substring</strong> of an already-stored <code>of</code>: if so it returns the index <code>d</code> at which
+<code>str</code> begins inside <code>of</code>, and <code>hashit</code> returns <code>hp-&gt;hpt + d</code> — an offset pointing
+<em>into the middle</em> of the existing entry. Because C strings are NUL-terminated,
+the suffix shares the earlier string's terminator, so <code>&quot;ing&quot;</code> needs no storage of
+its own once <code>&quot;string&quot;</code> is in the pool; <code>&amp;xstr[N]</code> simply lands three bytes in.
+Exact reuse is just the <code>d == 0</code> case. A genuinely new string is <code>calloc</code>'d,
+recorded at <code>mesgpt</code> (the next free offset), and <code>mesgpt</code> is advanced by its
+length plus the NUL.</p>
+<hr />
+<h2 id="5-seeding-from-an-existing-pool-inithash-fgetnul">5. Seeding from an existing pool (<code>inithash</code>, <code>fgetNUL</code>)</h2>
+<p>Accumulation across many <code>xstr -c</code> runs works because <code>inithash</code> reads the
+current <code>strings</code> file back in before anything new is scanned. It walks the file
+one NUL-terminated record at a time with <code>fgetNUL</code>, recording each with
+<code>hashit(buf, 0)</code> — <code>new == 0</code> — at the offset it already occupies (<code>mesgpt</code> is
+snapped to <code>tellpt</code>, the running byte position <code>xgetc</code> maintains). The hash
+therefore starts each run holding every offset already handed out — a repeated
+literal resolves to its old offset, and only new strings are appended and written
+back (§6).</p>
+<hr />
+<h2 id="6-writing-the-pool-and-xs-c-flushsh-xsdotc">6. Writing the pool and <code>xs.c</code> (<code>flushsh</code>, <code>xsdotc</code>)</h2>
+<p><code>flushsh</code> walks all buckets, tallying <code>new</code> versus <code>old</code> entries. If <code>new == 0</code>
+and some <code>old</code> exist it returns without touching the file — the fully-seeded case,
+where the pool on disk is already correct. Otherwise it opens <code>strings</code> and, for
+each new entry, <code>fseek</code>s to that entry's offset and writes its bytes plus the NUL,
+so each string lands exactly where its offset promised.</p>
+<p>The open mode is the port's first fidelity fix: <code>fopen(strings, old ? &quot;r+&quot; : &quot;w&quot;)</code>.
+The original used <code>&quot;a&quot;</code>, which under 2.9 stdio merely seeked to EOF once at open
+so the later <code>fseek</code>/<code>fwrite</code> still landed at the seeked offset; modern <code>&quot;a&quot;</code>
+sets <code>O_APPEND</code>, forcing every write to EOF and scrambling an offset-addressed
+file. <code>&quot;r+&quot;</code> restores the era semantics for the accumulation case (fresh runs
+still use <code>&quot;w&quot;</code>).</p>
+<p><code>xsdotc</code> (skipped under <code>-c</code>) then turns the finished <code>strings</code> file into C:
+<code>char\txstr[] = {</code> followed by the pool's bytes as <code>0x??,</code> hex, eight per line,
+and a closing <code>};</code> — the single definition of <code>xstr[]</code> every rewritten <code>x.c</code>
+refers to.</p>
+<hr />
+<h2 id="7-temp-files-and-interrupt-cleanup-mkstemp-onintr">7. Temp files and interrupt cleanup (<code>mkstemp</code>, <code>onintr</code>)</h2>
+<p>The throwaway pool is created with <code>mkstemp(strings)</code> (the port's second fix — the
+original <code>mktemp</code> + open). When <code>strings</code> is the literal <code>&quot;strings&quot;</code> its template
+has no <code>XXXXXX</code>, so <code>mkstemp</code> fails harmlessly; only the <code>/tmp/xstrXXXXXX</code> case
+creates a temp, and only it is unlinked on a normal exit (<code>strings[0] == '/'</code>).</p>
+<p><code>onintr</code> is installed for <code>SIGINT</code> only if the signal was at its default
+disposition (the standard &quot;don't override an inheriting shell's ignore&quot; idiom). On
+interrupt — and on a write error mid-run — it unlinks the temp pool, <code>x.c</code>, and
+<code>xs.c</code> and exits 7, so a killed run leaves nothing half-written behind.</p>
+<hr />
+<h2 id="testing">Testing</h2>
+<p><code>xstr</code> has no in-tree unit harness yet; <code>make check</code> reports &quot;no tests yet&quot; until
+a <code>tests/run.sh</code> exists. It is validated end-to-end instead, the stricter bar: the
+tool's reason to exist here is byte-fidelity, and a wrong pool layout shows up at
+once as a binary that no longer matches. 2.9BSD shipped binaries built through
+<code>xstr</code> — <code>awk</code> links a pre-extracted <code>/usr/lib/awk_strings</code> pool, <code>/usr/70/rogue</code>
+was built the same way — so the oracle's <code>cross-universe.sh</code> runs them under the
+simulator (e.g. <code>awk40 '{ print $1 * $2 }'</code> on the odd-entry 0430 overlay build),
+and any drift in offset assignment or pool layout breaks them.</p>
+<hr />
+<h2 id="for-a-maintainer">For a maintainer</h2>
+<ul>
+<li><strong>The layout contract is the offset assignment.</strong> <code>hashit</code>/<code>inithash</code>/<code>mesgpt</code>
+decide where each string lands; <code>flushsh</code> writes it there and <code>xsdotc</code> reads it
+back. Change any one and the other two must still agree, or a rebuilt binary
+stops matching. The suffix-overlap in <code>istail</code> is part of that contract, not an
+optimisation you can drop.</li>
+<li><strong>Two era fixes are load-bearing</strong> — the <code>&quot;r+&quot;</code> accumulation mode (§6) and
+<code>mkstemp</code> (§7). The <code>ignore</code>/<code>ignorf</code> macros only discard return values and
+function pointers without an LP64 cast warning; they are shim, not logic. Offsets
+are <code>off_t</code> but printed through <code>(int)</code> — an era assumption that a pool fits an int.</li>
+<li><strong>The Makefile lists <code>a.out.h</code>/<code>ar.h</code> as deps; <code>xstr.c</code> includes neither</strong> — it
+needs only libc, so those inherited template lines can be trimmed harmlessly.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

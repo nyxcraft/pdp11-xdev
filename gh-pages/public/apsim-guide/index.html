@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-apsim — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-apsim runs a classic PDP-11 Unix a.out directly on your host: it emulates the PDP-11 instruction set (including EIS, the FP11 floating-point unit, FIS, and CIS), loads the program, and turns its sys traps into host…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-apsim — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#universes">Universes</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#options">Options</a></li>
+<li><a class="section-nav__link section-nav__link--l3" href="#environment">Environment</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#what-it-runs">What it runs</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#exit-status">Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#examples">Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-apsim — user guide</h1>
+          <p class="docs-article__summary">pdp11-apsim runs a classic PDP-11 Unix a.out directly on your host: it emulates the PDP-11 instruction set (including EIS, the FP11 floating-point unit, FIS, and CIS), loads the program, and turns its sys traps into host…</p>
+          <p class="docs-article__source">pdp11-apsim — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-apsim</code> runs a classic PDP-11 Unix <code>a.out</code> directly on your host: it
+emulates the PDP-11 instruction set (including EIS, the FP11 floating-point
+unit, FIS, and CIS), loads the program, and turns its <code>sys</code> traps into host
+system calls. It is a <strong>user-mode</strong> simulator — it runs one program, the way
+<code>qemu-user</code> or Apout does; it does not boot or emulate a kernel.</p>
+<p>It spans the whole PDP-11 Unix lineage, from First Edition (1971) through
+2.11BSD, System III/V, and Ultrix-11, selecting the right syscall conventions
+per era. For how it works inside — the interpreter, the FP11, the loader, the
+syscall layer — see the <a href="../apsim-design/index.html">design document</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-apsim [-t] [-s] [-2] [-p pid] [-u universe] a.out [args ...]
+</code></pre>
+<p><code>a.out</code> is a PDP-11 executable (<code>0405</code>/<code>0407</code>/<code>0410</code>/<code>0411</code>/<code>0430</code>/<code>0431</code>), a
+<code>#!</code> script, or — when named directly on apsim's command line — a plain text
+script (run through the guest <code>/bin/sh</code>). <code>args</code> become the guest's <code>argv[1..]</code>.</p>
+<hr />
+<h2 id="universes">Universes</h2>
+<p>A <em>universe</em> selects the era whose <code>a.out</code> details, syscall numbering, and
+argument convention apsim assumes. Choose one with <code>-u NAME</code> /
+<code>--universe NAME</code> / <code>--universe=NAME</code>, or <code>$PDP11_UNIVERSE</code>; a command-line flag
+overrides the environment. The default is <strong><code>bsd29</code></strong>. A <code>0405</code> (First Edition)
+binary always selects the V1 personality regardless of the universe named.</p>
+<table>
+<thead>
+<tr>
+<th>universe</th>
+<th>era</th>
+<th>personality</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>v1</code> <code>v2</code></td>
+<td>First/Second Edition (1971–72)</td>
+<td>V1 traps + KE11-A</td>
+</tr>
+<tr>
+<td><code>v3</code> <code>v4</code> <code>v5</code> <code>v6</code> <code>bsd1</code></td>
+<td>3rd–6th Edition, 1BSD</td>
+<td>V5/V6</td>
+</tr>
+<tr>
+<td><code>v7</code> <code>bsd2</code> <code>bsd279</code></td>
+<td>Seventh Edition, 2BSD/2.79</td>
+<td>V7</td>
+</tr>
+<tr>
+<td><code>bsd28</code> <code>bsd29</code></td>
+<td>2.8/2.9BSD</td>
+<td>2BSD (default = <code>bsd29</code>)</td>
+</tr>
+<tr>
+<td><code>bsd210</code></td>
+<td>2.10BSD (1987)</td>
+<td>4.3 numbering, stack args</td>
+</tr>
+<tr>
+<td><code>bsd211</code></td>
+<td>2.11BSD pl431</td>
+<td>4.4 numbering, stack args</td>
+</tr>
+<tr>
+<td><code>sys3</code> <code>sys5v2</code></td>
+<td>System III, SVR2</td>
+<td>System III (utssys/fcntl/ulimit)</td>
+</tr>
+<tr>
+<td><code>ultrix1</code> <code>ultrix2</code> <code>ultrix3</code> <code>ultrix31</code></td>
+<td>DEC Ultrix-11 1.0–3.1</td>
+<td>Ultrix</td>
+</tr>
+</tbody>
+</table>
+<p>Common aliases are accepted (<code>2.11</code>, <code>2.11bsd</code>, <code>sysiii</code>, <code>svr2</code>, <code>ultrix</code>,
+<code>v7m11</code>, …). An unknown name is a usage error that prints the valid list.</p>
+<hr />
+<h2 id="options">Options</h2>
+<table>
+<thead>
+<tr>
+<th>option</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-u NAME</code>, <code>--universe NAME</code>, <code>--universe=NAME</code></td>
+<td>select the universe (see above)</td>
+</tr>
+<tr>
+<td><code>-t</code></td>
+<td>trace every instruction (<code>pc</code>/<code>sp</code>/<code>r0</code>/opcode) to the diagnostic channel</td>
+</tr>
+<tr>
+<td><code>-s</code></td>
+<td>trace every syscall (number and arguments)</td>
+</tr>
+<tr>
+<td><code>-2</code></td>
+<td>force the stack-argument syscall convention (as 2.10/2.11 use)</td>
+</tr>
+<tr>
+<td><code>-p pid</code></td>
+<td>force a fixed <code>getpid()</code>, so a program that seeds its RNG from the pid (rogue) replays deterministically</td>
+</tr>
+</tbody>
+</table>
+<p>Options may appear in any order before <code>a.out</code>. Diagnostics from <code>-t</code>/<code>-s</code> (and
+every fault message) go to a private high-numbered descriptor duped from the
+startup stderr, so a guest that closes or reuses fd 2 cannot mute them.</p>
+<h3 id="environment">Environment</h3>
+<table>
+<thead>
+<tr>
+<th>variable</th>
+<th>effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PDP11_UNIVERSE</code></td>
+<td>default universe when <code>-u</code> is not given</td>
+</tr>
+<tr>
+<td><code>APSIM_ROOT</code></td>
+<td>guest root: guest <strong>absolute</strong> paths resolve under this directory (a faux Unix tree)</td>
+</tr>
+<tr>
+<td><code>APSIM_ENV</code></td>
+<td>guest environment, space-separated <code>VAR=VAL</code> (default supplies <code>TERM</code>, <code>HOME</code>, <code>PATH</code>)</td>
+</tr>
+<tr>
+<td><code>APSIM_UID</code> / <code>APSIM_GID</code></td>
+<td>guest credentials (default 1/1)</td>
+</tr>
+<tr>
+<td><code>APSIM_PID</code></td>
+<td>fixed <code>getpid()</code> (same as <code>-p</code>)</td>
+</tr>
+<tr>
+<td><code>APSIM_SYSARGS=stack</code></td>
+<td>force stack-argument syscalls (same as <code>-2</code>)</td>
+</tr>
+<tr>
+<td><code>APSIM_PTRACE</code></td>
+<td>enable the cooperative <code>ptrace</code> debug channel (needed for guest <code>adb</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>(A handful of <code>APSIM_WATCH*</code> / <code>APSIM_DBASE</code> / <code>APSIM_RNDPC</code> variables exist for
+debugging apsim itself; they are not part of normal use.)</p>
+<hr />
+<h2 id="what-it-runs">What it runs</h2>
+<ul>
+<li><strong>Executables</strong> — <code>0407</code>/<code>0410</code> (shared I&amp;D), <code>0411</code> (separate I&amp;D, two 64 KB
+spaces), <code>0430</code>/<code>0431</code> (auto-overlay, up to 7 overlays through 2.9 and 15 from
+2.10), and <code>0405</code> (First Edition, loaded whole at core <code>040000</code>).</li>
+<li><strong><code>#!</code> scripts</strong> — the named interpreter is exec'd with the classic argv
+rewrite (one optional argument, one level of interpretation).</li>
+<li><strong>Plain text on apsim's own command line</strong> — run through the guest <code>/bin/sh</code>,
+the <code>execvp</code> courtesy for when there is no calling shell to fall back.</li>
+<li><strong>A runtime root</strong> — with <code>$APSIM_ROOT</code> set, guest absolute paths (a hardcoded
+<code>/etc/passwd</code>, <code>/bin/sh</code>, <code>/tmp/...</code>) resolve inside that tree. The bundled
+<code>root/</code> supplies <code>/etc/passwd</code>, <code>/etc/group</code>, <code>/etc/termcap</code>, <code>/etc/motd</code> and
+empty <code>bin</code> dirs; <code>sh mkroot.sh --rogue</code> adds the rogue demo. Real vintage
+binaries run this way — <code>ls</code>, <code>cat</code>, <code>csh</code>, <code>adb</code>, and <code>rogue</code> (curses works,
+because gtty/stty/ioctl <code>sgttyb</code> maps onto host termios raw/cbreak/echo).</li>
+</ul>
+<p>Real host <code>fork</code>/<code>wait</code>/<code>pipe</code> back the guest's, and host process groups back
+the guest's job control, so shells run pipelines and background jobs.</p>
+<hr />
+<h2 id="exit-status">Exit status</h2>
+<p>apsim's own exit status reports how the guest ended:</p>
+<table>
+<thead>
+<tr>
+<th>status</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>0–255</em></td>
+<td>the guest's own <code>exit(code)</code> — passed straight through</td>
+</tr>
+<tr>
+<td><code>128+n</code></td>
+<td>the guest was terminated by uncaught signal <em>n</em> (e.g. <code>135</code> = SIGEMT 7, <code>132</code> = SIGILL 4)</td>
+</tr>
+<tr>
+<td><code>125</code></td>
+<td>instruction limit reached (the guest ran ~4 billion instructions without exiting)</td>
+</tr>
+<tr>
+<td><code>126</code></td>
+<td>a debug watch/guard trap halted the run</td>
+</tr>
+<tr>
+<td><code>127</code></td>
+<td>an illegal instruction or a bad First-Edition syscall halted the run</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>usage error — bad option, unknown universe, or the <code>a.out</code> could not be loaded</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="examples">Examples</h2>
+<pre><code># play the reconstructed rogue from the bundled root, deterministic seed
+sh mkroot.sh --rogue
+APSIM_ROOT=root pdp11-apsim -p 12345 root/usr/games/rogue
+
+# run a 2.11BSD binary (4.4 numbering, stack args, string-table a.out)
+pdp11-apsim -u bsd211 /path/to/2.11/bin/echo hello world
+
+# a Sixth Edition ls, resolving /etc and friends under a V6 root
+APSIM_ROOT=~/unix/v6 pdp11-apsim -u v6 ~/unix/v6/bin/ls -l /
+
+# one of the three surviving First Edition binaries (auto-selected by 0405)
+pdp11-apsim ~/unix/v1/bin/chown root file
+
+# trace syscalls while running a freshly cross-built program
+pdp11-apsim -s ./a.out
+
+# debug a guest with the real 2.11 adb over the cooperative ptrace channel
+APSIM_PTRACE=1 APSIM_ROOT=root pdp11-apsim -u bsd211 root/bin/adb ./prog
+</code></pre>
+<p>For the interpreter, the bit-faithful FP11, the loader, and the per-era syscall
+layer, continue to the <a href="../apsim-design/index.html">design document</a>.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

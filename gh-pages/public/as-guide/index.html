@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-as — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-as assembles PDP-11 source in the 2BSD as syntax — the syntax the compiler&#x27;s c1 emits and that hand-written kernel and library .s use — into a PDP-11 object file.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-as — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-options">2. Options</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-era-axes-and-std-presets">3. Era axes and `--std` presets</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-output-formats">4. Output formats</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-exit-status">5. Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-examples">6. Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-as — user guide</h1>
+          <p class="docs-article__summary">pdp11-as assembles PDP-11 source in the 2BSD as syntax — the syntax the compiler&#x27;s c1 emits and that hand-written kernel and library .s use — into a PDP-11 object file.</p>
+          <p class="docs-article__source">pdp11-as — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-as</code> assembles PDP-11 source in the 2BSD <code>as</code> syntax — the syntax the
+compiler's <code>c1</code> emits and that hand-written kernel and library <code>.s</code> use — into a
+PDP-11 object file. It is a host tool: it runs on your modern machine and writes
+an object the rest of this toolchain (<code>ld</code>, <code>nm</code>, <code>ar</code>) reads. One binary spans
+every era from First Edition UNIX (1972) to 2.11BSD; you pick the era with three
+independent switches or a <code>--std</code> preset.</p>
+<p>For how it works inside — the opcode tables, the two-pass span relaxation, the
+object formats — see the <a href="../as-design/index.html">design document</a>. For the era dialects in
+depth, see <a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-as/docs/std.md">std.md</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-as [-o out.o] [-u] [-V] [-n] [-j] [-7]
+         [--isa=…] [--sys=…] [--aout=…] [--std=…]
+         file ...
+</code></pre>
+<p>Several input files are <strong>concatenated</strong> (separated by a newline) and assembled
+as one unit — this is how the syscall stubs are built, <code>as -o x.o /usr/include/sys.s x.s</code>. With no <code>-o</code>, the object is written to <code>a.out</code>.</p>
+<hr />
+<h2 id="2-options">2. Options</h2>
+<table>
+<thead>
+<tr>
+<th>option</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-o file</code></td>
+<td>write the object to <code>file</code> (default <code>a.out</code>)</td>
+</tr>
+<tr>
+<td><code>-u</code></td>
+<td>undefined symbols become <strong>externals</strong> for <code>ld</code> to resolve; overrides any <code>--std</code> strictness (<code>cc</code> always passed this, so it is the flagless default)</td>
+</tr>
+<tr>
+<td><code>-7</code></td>
+<td><strong>strict</strong>: an undefined symbol never <code>.globl</code>'d stays local (type 0) — how every real <code>as</code> behaved when invoked bare</td>
+</tr>
+<tr>
+<td><code>-V</code></td>
+<td><strong>overlay</strong> assembly (<code>ovas</code>): references to defined global text symbols stay external so <code>ld</code> builds overlay thunks</td>
+</tr>
+<tr>
+<td><code>-n</code></td>
+<td>write 2.11's string-table (<code>Newsym</code>) symbol format, 32-char names — same as <code>--aout=v2+</code></td>
+</tr>
+<tr>
+<td><code>-j</code></td>
+<td>enable the <strong>extended</strong> hardware mnemonics (FIS/CIS/MED/XFC, FP11 DEC names) — same as <code>--isa=extended</code></td>
+</tr>
+<tr>
+<td><code>--</code></td>
+<td>read the source from <strong>standard input</strong> (a lone <code>-</code> is accepted and ignored)</td>
+</tr>
+</tbody>
+</table>
+<p>Flags and files may be interleaved in any order. The single-letter flags are the
+primitives; the <code>--</code> era axes below are presets over them.</p>
+<hr />
+<h2 id="3-era-axes-and-std-presets">3. Era axes and <code>--std</code> presets</h2>
+<p>Three orthogonal switches choose the era; a <code>--std</code> token sets a sanctioned
+combination of all three (plus strictness). Mix them freely — an impossible mix
+just assembles an impossible machine.</p>
+<table>
+<thead>
+<tr>
+<th>axis</th>
+<th>values</th>
+<th>selects</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--isa=</code></td>
+<td><code>v1</code> (=<code>v2</code>,<code>v3</code>,<code>1972</code>), <code>v4</code> (=<code>common</code>,<code>unix</code>, default), <code>bsd211</code> (=<code>newbsd</code>,<code>211</code>), <code>extended</code></td>
+<td>which <strong>instructions</strong> exist</td>
+</tr>
+<tr>
+<td><code>--sys=</code></td>
+<td><code>none</code> (default), <code>v1</code> (=<code>1972</code>), <code>v6</code></td>
+<td>which <strong>syscall names</strong> are keywords (<code>sys write</code>)</td>
+</tr>
+<tr>
+<td><code>--aout=</code></td>
+<td><code>v1</code> (=<code>405</code>), <code>v2</code> (=<code>407</code>, default), <code>v2+</code> (=<code>newsym</code>,<code>bsd211</code>)</td>
+<td>the <strong>object format</strong></td>
+</tr>
+<tr>
+<td><code>--std=</code></td>
+<td><code>v1</code>,<code>v2</code>,<code>v3</code>,<code>v4</code>,<code>v5</code>,<code>v6</code>,<code>v7</code>,<code>bsd</code>,<code>newbsd</code>,<code>extended</code> (comma-composable)</td>
+<td>an era preset over the three axes</td>
+</tr>
+</tbody>
+</table>
+<p>Notes worth calling out:</p>
+<ul>
+<li>Selecting a syscall list (<code>--sys=v1</code>/<code>v6</code>, or a <code>--std</code> that implies one) makes
+<strong><code>wait</code> the system call (7)</strong>, not the WAIT instruction — write the bare word
+<code>1</code> for the instruction.</li>
+<li><code>--std=v1</code> also switches the <em>output</em> to the First Edition format; the other
+<code>v2</code>/<code>v3</code> presets keep the ordinary object.</li>
+<li>Every <code>--std</code> token is <strong>strict</strong> by default (undefined non-<code>.globl</code> symbols
+stay local); add <code>-u</code> to restore automatic externals.</li>
+<li><code>--isa=extended</code> (and <code>-j</code>) is opt-in for a reason: several extended mnemonics
+(<code>spl</code>, <code>mfpt</code>, <code>ldexp</code>, …) are also ordinary symbol names in historical
+source, and a keyword silently shadows the symbol. Do not assemble era sources
+with it on.</li>
+</ul>
+<hr />
+<h2 id="4-output-formats">4. Output formats</h2>
+<p>The object format is chosen by <code>--aout=</code> (or the <code>-n</code> / <code>--std</code> shortcuts):</p>
+<ul>
+<li><strong><code>v1</code></strong> — the <strong>First Edition</strong> a.out (magic <strong>0405</strong>, 12-byte header, the
+2-bit bit-stream relocation and V1 symbol flags). A file a simulated 1971
+system or apout can <code>exec()</code>; <code>das --std=v1 x | as --std=v1</code> round-trips the
+surviving V1-era binaries byte-for-byte.</li>
+<li><strong><code>v2</code></strong> (default) — the classic <strong>0407</strong> object: 8-word header, one 16-bit
+relocation word per code word, and 12-byte symbol entries with inline 8-char
+names. This is what this toolchain's <code>ld</code> and <code>nm</code> read.</li>
+<li><strong><code>v2+</code></strong> — the same 0407 object but with 2.11's <strong>string-table</strong> symbols and
+32-character names; required if 2.11's own <code>ld</code>/<code>nm</code> will consume the object.</li>
+</ul>
+<p>All three place symbol values in the unified object address space (text, then
+data, then bss); <code>ld</code> backs the bias out when it combines objects.</p>
+<hr />
+<h2 id="5-exit-status">5. Exit status</h2>
+<ul>
+<li><strong>0</strong> — success.</li>
+<li><strong>1</strong> — everything else: an unknown option or <code>--isa</code>/<code>--sys</code>/<code>--aout</code>/<code>--std</code>
+token, no input file, an unreadable input, out of memory, or <strong>assembly
+errors</strong>.</li>
+</ul>
+<p>Note that on an assembly error <code>as</code> still writes a complete, relocated object
+before returning nonzero — it never unlinks a partial <code>.o</code>, matching the native
+2BSD assembler (so a build step that ignored the status could still consume a
+broken object; check the status).</p>
+<hr />
+<h2 id="6-examples">6. Examples</h2>
+<pre><code>pdp11-as -o hello.o hello.s              # assemble one file to hello.o
+pdp11-as -o x.o /usr/include/sys.s x.s   # concatenate the syscall stubs first
+pdp11-as --std=v1 -o chown chown.s       # a runnable First Edition (1971) binary
+pdp11-as --std=v6 crt.s                  # V4–V6 dialect: `sys signal`, `.ascii`
+pdp11-as --std=newbsd -o m.o mch.s       # 2.11 object: mfpi/spl keywords, 32-char names
+pdp11-as --isa=extended -o cis.o cis.s   # (or -j) the full hardware line
+pdp11-as -u -o f.o f.s                   # undefined refs -&gt; externals for ld
+pdp11-as -- &lt; prog.s                     # read source from standard input
+</code></pre>
+<p>Continue to the <a href="../as-design/index.html">design document</a> for the tables, the relaxation,
+and the object formats; <a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-as/docs/std.md">std.md</a> covers the era dialects in full.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

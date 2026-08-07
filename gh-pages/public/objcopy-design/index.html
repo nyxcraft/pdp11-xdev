@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-objcopy — design | pdp11-xdev</title>
+  <meta name="description" content="This document describes how pdp11-objcopy copies a PDP-11 a.out and extracts its loadable image or a single segment: the format-agnostic identity copy, the contiguous-layout slicing the extractions need, the formats it r…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-objcopy — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-an-a-out-only-world-copy-or-extract-never-convert">1. An `a.out`-only world: copy or extract, never convert</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-the-identity-copy-is-format-agnostic">2. The identity copy is format-agnostic</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-extraction-needs-the-contiguous-layout">3. Extraction needs the contiguous layout</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-refusing-what-it-cannot-slice-correctly">4. Refusing what it cannot slice correctly</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-hostile-input-hardening">5. Hostile-input hardening</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-the-write-model">6. The write model</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#testing">Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#for-a-maintainer">For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-objcopy — design</h1>
+          <p class="docs-article__summary">This document describes how pdp11-objcopy copies a PDP-11 a.out and extracts its loadable image or a single segment: the format-agnostic identity copy, the contiguous-layout slicing the extractions need, the formats it r…</p>
+          <p class="docs-article__source">pdp11-objcopy — design</p>
+        </header>
+        <div class="prose">
+<p>This document describes how <code>pdp11-objcopy</code> copies a PDP-11 <code>a.out</code> and extracts
+its loadable image or a single segment: the format-agnostic identity copy, the
+contiguous-layout slicing the extractions need, the formats it refuses to slice,
+and the hostile-header bounds check that frames every write. For how to <em>use</em> it,
+see the <a href="../objcopy-guide/index.html">user guide</a>.</p>
+<p>The tool is <code>objcopy.c</code> over <code>../../common/cross/a.out.h</code>, the fixed-width on-disk
+view of the 16-bit header and the magic macros.</p>
+<hr />
+<h2 id="1-an-a-out-only-world-copy-or-extract-never-convert">1. An <code>a.out</code>-only world: copy or extract, never convert</h2>
+<p>PDP-11 is an <code>a.out</code>-only target — there is no ELF the modern binutils understand,
+so, unlike the VAX tree's <code>objcopy</code>, there is <strong>no format conversion here</strong>. The
+useful operations are an identity copy and pulling raw bytes out of the loadable
+image; removing the symbol table and relocation is
+<a href="../strip-guide/index.html"><code>pdp11-strip</code></a>'s job. <code>-O</code> accepts only
+<code>binary</code>, and <code>-j</code> only <code>text</code> or <code>data</code>; anything else is a usage error.</p>
+<hr />
+<h2 id="2-the-identity-copy-is-format-agnostic">2. The identity copy is format-agnostic</h2>
+<p>With no <code>-O</code> and no <code>-j</code>, <code>objcopy</code> slurps the whole input, checks only that it is
+plausibly an <code>a.out</code> — at least a 16-byte header, and <code>N_BADMAG</code> false — and writes
+every byte to the output. Because it copies rather than interprets, the identity
+copy handles <strong>any</strong> magic, including the First Edition (<code>0405</code>) and auto-overlay
+(<code>0430</code>/<code>0431</code>) forms that the extractions refuse. Both an input and an output path
+are required; there is no in-place default.</p>
+<hr />
+<h2 id="3-extraction-needs-the-contiguous-layout">3. Extraction needs the contiguous layout</h2>
+<p><code>-O binary</code> and <code>-j</code> rely on the <code>0407</code>/<code>0410</code>/<code>0411</code> layout, in which the text and
+initialized data are contiguous on disk immediately after the 16-byte header. With
+<code>txtoff = sizeof(struct exec)</code>:</p>
+<ul>
+<li><strong><code>-O binary</code></strong> writes <code>buf[txtoff .. txtoff + a_text + a_data]</code> — the loadable
+image, text followed by initialized data, with <strong>no header and no symbol table</strong>:
+exactly the bytes the loader maps.</li>
+<li><strong><code>-j text</code></strong> writes <code>[txtoff, +a_text]</code>, the text segment raw.</li>
+<li><strong><code>-j data</code></strong> writes <code>[txtoff + a_text, +a_data]</code>, the initialized-data segment
+raw.</li>
+</ul>
+<p>If both <code>-O binary</code> and <code>-j</code> are given, <code>-j</code> selects the slice.</p>
+<hr />
+<h2 id="4-refusing-what-it-cannot-slice-correctly">4. Refusing what it cannot slice correctly</h2>
+<p>The First Edition (<code>0405</code>) and auto-overlay (<code>0430</code>/<code>0431</code>) magics have a different
+on-disk shape — a header-inclusive text size, or several overlay text segments
+described by an overlay header between text and data — so their text and data are
+not the simple contiguous run the slicing assumes. Extraction from them is
+<strong>refused</strong> (&quot;extraction unsupported for First Edition / overlay a.out&quot;) rather
+than silently producing the wrong bytes. The identity copy still carries those
+objects losslessly, because it copies bytes without interpreting the layout.</p>
+<hr />
+<h2 id="5-hostile-input-hardening">5. Hostile-input hardening</h2>
+<p>The header's <code>a_text</code> and <code>a_data</code> are attacker-controlled. Before any slice is
+written, <code>objcopy</code> validates <code>txtoff + a_text + a_data &gt; len</code> (plus the redundant
+<code>a_text &lt; 0</code> / <code>a_data &lt; 0</code>) against <code>len</code>, the size actually read from disk — so a
+header claiming a 64 KB text inside a 40-byte file is refused, not read out of
+bounds. The slurp itself is a checked read loop; a stat failure, a <code>malloc</code>
+failure, or a short read each <code>die</code> cleanly rather than proceeding on garbage.</p>
+<hr />
+<h2 id="6-the-write-model">6. The write model</h2>
+<p><code>slurp</code> reads the entire input into memory before anything is written, so the
+input and output paths may even be the same file. Output is written directly with
+<code>fopen</code>/<code>fwrite</code>/<code>fclose</code>, each checked. There is no temp-file-and-rename dance
+because <code>objcopy</code> is not an in-place rewriter — it always writes a named output,
+and stripping in place is <code>pdp11-strip</code>'s role, not this tool's.</p>
+<hr />
+<h2 id="testing">Testing</h2>
+<p><code>tests/run.sh</code> is hermetic: it builds a synthetic <code>0407</code> object (<code>a_text = 4</code>,
+<code>a_data = 6</code>, <code>a_syms = 12</code>) with recognizable bytes and checks that the identity
+copy is byte-identical, that <code>-O binary</code> equals the text+data image, and that <code>-j text</code>/<code>-j data</code> equal the segments — each compared against slices computed
+independently in the script. It then checks the guards: a header with <code>a_text = 0xffff</code> is refused with exit 1, and a non-<code>a.out</code> is refused. Finally a committed
+real 2.9BSD kernel object (<code>dkleave.o</code>) round-trips through an identity copy. The
+object-parser ASan+UBSan fuzzer (<code>tests/fuzz/run.sh</code>) additionally runs both the
+plain copy and <code>-O binary</code> over a corpus of malformed <code>a.out</code> files, where the
+size-versus-length bounds check is exercised.</p>
+<hr />
+<h2 id="for-a-maintainer">For a maintainer</h2>
+<ul>
+<li><strong>No ELF, and no <code>a.out</code>-flavour conversion</strong> — this is deliberately not the VAX
+<code>objcopy</code>. <code>-O</code> accepts only <code>binary</code>; <code>-j</code> only <code>text</code>/<code>data</code>.</li>
+<li><strong>Every slice must be bounds-checked against the slurped length before emit.</strong>
+That single check is the security boundary; keep it ahead of any <code>emit</code>.</li>
+<li><strong>Extraction is refused for <code>0405</code>/<code>0430</code>/<code>0431</code> on purpose.</strong> Do not add a
+&quot;best effort&quot; slice for them — the identity copy already carries those bytes
+losslessly.</li>
+<li><strong>Output is written directly (not atomically), and both paths are required.</strong>
+The whole-file slurp is what makes <code>in == out</code> safe; keep the read-before-write
+order.</li>
+<li><strong>Exit is 0 or 1</strong> — every error goes through <code>die()</code> → <code>exit(1)</code>, including
+usage errors; there is no separate usage exit code.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

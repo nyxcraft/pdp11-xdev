@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-nm — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-nm lists the symbol table of a PDP-11 a.out object, executable, or archive — the 2.9BSD nm.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-nm — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#output">Output</a></li>
+<li><a class="section-nav__link section-nav__link--l3" href="#type-letters">Type letters</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#options">Options</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#what-it-reads">What it reads</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#exit-status">Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#examples">Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-nm — user guide</h1>
+          <p class="docs-article__summary">pdp11-nm lists the symbol table of a PDP-11 a.out object, executable, or archive — the 2.9BSD nm.</p>
+          <p class="docs-article__source">pdp11-nm — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-nm</code> lists the symbol table of a PDP-11 a.out object, executable, or
+archive — the 2.9BSD <code>nm</code>. It reads the little-endian 16-bit objects this
+toolchain produces and meets (2.9BSD objects, First Edition <code>a.out(V)</code>, and the
+old binary <code>ar</code> archive), and prints one line per symbol with the value in
+<strong>octal</strong>, in the classic <code>nm(1)</code> style. It runs on your host.</p>
+<p>For how it works inside — the magic numbers, the symbol-table dialects, the type
+letters — see the <a href="../nm-design/index.html">design document</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-nm [-gnopru] [file ...]
+</code></pre>
+<p>Each <code>file</code> is a PDP-11 object or an archive of them. With no file argument,
+<code>nm</code> reads <code>a.out</code>. Options must be given as <strong>one</strong> combined first argument
+(<code>pdp11-nm -gn foo.o</code>), the BSD convention — they are not accepted as separate
+words or after a file name.</p>
+<hr />
+<h2 id="output">Output</h2>
+<p>One symbol per line, <code>value type name</code>:</p>
+<pre><code>000172 t L10000
+000000 T _main
+       U _printf
+000010 D _errno
+</code></pre>
+<ul>
+<li><strong>value</strong> — 6-digit zero-padded <strong>octal</strong> (the symbol's address or offset), or
+<strong>six blanks</strong> for an undefined symbol, which has no value to show;</li>
+<li><strong>type letter</strong> — what kind of symbol it is (below), upper case for a global
+(external), lower for a local;</li>
+<li><strong>name</strong> — up to 8 characters.</li>
+</ul>
+<p>With more than one file, or for an archive, each listing is headed by the file
+(or member) name:</p>
+<pre><code>libc.a:
+
+printf.o:
+000000 T _printf
+       U __doprnt
+</code></pre>
+<p>The archive's <code>__.SYMDEF</code> directory is not a symbol listing of its own — it is
+<code>ranlib</code>'s index and is skipped automatically.</p>
+<h3 id="type-letters">Type letters</h3>
+<table>
+<thead>
+<tr>
+<th>letter</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>T</code> / <code>t</code></td>
+<td>text (code)</td>
+</tr>
+<tr>
+<td><code>D</code> / <code>d</code></td>
+<td>data</td>
+</tr>
+<tr>
+<td><code>B</code> / <code>b</code></td>
+<td>bss (zero-initialised)</td>
+</tr>
+<tr>
+<td><code>A</code> / <code>a</code></td>
+<td>absolute</td>
+</tr>
+<tr>
+<td><code>R</code> / <code>r</code></td>
+<td>register name</td>
+</tr>
+<tr>
+<td><code>C</code></td>
+<td>common (uninitialised global)</td>
+</tr>
+<tr>
+<td><code>U</code></td>
+<td>undefined — a reference to be satisfied elsewhere</td>
+</tr>
+<tr>
+<td><code>F</code> / <code>f</code></td>
+<td>file-name symbol</td>
+</tr>
+</tbody>
+</table>
+<p>Upper case marks a <strong>global</strong> (external) symbol; lower case a local. <code>C</code> and <code>U</code>
+are two faces of the same on-disk type: an undefined entry with a value is a
+common block, one without is a plain undefined reference.</p>
+<hr />
+<h2 id="options">Options</h2>
+<table>
+<thead>
+<tr>
+<th>option</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-g</code></td>
+<td>only <strong>global</strong> (external) symbols</td>
+</tr>
+<tr>
+<td><code>-u</code></td>
+<td>only <strong>undefined</strong> symbols — prints just their names, no value or letter</td>
+</tr>
+<tr>
+<td><code>-n</code></td>
+<td>sort by <strong>value</strong> (numeric), not by name</td>
+</tr>
+<tr>
+<td><code>-p</code></td>
+<td>do <strong>not</strong> sort — symbol-table order</td>
+</tr>
+<tr>
+<td><code>-r</code></td>
+<td><strong>reverse</strong> the sort</td>
+</tr>
+<tr>
+<td><code>-o</code></td>
+<td>prepend the file (and, for an archive, the member) name to every line</td>
+</tr>
+</tbody>
+</table>
+<p>The default sort is alphabetical by name. Flags are combined into the single
+leading option word: <code>pdp11-nm -gn</code>, <code>pdp11-nm -ur</code>. <code>-r</code> reverses whichever sort
+is in effect (name, or value under <code>-n</code>). There is no <code>-a</code>, no <code>-x</code>, and no octal
+switch: values are <strong>always</strong> octal, which is the PDP-11 convention. An unknown
+option letter is a usage error.</p>
+<hr />
+<h2 id="what-it-reads">What it reads</h2>
+<p>The object format is detected from the header, never declared:</p>
+<ul>
+<li><strong>2.9BSD a.out</strong>, all six magics — <code>0407</code> (normal), <code>0410</code> (read-only text),
+<code>0411</code> (separated I&amp;D), and the <code>0430</code>/<code>0431</code> auto-overlay images — with the
+12-byte, fixed-8-character-name symbol table and a single 16-bit type per
+symbol.</li>
+<li><strong>First Edition <code>a.out(V)</code></strong> (<code>0405</code>) — the Research V1 layout, whose header is
+counted inside the text size and whose symbols use the older type encoding.
+<code>nm</code> translates that encoding into the same type letters (see
+<a href="../nm-design/index.html">design §3.2</a>).</li>
+<li><strong>archives</strong> — the old binary <code>ar</code> format (magic <code>0177545</code>). Every object
+member is listed and tagged with its member name; the <code>__.SYMDEF</code> index is
+skipped.</li>
+</ul>
+<p>A file whose first word is none of the a.out magics and is not <code>ARMAG</code> is
+reported as <code>bad format</code> and skipped; the run continues to the next file.</p>
+<hr />
+<h2 id="exit-status">Exit status</h2>
+<table>
+<thead>
+<tr>
+<th>code</th>
+<th>when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>normal completion — even if some files could not be opened or were not objects (those are per-file diagnostics on stderr, and the run continues)</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>a usage error — an unknown option letter</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>out of memory building the symbol array</td>
+</tr>
+</tbody>
+</table>
+<p>Note the direction: a bad or missing <em>file</em> does not change the exit status
+(<code>nm</code> still exits <code>0</code>); only a bad <em>option</em> is fatal.</p>
+<hr />
+<h2 id="examples">Examples</h2>
+<pre><code>pdp11-nm prog                     # symbols of prog, sorted by name, octal values
+pdp11-nm -g libc.a                # every member, globals only, member-tagged
+pdp11-nm -u main.o                # just the unresolved reference names
+pdp11-nm -n prog                  # sort by address instead of name
+pdp11-nm -p a.out                 # symbol-table order, unsorted
+pdp11-nm -o *.o | grep ' T '      # which object defines each text symbol
+</code></pre>
+<p>Continue to the <a href="../nm-design/index.html">design document</a> for the magic-number handling, the
+First Edition path, and the type-letter internals.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

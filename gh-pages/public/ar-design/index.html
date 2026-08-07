@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-ar — design | pdp11-xdev</title>
+  <meta name="description" content="This document describes how pdp11-ar is built: the two archive layouts it reads, the middle-endian on-disk longs it byte-swaps, how it recognises and walks an archive, the seven operations on one copy-and-rewrite path, p…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-ar — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-the-v7-binary-format-a-struct-not-a-byte-layout">1. The V7 binary format — a struct, not a byte layout</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-the-first-edition-format-read-only">2. The First Edition format — read-only</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-detection-and-the-member-walk">3. Detection and the member walk</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-the-operations-one-copy-and-rewrite-path">4. The operations — one copy-and-rewrite path</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-positioning-a-b-i">5. Positioning — `a` / `b` / `i`</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-symbol-tables-belong-to-pdp11-ranlib">6. Symbol tables belong to `pdp11-ranlib`</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-safety-and-signals">7. Safety and signals</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#testing">Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#for-a-maintainer">For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-ar — design</h1>
+          <p class="docs-article__summary">This document describes how pdp11-ar is built: the two archive layouts it reads, the middle-endian on-disk longs it byte-swaps, how it recognises and walks an archive, the seven operations on one copy-and-rewrite path, p…</p>
+          <p class="docs-article__source">pdp11-ar — design</p>
+        </header>
+        <div class="prose">
+<p>This document describes how <code>pdp11-ar</code> is built: the two archive layouts it
+reads, the middle-endian on-disk longs it byte-swaps, how it recognises and
+walks an archive, the seven operations on one copy-and-rewrite path, positioning,
+and the split with <code>pdp11-ranlib</code> for symbol tables. For how to <em>use</em> it, see the
+<a href="../ar-guide/index.html">user guide</a>.</p>
+<p>The whole tool is one file, <code>ar.c</code> (~820 lines), plus the shared format header
+<code>../../common/cross/ar.h</code>, shared because <code>pdp11-ranlib</code> and <code>pdp11-ld</code> read the
+same libraries and must agree byte for byte on the header layout and the
+middle-endian long encoding. This is the archaic V7 binary <code>ar</code>, not the later
+portable <code>!&lt;arch&gt;</code> format: exactly one layout to write (the 26-byte struct
+header, magic <code>0177545</code>) and one older layout it reads but never writes (First
+Edition, <code>0177555</code>). It builds <code>libc.a</code> for every PDP-11 universe.</p>
+<hr />
+<h2 id="1-the-v7-binary-format-a-struct-not-a-byte-layout">1. The V7 binary format — a struct, not a byte layout</h2>
+<p>What is on disk is <em>whatever a PDP-11 compiler laid out</em> for <code>struct ar_hdr</code>,
+so the field widths and packing are part of the ABI. <code>cross/ar.h</code> pins them for
+an LP64 host: magic is the 2-byte word <code>ARMAG</code> (<code>0177545</code>), and each member
+header is exactly <strong>26 bytes</strong>, <code>__attribute__((packed))</code> so the host compiler
+inserts none of its own alignment:</p>
+<pre><code> 0  char    ar_name[14]
+14  int32_t ar_date
+18  char    ar_uid
+19  char    ar_gid
+20  int16_t ar_mode
+22  int32_t ar_size   -- 26 bytes
+</code></pre>
+<p>The two <code>int32_t</code> fields are the hard part. The PDP-11 stores a 32-bit <code>long</code>
+<strong>high-16-bit-word first</strong> — its two little-endian halves swapped relative to a
+host long. <code>ar.h</code>'s <code>PDPL()</code> macro swaps them and is its own inverse, so read
+and write share it: <code>getdir()</code> applies it to <code>ar_date</code>/<code>ar_size</code> on the way in,
+<code>copyfil()</code> to a <em>copy</em> of the header on the way out (leaving <code>arbuf</code> in host
+order for the size-driven copy loop). Getting this right is what makes the
+archives byte-identical in layout to authentic 2BSD <code>ar</code>.</p>
+<hr />
+<h2 id="2-the-first-edition-format-read-only">2. The First Edition format — read-only</h2>
+<p>The reader also decodes the older First Edition layout (<code>OARMAG</code>, <code>0177555</code>;
+Research V1–V4), which predates V7: a 16-byte per-member header with an 8-char
+name, a middle-endian <code>long</code> date, one uid byte, one mode byte, and the member
+size as a <strong>little-endian word</strong> (members are even-padded on disk). <code>getdir()</code>
+unpacks that into the same <code>arbuf</code> the V7 path fills, so <code>t</code>/<code>p</code>/<code>x</code> work
+unchanged. Two deliberate simplifications: the V1 mode byte is a two-class
+(owner/non-owner) model, not POSIX <code>rwxrwxrwx</code>, so extraction forces a sane
+<code>0644</code>; and there is no <code>__.SYMDEF</code>.</p>
+<p>We never <em>write</em> this layout — our archives are modern build-time containers, so
+any modifying op on an old-format archive hits <code>cantmod()</code>, which refuses it
+rather than rewriting it as V7.</p>
+<hr />
+<h2 id="3-detection-and-the-member-walk">3. Detection and the member walk</h2>
+<p>Detection is one read of the 2-byte magic. <code>getaf()</code> opens the archive, reads
+the magic into an <code>unsigned short</code> (so the high-bit-set <code>!= ARMAG</code> compare is
+unsigned), accepts <code>ARMAG</code> or <code>OARMAG</code> (setting <code>oldfmt</code> for the latter), and
+refuses anything else as &quot;not in archive format&quot;. <code>getqf()</code> is the <code>q</code> variant,
+opening read-write and creating the archive if absent.</p>
+<p><code>getdir()</code> is the iterator every command drives: one call reads and normalises
+the next header into <code>arbuf</code> (swapping the PDP longs, or unpacking the 16-byte
+old header) and returns 0, or 1 at end of file. <code>match()</code> compares a wanted name
+to the member by <strong>basename</strong> (<code>trim()</code> strips path and trailing slashes) and
+clears it from the request list once matched, so <code>notfound()</code> can report the
+leftovers as the exit status.</p>
+<hr />
+<h2 id="4-the-operations-one-copy-and-rewrite-path">4. The operations — one copy-and-rewrite path</h2>
+<p>The key letters are fixed in two strings: <code>man = &quot;mrxtdpq&quot;</code> (the operations) and
+<code>opt = &quot;uvnbail&quot;</code> (the modifiers, plus <code>c</code> handled but not advertised). <code>main()</code>
+scans the first word letter by letter, calling <code>setcom()</code> for an operation
+(exactly one allowed) and setting <code>flg[]</code> for a modifier.</p>
+<p>Read-only ops walk with <code>getdir()</code> and act per member:</p>
+<table>
+<thead>
+<tr>
+<th>op</th>
+<th>body</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>t</code></td>
+<td>print the trimmed name; <code>tv</code> calls <code>longt()</code> for an <code>ls -l</code>-style line</td>
+</tr>
+<tr>
+<td><code>p</code></td>
+<td>copy the member's bytes to stdout (fd 1); <code>pv</code> prints a <code>&lt;name&gt;</code> banner</td>
+</tr>
+<tr>
+<td><code>x</code></td>
+<td><code>creat()</code> the file with <code>ar_mode &amp; 0777</code> and copy the bytes out</td>
+</tr>
+</tbody>
+</table>
+<p>Modifying ops (<code>r</code>/<code>d</code>/<code>m</code>) share the <em>stream-through-a-temp</em> shape: <code>init()</code>
+<code>mkstemp()</code>s a temp file and writes the magic, then the walk copies each member
+either <strong>into the temp</strong> (<code>copyfil(af, tf, …)</code>) or <strong>skips it</strong> (<code>copyfil(af, -1, … + SKIP)</code>), and finally <code>install()</code> (or <code>cleanup()</code> for <code>r</code>) rewrites the
+real archive from the temp(s):</p>
+<ul>
+<li><code>r</code> (<code>rcmd</code>) — replace/merge: a file whose basename matches a member is
+skipped from the copy and re-inserted from disk in place (under <code>u</code>, only if
+the file's mtime is newer than the member's <code>ar_date</code>); unmatched request
+files are appended by <code>cleanup()</code> at the end (or at the <code>a</code>/<code>b</code>/<code>i</code> position);
+a nonexistent archive is created.</li>
+<li><code>d</code> (<code>dcmd</code>) — delete: matched members are skipped, the rest copied through.</li>
+<li><code>m</code> (<code>mcmd</code>) — move: matched members are diverted to a <em>second</em> temp (<code>tf2</code>),
+and <code>install()</code> concatenates <code>tf</code> + <code>tf2</code> + <code>tf1</code>, so the moved members land
+as a block at the reposition point.</li>
+<li><code>q</code> (<code>qcmd</code>) — quick-append: <code>getqf()</code> opens the archive read-write, seeks to
+the end, and appends each file's header+data with no duplicate check; <code>abi</code>
+positioning is rejected. This is the only op that does not rebuild the file.</li>
+</ul>
+<p><code>copyfil()</code> is the one byte mover; its <code>flag</code> bits are <code>HEAD</code> (emit the 26-byte
+header, <code>PDPL()</code> applied to <code>ar_date</code>/<code>ar_size</code>), <code>IODD</code>/<code>OODD</code> (round the odd
+final byte up on input/output — members are even-padded on disk), and <code>SKIP</code>
+(read past a member without writing). <code>movefil()</code> fills <code>arbuf</code> from a host
+<code>fstat()</code> and calls it to lay a new member down. <code>install()</code> re-<code>creat()</code>s the
+archive <code>0666</code> and concatenates <code>tf</code> + <code>tf2</code> + <code>tf1</code>; every modifying op
+therefore rewrites the whole file.</p>
+<hr />
+<h2 id="5-positioning-a-b-i">5. Positioning — <code>a</code> / <code>b</code> / <code>i</code></h2>
+<p><code>a</code> (after), <code>b</code> (before), and <code>i</code> (a synonym for <code>b</code>) take a <strong>position name</strong>
+as the first argument after the key (<code>main()</code> lifts it into <code>ponam</code>).
+<code>bamatch()</code> runs a two-state splice: when the walk reaches <code>ponam</code> it opens a
+<em>holding</em> temp (<code>tf1</code>) and redirects the copy into it, so newly added members
+land before (or after, for <code>a</code>) the named one — <code>install()</code>'s <code>tf</code>+<code>tf2</code>+<code>tf1</code>
+concatenation re-joins the halves in the right order.</p>
+<hr />
+<h2 id="6-symbol-tables-belong-to-pdp11-ranlib">6. Symbol tables belong to <code>pdp11-ranlib</code></h2>
+<p><code>pdp11-ar</code> does not compute symbol tables — that needs a.out/<code>nlist</code> knowledge,
+which lives in <a href="https://github.com/nyxcraft/pdp11-xdev/tree/main/src/pdp11-ranlib"><code>pdp11-ranlib</code></a>. The call-out runs the
+historical PDP-11 direction: <strong><code>ranlib</code> drives <code>ar</code></strong>, invoking <code>ar rlb &lt;firstmember&gt; &lt;archive&gt; __.SYMDEF</code> to splice <code>__.SYMDEF</code> in as the first member.
+The <code>l</code> modifier it passes is why <code>ar</code> honours <code>l</code>: it makes the temp files
+local (<code>arXXXXXX</code> in the working directory) instead of <code>/tmp/arXXXXXX</code>.</p>
+<hr />
+<h2 id="7-safety-and-signals">7. Safety and signals</h2>
+<p><code>SIGHUP</code>/<code>SIGINT</code>/<code>SIGQUIT</code> are caught (<code>sigdone</code> → <code>done(100)</code>) so an
+interrupted run still unlinks its temp files; <code>q</code> blocks them around the
+in-place append. Temp files are <code>mkstemp()</code>'d (create-and-open, <code>0600</code>), never
+<code>mktemp()</code>'d into a predictable name. A header that does not read as a full 26
+(or 16) bytes ends the walk rather than being guessed at, and a non-archive
+input is refused outright.</p>
+<hr />
+<h2 id="testing">Testing</h2>
+<p>Two layers. <code>tests/ld/ranlib.sh</code> (via <code>make check</code>) builds a deliberately
+<strong>mis-ordered</strong> archive and confirms a single-pass <code>ld</code> needs <code>pdp11-ranlib</code>'s
+<code>__.SYMDEF</code> to resolve it. The weight is the <strong>oracle</strong>: <code>oracle/lib-sweep.sh</code>
+walks every <code>*.a</code> in a real 2.9BSD tree, extracts its members, zeroes their
+mtimes (apsim's <code>stat(2)</code> reports mtime 0, the only field that would otherwise
+differ), feeds the <em>identical</em> files to both <code>pdp11-ar</code> and the <strong>native
+<code>/bin/ar</code> under apsim</strong>, and <code>cmp</code>s the two archives byte for byte. Proven:
+<strong>39/39</strong> libraries match, zero diffs — the layout is authentic, not plausible.</p>
+<hr />
+<h2 id="for-a-maintainer">For a maintainer</h2>
+<ul>
+<li><strong>One format model</strong> (<code>cross/ar.h</code>), shared with <code>ranlib</code> and <code>ld</code>: the packed
+26-byte header and the <code>PDPL()</code> middle-endian swap. Change a width or the swap
+here, and rebuild all three.</li>
+<li><strong>Read path:</strong> <code>getaf()</code> (magic → <code>oldfmt</code>) → <code>getdir()</code> (read + normalise one
+header) → <code>match()</code>/<code>trim()</code>. Add a read command as a walk body.</li>
+<li><strong>Write path:</strong> everything funnels through <code>copyfil()</code> (<code>HEAD</code>/<code>IODD</code>/<code>OODD</code>/
+<code>SKIP</code>) into a <code>mkstemp()</code> temp, then <code>install()</code>/<code>cleanup()</code> rewrites the
+archive; <code>q</code> is the lone in-place append. Reproduce on-disk bytes only here.</li>
+<li><strong>First Edition is read-only</strong> — <code>cantmod()</code> refuses every modifying op; do not
+add a writer for <code>0177555</code>.</li>
+<li><strong>Symbol tables belong to <code>pdp11-ranlib</code></strong>, which calls <em>this</em> tool (<code>ar rlb</code>),
+not the reverse; do not grow a symbol engine here.</li>
+<li>Hold any change to byte-for-byte parity with <code>oracle/lib-sweep.sh</code> (native
+<code>ar</code> under apsim) before trusting it.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

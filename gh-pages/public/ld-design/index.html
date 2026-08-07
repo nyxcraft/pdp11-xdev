@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-ld — design | pdp11-xdev</title>
+  <meta name="description" content="This document describes how pdp11-ld links classic 2BSD a.out objects into a runnable image: the two passes it makes over its inputs, the word-at-a-time I/O it inherited from the PDP-11 and how that survives on an LP64 h…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-ld — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-two-passes-and-the-a-out-header">1. Two passes and the a.out header</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-reading-and-writing-on-disk-words">2. Reading and writing on-disk words</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-pass-1-resolving-symbols-and-pulling-in-libraries">3. Pass 1 — resolving symbols and pulling in libraries</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-the-middle-pass-placement">4. The middle pass — placement</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-pass-2-relocation-and-output">5. Pass 2 — relocation and output</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-overlays">6. Overlays</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-finding-libraries">7. Finding libraries</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#8-testing">8. Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#9-for-a-maintainer">9. For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-ld — design</h1>
+          <p class="docs-article__summary">This document describes how pdp11-ld links classic 2BSD a.out objects into a runnable image: the two passes it makes over its inputs, the word-at-a-time I/O it inherited from the PDP-11 and how that survives on an LP64 h…</p>
+          <p class="docs-article__source">pdp11-ld — design</p>
+        </header>
+        <div class="prose">
+<p>This document describes how <code>pdp11-ld</code> links classic 2BSD a.out objects into a
+runnable image: the two passes it makes over its inputs, the word-at-a-time I/O
+it inherited from the PDP-11 and how that survives on an LP64 host, how it
+resolves symbols across objects and archive members, how it lays out and
+relocates the segments, and the overlay machinery behind its <code>0430</code>/<code>0431</code>
+auto-overlay executables. For how to <em>use</em> it, see the <a href="../ld-guide/index.html">user guide</a>.</p>
+<p>The tool is one file, <code>ld.c</code> (~1750 lines), descended from the 2.9BSD MENLO link
+editor — the header still credits wnj's 6/79 segmentation-register loader and
+Bill Jolitz's 5/80 EMT-thunk work. It runs on your host and emits a PDP-11 a.out;
+the LP64 port is concentrated at the file-I/O boundary (§2) and written up in
+<a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-ld/docs/porting.md">porting.md</a>.</p>
+<hr />
+<h2 id="1-two-passes-and-the-a-out-header">1. Two passes and the a.out header</h2>
+<p><code>ld</code> reads its whole argument list twice. <strong>Pass 1</strong> (<code>main</code> → <code>load1arg</code> →
+<code>load1</code>) scans every object and archive to build the global symbol table and the
+cumulative segment sizes, pulling in an archive member only if it defines a
+currently-undefined symbol — so the symbol table at the end of pass 1 is the
+transitive closure of what the program references. <code>middle()</code> then assigns final
+addresses (§4), and <strong>pass 2</strong> (<code>endload</code> → <code>load2arg</code> → <code>load2</code>) re-reads the
+same inputs in the same order, relocating each text and data word against those
+addresses and writing the segments out (§5).</p>
+<p>The on-disk a.out header is the classic <strong>8 words / 16 bytes</strong> — <code>struct filhdr</code>
+is eight <code>uint16_t</code>: magic, the three segment sizes, symbol-table size, entry
+point, a pad word, and the relocation-stripped flag. Its four magics are <code>0405</code>
+(OMAGIC), <code>0407</code> (FMAGIC, the default), <code>0410</code> (NMAGIC, pure text) and <code>0411</code>
+(IMAGIC, split I/D).</p>
+<hr />
+<h2 id="2-reading-and-writing-on-disk-words">2. Reading and writing on-disk words</h2>
+<p>Everything on disk — the a.out header, each symbol, the archive member header,
+the <code>__.SYMDEF</code> table — is a stream of 16-bit PDP-11 words, and <code>ld</code> reads and
+writes it word-by-word through two routines:</p>
+<pre><code class="language-c">mget(&amp;filhdr, sizeof filhdr);      /* pull sizeof/2 words into a struct  */
+mput(&amp;toutb, &amp;filhdr, sizeof filhdr); /* push them to an output buffer   */
+</code></pre>
+<p>Both take a <code>void *</code>, so callers hand them a packed struct address <strong>uncast</strong>
+(<code>&amp;archdr</code>, <code>&amp;cursym</code>, <code>&amp;filhdr</code>) and <code>mget</code>/<code>mput</code> walk it as <code>uint16_t</code>. That
+is the whole LP64 port: on the PDP-11 <code>int</code> was two bytes and these copies used
+<code>int</code> buffers; here every buffer and on-disk field is pinned to <code>uint16_t</code> so a
+<code>read(fd, buf, 512)</code> still fills exactly 256 words and <code>sizeof(struct)&gt;&gt;1</code> still
+counts words. The structs (<code>filhdr</code>, the 12-byte <code>symbol</code>, the 26-byte V7
+<code>archdr</code>) are <code>__attribute__((packed))</code> where host alignment would otherwise
+pad. Zero-extension matters too: <code>get()</code> returns a <code>uint16_t</code> promoted to <code>int</code>,
+so <code>ARCMAGIC</code> (<code>0177545</code>) compares equal after a read where a signed <code>short</code>
+would sign-extend and break the magic test. On-disk archive <code>long</code>s are
+<strong>PDP-11 middle-endian</strong>: member size and time (<code>archdr.asize</code>, <code>archdr.atime</code>)
+and each <code>__.SYMDEF</code> offset (<code>tab[i].cloc</code>) are passed through <code>PDPL()</code> (from
+<code>&lt;ar.h&gt;</code>) the moment they are read, so the values <code>ld</code> computes with are exactly
+what the native tools wrote.</p>
+<hr />
+<h2 id="3-pass-1-resolving-symbols-and-pulling-in-libraries">3. Pass 1 — resolving symbols and pulling in libraries</h2>
+<p><code>getfile()</code> opens each argument and classifies it by its first word: a plain
+object (return 0), a plain archive (1), an archive with an up-to-date
+<code>__.SYMDEF</code> directory (2), or one whose directory is stale (3). <code>load1arg</code>
+dispatches on that:</p>
+<ul>
+<li><strong>object</strong> — <code>load1(0, …)</code> enters its externals.</li>
+<li><strong>plain archive</strong> — <code>step()</code> walks every member, entering the ones that
+resolve something.</li>
+<li><strong><code>__.SYMDEF</code> archive</strong> — the fast path: the directory is read into <code>tab[]</code> and
+<code>ldrand()</code> sweeps it repeatedly, pulling in (<code>step</code>) any member that defines a
+still-<code>EXTERN+UNDEF</code> symbol until a sweep adds nothing new — which is why
+archive <em>order</em> rarely matters for a ranlib'd library.</li>
+<li><strong>stale directory</strong> — a warning, then the plain-archive walk.</li>
+</ul>
+<p>Each referenced member's file offset is recorded in <code>liblist[]</code> so pass 2 can
+find it again. Two bounds are hardened against a malformed archive. The
+fast-load count <code>tnum = archdr.asize / sizeof(struct tab)</code> is now rejected when
+<strong><code>&lt; 0 || &gt;= TABSZ</code></strong>: a crafted <code>__.SYMDEF</code> with bit 31 set yields a negative
+<code>tnum</code> that the original signed <code>&gt;= TABSZ</code> guard let through, after which
+<code>read()</code> overran <code>tab[TABSZ]</code>. And every append to <code>liblist[NROUT]</code> first checks
+<code>libp &gt;= &amp;liblist[NROUT]</code>, so a library referencing more than <code>NROUT</code> members can
+no longer walk off the array.</p>
+<p><code>load1</code> enters each external through the hash table (<code>lookup</code>/<code>enter</code>), promoting
+<code>EXTERN+UNDEF</code> to a definition when it meets one, keeping the larger of two common
+sizes, and flagging a real multiply-defined case; a member that defines nothing
+new has its tentative entries rolled straight back out.</p>
+<hr />
+<h2 id="4-the-middle-pass-placement">4. The middle pass — placement</h2>
+<p><code>middle()</code> turns sizes into addresses. Text starts at <code>0</code> (or at <code>040014</code> for
+the First Edition universes, whose <code>0405</code> image loads whole at core <code>040000</code>
+behind a 12-byte header). Data follows text, bss follows data, and common blocks
+are assigned into bss; under <code>-n</code>/<code>-i</code> the text is rounded up to a <code>0100</code> page
+first. On a final link (<code>rflag == 0</code>) <code>ld</code> stamps the active universe as an absolute
+symbol <strong><code>__univ</code></strong> via <code>ldrsym(…, EXTERN+ABS)</code> — but only if it is referenced
+(by <code>crt0</code>), and <em>before</em> the undefined-symbol scan, so a referenced <code>__univ</code> is
+already defined and not mistaken for a straggler. <code>p11_univ_id()</code> maps
+<code>$PDP11_UNIVERSE</code> (or the default) through <code>universe.h</code> to the id stamped,
+letting one universal <code>libc.a</code> branch on the era chosen at link time. That
+undefined-symbol scan then decides the output's fate: if any external is still
+undefined (and this is not an overlay link), <code>ld</code> forces <code>-r</code> so the result
+stays relocatable rather than pretending to be runnable.</p>
+<hr />
+<h2 id="5-pass-2-relocation-and-output">5. Pass 2 — relocation and output</h2>
+<p><code>load2</code> re-reads each input's symbol table to number its locals (for external
+references), then streams its text and data through <code>load2td</code>, which reads a text
+word and its relocation word in lockstep. The relocation word's low bits select
+what to add:</p>
+<pre><code>r &amp; 016:  RTEXT -&gt; += ctrel   RDATA -&gt; += cdrel   RBSS -&gt; += cbrel
+          REXT  -&gt; resolve the external symbol, add its final value
+r &amp; 01:   pc-relative — subtract the current segment origin
+</code></pre>
+<p>An external still undefined is re-emitted as a relocation against the output's
+symbol table (for a <code>-r</code> relink); a resolved one is folded into the word. Under
+<code>-r</code> the (possibly rewritten) relocation word is written alongside the datum.</p>
+<p>The segments are built in <strong>temporary files</strong>, one per stream. Each is created
+by a fresh <code>mkstemp()</code> on <code>/tmp/ldaXXXXXX</code> — created and opened <code>0600</code>
+atomically, then immediately <strong><code>unlink</code>ed</strong>, so the file lives on only through
+its fd: no predictable-name <code>creat</code>/<code>symlink</code> race, nothing to clean up on exit.
+<code>finishout()</code> then copies the temp segments into the output in header order and
+appends the symbol table.</p>
+<hr />
+<h2 id="6-overlays">6. Overlays</h2>
+<p><code>ld</code> carries two overlay mechanisms, both live and unconditional in the 2.9
+source. <strong><code>-v name</code> — the overlay tree.</strong> Each <code>-v</code> names a node; <code>record()</code> snapshots the
+symbol-table index, <code>liblist</code> cursor, and segment sizes there, and if a name
+recurs <code>restore()</code> rewinds to it — so sibling overlays share everything before
+the node and are laid down independently after it (up to <code>NOVLY</code> = 16).</p>
+<p><strong><code>-Z … -L</code> — segmentation-register text overlays.</strong> Objects bracketed by a
+<code>-Z</code>/<code>-L</code> pair form one text overlay. Their text is relocated to a common
+overlay base <code>ovbase</code> (rounded above the resident text), and for every overlaid
+entry point <code>finishout()</code> plants an <strong>8-byte JSR thunk</strong> (<code>THUNKSIZ</code>) in the
+resident text — <code>mov $addr+4,r1; jsr r5,ovhndlrN</code> — that calls the kernel
+overlay handler for that overlay number. Up to <code>NOVL</code> (7) overlays; each is
+padded to a <code>0100</code> boundary and their sizes written as an 8-word table right
+after the main header. The output magic gets <code>|= 020</code>, turning <code>0410</code>→**<code>0430</code>**
+(pure) and <code>0411</code>→**<code>0431</code>** (split I/D); an overlay link therefore <em>requires</em>
+<code>-n</code> or <code>-i</code>.</p>
+<p><code>roundov()</code> does the per-overlay padding, advancing <code>torigin</code> by one PDP-11 word
+(<strong>2</strong>) per fill word — the LP64 fix that matters: the original increment stepped
+by a host <code>int</code>, and at <code>sizeof(int)==4</code> skipped the <code>&amp; 077</code> alignment point so
+the loop never terminated. Pinning the step to a 16-bit word makes overlay links
+finish.</p>
+<hr />
+<h2 id="7-finding-libraries">7. Finding libraries</h2>
+<p><code>-lx</code> becomes <code>lib&lt;x&gt;.a</code>, resolved <strong>relative to the <code>ld</code> binary</strong> rather than a
+hard-coded <code>/usr/lib</code>. <code>getfile()</code> reads <code>/proc/self/exe</code>, strips a trailing
+<code>bin/</code> to find the install root, and looks first in the era subdirectory
+<code>lib/&lt;universe&gt;/</code> (the universe from <code>$PDP11_UNIVERSE</code>, default from
+<code>universe.h</code>), falling back to a flat <code>lib/</code>. The path is assembled with
+<code>strcpy</code>/<code>strcat</code> into fixed buffers rather than <code>sprintf</code>, whose size bound
+cannot be proved for a cyclic buffer chain fed by the unbounded <code>-l</code> name.</p>
+<hr />
+<h2 id="8-testing">8. Testing</h2>
+<p><code>tests/ld/link.sh</code> assembles and links with <code>pdp11-as</code>/<code>pdp11-ld</code> and inspects
+the a.out by reading its bytes (<code>od</code>/<code>dd</code>, no external tools) — a two-object case
+asserts an external <code>jsr</code> operand is relocated to the defining symbol's final
+offset, cross-checked against the GNU <code>pdp11-aout-objdump</code> oracle. The two
+standing oracles are stronger: <strong>kernel-link</strong> links the GENERIC 2.9 kernel and
+requires the resulting <code>unix</code> to be <strong>byte-identical</strong> to the native link —
+116854 bytes, a <code>0430</code> overlay image — exercising the whole overlay path
+(<code>-Z</code>/<code>-L</code>, thunks, <code>roundov</code>, the size table); <strong>ld-sweep</strong> links 200+ programs
+and requires <code>ld</code> to match native <code>ld</code> on every one (213 clean links, 0 differ).
+Verifying cross-object relocation this way also caught two <em>assembler</em> bugs that
+<code>ld</code> was right to reject — see <a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-ld/docs/porting.md">porting.md</a>.</p>
+<hr />
+<h2 id="9-for-a-maintainer">9. For a maintainer</h2>
+<ul>
+<li><strong>The I/O boundary is the whole port.</strong> Every on-disk word is a <code>uint16_t</code> and
+every raw copy goes through <code>mget</code>/<code>mput</code> (<code>void *</code>, no cast at the call site);
+a new on-disk field must be fixed-width and keep the struct a whole number of
+words (<code>packed</code> if the host would pad it).</li>
+<li><strong><code>putw</code> is renamed <code>ld_putw</code></strong> by a <code>#define</code> at the top: <code>ld</code> has its own
+<code>putw(word, struct buf *)</code> and the host <code>&lt;stdio.h&gt;</code> declares <code>putw(int, FILE *)</code>. Do not remove the shim.</li>
+<li><strong>Overlays are load-bearing</strong> — <code>-Z</code>/<code>-L</code>, the thunks, <code>roundov</code> (its step must
+stay <code>+= 2</code>), and the <code>0430</code>/<code>0431</code> magic are what the kernel-link oracle needs.</li>
+<li><strong>Hold the output to <code>cmp</code></strong> against native <code>ld</code> (ld-sweep) and a byte-identical
+kernel (kernel-link) — that catches a wrong relocation or a misplaced segment.</li>
+<li><strong>Bounds are deliberate.</strong> <code>tnum &lt; 0</code>, the <code>liblist[NROUT]</code> checks, and the
+<code>mkstemp</code>+<code>unlink</code> temp files guard a hostile or oversized archive; keep them.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

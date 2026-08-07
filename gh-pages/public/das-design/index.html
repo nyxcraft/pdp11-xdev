@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-das — design | pdp11-xdev</title>
+  <meta name="description" content="This document explains what pdp11-das is, the input shapes it reads, the two things it is strict about (decoding from the assembler&#x27;s own tables, and round-tripping through as), and the era dimension a PDP-11 disassemble…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-das — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-what-it-is">1. What it is</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-input-shapes-and-the-file-type-dispatch">2. Input shapes and the file-type dispatch</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-the-era-dimension-two-symbol-table-formats">3. The era dimension: two symbol-table formats</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-code-data-separation-the-recursive-descent-walk">4. Code/data separation — the recursive-descent walk</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-the-round-trip-guarantee">5. The round-trip guarantee</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-relocation-stripped-images-kernels-unstripped-executables">6. Relocation-stripped images (kernels, unstripped executables)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#testing">Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#for-a-maintainer">For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-das — design</h1>
+          <p class="docs-article__summary">This document explains what pdp11-das is, the input shapes it reads, the two things it is strict about (decoding from the assembler&#x27;s own tables, and round-tripping through as), and the era dimension a PDP-11 disassemble…</p>
+          <p class="docs-article__source">pdp11-das — design</p>
+        </header>
+        <div class="prose">
+<p>This document explains what <code>pdp11-das</code> is, the input shapes it reads, the two
+things it is strict about (decoding from the assembler's own tables, and
+round-tripping through <code>as</code>), and the era dimension a PDP-11 disassembler has:
+reading every object format from First Edition (1971) to 2.11BSD, and speaking
+each era's syscall and instruction-set dialect. For how to <em>use</em> it, see the
+<a href="../das-guide/index.html">user guide</a>.</p>
+<p>The source is a single <code>das.c</code>. The instruction set comes from the assembler's
+shared table <code>../pdp11-as/optab.h</code>, and the on-disk header/nlist/archive layout
+from <code>../common/cross/a.out.h</code> and <code>../common/cross/ar.h</code>. It runs on the LP64
+host and reads the 16-bit little-endian formats <strong>explicitly</strong> (<code>w16()</code> byte
+loads, never a struct overlay of the host's own <code>int</code>/<code>long</code>), so it is
+endian- and word-size-clean.</p>
+<p>The reassembly engine has grown large. This document is the architecture; the
+<a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-das/docs/fieldguide.md">field guide</a> is the byte-level companion — the slot-pinning,
+splice, and metadata rules that carry <code>-a</code> output to byte-exact round-trip.</p>
+<hr />
+<h2 id="1-what-it-is">1. What it is</h2>
+<p><code>pdp11-das</code> is the <strong>inverse of <code>as</code></strong>: it reads a PDP-11 object and prints the
+instructions back. It decodes through the <em>same</em> opcode table the assembler
+encodes from — <code>das.c</code> does <code>#include &quot;../pdp11-as/optab.h&quot;</code> with its own
+<code>struct op { char *name; int type; int opcode; }</code>, the single source of truth —
+so the two agree by construction on mnemonics, operand forms, and the whole
+instruction set. The decoder covers the no-operand ops, the double- and
+single-operand groups (byte variants included), branches, <code>jsr</code>/<code>rts</code>/<code>sob</code>/
+<code>mark</code>, the EIS set (<code>mul</code>/<code>div</code>/<code>ash</code>/<code>ashc</code>/<code>xor</code>), the FP11 floating unit, the
+MMU move-to/from-previous-space ops (<code>mfpi</code>/<code>mtpi</code>/<code>mfpd</code>/<code>mtpd</code>/<code>mfps</code>/<code>mtps</code>),
+<code>sys</code>/<code>emt</code>, the condition-code ops, and all eight addressing modes including
+immediate (<code>$x</code>), absolute (<code>*$x</code>), and PC-relative. <code>r7</code>/<code>r6</code> print as <code>pc</code>/<code>sp</code>.</p>
+<hr />
+<h2 id="2-input-shapes-and-the-file-type-dispatch">2. Input shapes and the file-type dispatch</h2>
+<p><code>main</code> reads the whole file into memory and dispatches on the first word:</p>
+<ul>
+<li><strong>archive</strong> (<code>ARMAG</code>, <code>0177545</code>) → <code>do_archive</code>;</li>
+<li><strong><code>0405</code></strong> → <code>do_object</code> directly: a First-Edition <strong>12-byte-header</strong>
+executable, whose text <em>includes</em> the header;</li>
+<li><strong><code>0407</code>/<code>0410</code>/<code>0411</code></strong> → <code>do_aout_split</code>, which splits if the linker left
+per-object boundaries and otherwise emits one listing;</li>
+<li>anything else → <code>not a PDP-11 a.out, object, or archive</code>.</li>
+</ul>
+<p>A <strong>bare object</strong> (<code>.o</code>) disassembles to one listing. A <strong>linked <code>a.out</code></strong> is
+split back into per-object listings using the <code>N_FN</code> (037) file-name symbols
+<code>ld</code> leaves in the symbol table — each marks where an input object's text began;
+they are sorted by text address and one <code>&lt;stem&gt;.&lt;object&gt;.dis</code> is written per
+object (a duplicated file name gets a sequence suffix). Data and bss cannot be
+attributed to an object from the <code>a.out</code> alone, so they go to a single
+<code>&lt;stem&gt;.DATA.dis</code>. With no <code>N_FN</code> boundaries — or under <code>-p</code> — it is one listing
+to stdout. An <strong>archive</strong> disassembles each member (skipping <code>__.SYMDEF</code>) to its
+own listing; the 26-byte member header's size is a PDP-11 <code>long</code> read HIGH word
+first, and members are word-aligned.</p>
+<hr />
+<h2 id="3-the-era-dimension-two-symbol-table-formats">3. The era dimension: two symbol-table formats</h2>
+<p>A disassembler answers to the era exactly where the object format does, and for
+<code>das</code> that is the <strong>symbol table</strong>. Two shapes are live:</p>
+<ul>
+<li><strong>classic nlist (V1–2.10)</strong> — a <strong>12-byte</strong> entry: <code>n_name[8]</code> stored
+<strong>inline</strong> (no string table), a type byte, an overlay byte, and a value word.</li>
+<li><strong>2.11 <code>Newsym</code> (<code>as -n</code>)</strong> — an <strong>8-byte</strong> entry: an <code>off_t</code> string index (a
+PDP-11 <code>long</code>, <strong>HIGH word first</strong>), a type word, and a value word, followed by
+a <strong>string table</strong> (its leading <code>long</code> is the total length; offsets count from
+4). Names run up to ~39 characters.</li>
+</ul>
+<p><code>readsyms</code> tells them apart by <strong>geometry</strong>, not a flag: the classic format fills
+the object exactly, whereas the <code>Newsym</code> layout leaves exactly a string table
+(a length word whose span ends at the object's end) after the symbols. Because
+the long 2.11 names have to survive formatting, <code>struct sym.name</code> is <code>[40]</code> and
+the operand scratch buffers are <code>o1[96]</code>/<code>o2[96]</code> — sized to hold a ~39-char name
+plus its <code>$</code>/offset decoration. The banner announces the <code>Newsym</code> case
+(<code>[nsym: … as -n]</code>) so the harness reassembles with the matching flag.</p>
+<p>The classic reader also repairs what <code>as</code> records lossily: it blanks names
+carrying bytes outside <code>as</code>'s identifier charset (the 1972 <code>unix.out</code> kernel has
+such entries) and entries <code>as</code> could not have produced, and it gives a later
+duplicate of a full-8-char name a synthetic 9th character so the two spellings
+land in distinct hash chains (V6 <code>libp</code>'s truncated <code>_IEH3out…</code>). A First-Edition
+<code>0405</code> image additionally has its V1 symbol flags (00 undef / 01 abs / 02 reg /
+03 relocatable / |40 global) translated into the later base types, and its
+relocation is a <strong>2-bit-code bit stream</strong> after the symtab, decoded into the same
+parallel array the later per-word relocation feeds — so one machinery serves both.</p>
+<p><strong>Syscall and ISA dialects are separate axes</strong>, selected by option (see the user
+guide): the <code>sys</code>/<code>trap</code> inline-argument counts and the V1-era <code>..</code> load bias
+(<code>-2</code>/<code>--sys=v1</code>, <code>-6</code>/<code>--sys=v6</code>, <code>--sys=bsd211</code>), and the opt-in late-hardware
+decode <code>-J</code> (MFPT, SPL, CSM, TSTSET/WRTLCK, FIS, MED/XFC, CIS). Object <em>formats</em>
+are auto-detected; only these behavioral dialects are chosen by flag, and <code>--std</code>
+is a convenience that sets them together per named era.</p>
+<hr />
+<h2 id="4-code-data-separation-the-recursive-descent-walk">4. Code/data separation — the recursive-descent walk</h2>
+<p>A linear sweep mis-decodes data embedded in the text (a jump table, a <code>jsr r5</code>
+argument byte that is itself a <code>jmp</code> opcode) as instructions and fabricates bogus
+branch targets <code>as</code> then rejects. <code>das</code> instead walks the actual <strong>control flow</strong>
+(<code>markcode</code>) to map which bytes are reachable as code; the rest is emitted as
+data words. The walk is seeded from: every defined text symbol (an odd-valued
+symbol becomes a barrier, never an instruction start); every <strong>absolute text
+pointer</strong> (a word relocated <code>RTEXT</code> but <em>not</em> PC-relative, in either text or
+data — a jump-table entry or a handler an interrupt vector points at); and, when
+there is no text symbol at all, address 0. The <code>sys</code> inline-argument words are
+stepped over using counts mirroring the kernel's <code>sysent</code> table (<code>sy_narg − sy_nrarg</code>), varied by the <code>-2</code>/<code>-6</code>/<code>bsd211</code> personality.</p>
+<p>Two refinements matter. <strong>The PC-relative theorem:</strong> data is never PC-relative,
+so a gap carrying a PC-relative relocation is necessarily code — <code>das</code>
+trial-decodes it and commits only if the decode is self-consistent (every pcrel
+word lands on an operand, the instructions tile the gap exactly, every branch
+target hits a boundary), which is what recovers interrupt stubs reached only via
+hardware vectors. <strong>Code in <code>.data</code>:</strong> <code>markdata</code> applies the same idea to the
+data segment. For a <strong>stripped</strong> binary — no symbols, no relocation — the walk
+seeds the text start plus every <code>jsr r5,csv</code> prologue (<code>004567</code>), the standard
+2.8 C entry, so it reaches functions the absolute-call chain would otherwise hide.
+bss and data are rebuilt from the symbol table at <strong>byte</strong> granularity, so a
+<code>.byte</code>-sized field at an odd address keeps its label rather than being dropped.</p>
+<hr />
+<h2 id="5-the-round-trip-guarantee">5. The round-trip guarantee</h2>
+<p>Because <code>das</code> decodes from the assembler's own table, its <code>-a</code> output is a
+faithful inverse: <strong><code>das -a | as</code> reproduces the object's text and data byte for
+byte.</strong> That is the strongest correctness statement available for a disassembler,
+and the acceptance test the engine is built around; it is proven over the wide
+corpus (1130/1130 objects) and the 2.11 corpus (1665/1665). <code>-a</code> emits clean <code>as</code>
+source — <code>/</code> comments, <code>.globl</code> declarations, no address/byte columns — not a
+listing.</p>
+<p>Reaching byte-exact over hand-written assembly needed the machinery the
+<a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-das/docs/fieldguide.md">field guide</a> documents in full: numeric local labels resolve
+in-memory in <code>as</code> and are never written to the symtab, so a target with no named
+symbol gets a synthetic <code>.L&lt;addr&gt;</code> (an odd target anchors as <code>.L&lt;even&gt;+1</code>);
+symbol-table order is reproduced by generating the body first and <strong>interleaving</strong>
+<code>.comm</code>/<code>.globl</code>/<code>.lcomm</code> declarations at each symbol's first-mention position;
+and any operand encoding <code>as</code>'s grammar provably cannot request is <strong>spliced</strong> as
+raw <code>.byte</code>s while relocation-bearing words inside the splice still emit
+symbolically. Splicing decouples byte-fidelity from grammar completeness — a
+wrong heuristic can then only ever degrade a label or an ordering, never corrupt
+content. The engine runs the walk under a rebuild loop with an escalation ladder
+(promote-wishes → assign-pins → force-synth) so a symbol the natural walk cannot
+pin in slot order still interns at the right index.</p>
+<hr />
+<h2 id="6-relocation-stripped-images-kernels-unstripped-executables">6. Relocation-stripped images (kernels, unstripped executables)</h2>
+<p>By default (<code>SymNoReloc</code>, on) <code>das</code> <strong>keeps</strong> the symbol table of a
+relocation-stripped image — kernels and unstripped executables of every magic —
+labelling at symbol addresses even though no operand relocates. Symbols <code>as</code>
+cannot spell directly are emitted through <code>name = value ^ donor</code> casts; operands
+stay numeric; the harness (<code>ldnr.py</code>) restores <code>ld</code>'s symtab order and strips the
+relocation <code>das</code> adds. <code>-s</code> opts <em>down</em> to the older all-numeric content mode
+(symbols dropped); <code>-y</code> is accepted as a no-op for an older harness spelling.</p>
+<p>An <code>ld -i</code> kernel or a shared/separate-I&amp;D executable stores its data and bss
+symbol values <strong>data-space-relative</strong> (they restart near 0), so <code>das</code> normalizes
+them into a unified address by <code>+Tsize</code> — format-defined for <code>0411</code>, and decided
+by an address-distribution <strong>vote</strong> for <code>0410</code>/<code>0407</code> where linking convention
+varies. The sum is masked to 16 bits, so a high bss symbol wraps; where its
+masked address lands in the wrong segment, <code>seg_mismatch</code> routes it to a cast
+rather than a mislabelled datum.</p>
+<hr />
+<h2 id="testing">Testing</h2>
+<p>The behavioral test is <code>tests/cc/das.sh</code> at the repo root, four stages against
+freshly compiled input: (1) a bare object disassembles with symbol labels
+(<code>_sq:</code>, a decoded <code>mul</code>, the <code>jsr</code> csv prologue); (2) a linked <code>a.out</code> <strong>splits</strong>
+into per-object <code>.dis</code> files with <code>_main</code> and <code>_helper</code> in the right ones;
+(3) an <strong>archive</strong> member disassembles to its own file; (4) the <strong>round-trip</strong> —
+<code>das -a | as</code> — is byte-identical over the text and data segments. Beyond that,
+the <code>oracle/das-*.sh</code> sweeps (<code>das-sweep</code>, <code>das-exec</code>, <code>das-linked</code>, <code>das-sepid</code>,
+alongside <code>as-corpus</code>, <code>lib-sweep</code>, <code>kernel-sweep</code>, <code>ld-sweep</code>, <code>s-sweep</code>) run the
+round-trip and idempotency checks across the whole multi-era corpus and bucket
+the failures — the discipline the field guide insists on: sweep first, keep second.</p>
+<hr />
+<h2 id="for-a-maintainer">For a maintainer</h2>
+<ul>
+<li><strong>Decode from <code>optab.h</code>, always.</strong> The agreement with <code>as</code> — and the
+round-trip — depends on the one shared opcode table. A second, hand-copied
+decode table is a second thing to keep in step, and how an off-by-one reaches
+exactly one instruction in one file.</li>
+<li><strong>Both nlist shapes are live, and told apart by geometry.</strong> The classic inline
+12-byte format and the 2.11 8-byte <code>Newsym</code>-plus-string-table format both occur;
+do not assume either, and keep the name/operand buffers sized for the ~39-char
+2.11 names.</li>
+<li><strong>The walk is control flow, not a linear sweep.</strong> Preserve the seed set (text
+symbols, absolute text pointers, csv prologues, entry 0), the odd-address
+barrier, the <code>sys</code> inline-arg stepping, and the PC-relative gap theorem —
+each earns a real class of files.</li>
+<li><strong>A splice can only ever cost metadata.</strong> Keep the invariant that reached,
+correctly-decoded instructions splice to raw bytes when <code>as</code>'s grammar cannot
+request the exact encoding, and that relocation-bearing words inside a splice
+still emit symbolically. That is the safety floor the heuristics stand on.</li>
+<li><strong>Verify every new heuristic against the whole corpus.</strong> A rule that looks
+perfect on the file that motivated it will silently misfire on hundreds of
+others; measure its firing rate before keeping it, and keep it only at or above
+the current best.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

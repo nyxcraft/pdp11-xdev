@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-c2 — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-c2 is Ritchie&#x27;s c2, the C object-code improver — a peephole optimiser that reads PDP-11 assembly and writes tighter PDP-11 assembly. It is the -O pass of pdp11-cc, run between the code generator and the assembler.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-c2 — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-what-it-does">2. What it does</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-invocation-via-cc">3. Invocation (via cc)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-exit-status">4. Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-examples">5. Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-c2 — user guide</h1>
+          <p class="docs-article__summary">pdp11-c2 is Ritchie&#x27;s c2, the C object-code improver — a peephole optimiser that reads PDP-11 assembly and writes tighter PDP-11 assembly. It is the -O pass of pdp11-cc, run between the code generator and the assembler.</p>
+          <p class="docs-article__source">pdp11-c2 — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-c2</code> is Ritchie's <code>c2</code>, the C <strong>object-code improver</strong> — a peephole
+optimiser that reads PDP-11 assembly and writes tighter PDP-11 assembly. It is
+the <code>-O</code> pass of <code>pdp11-cc</code>, run between the code generator and the assembler. It
+is <strong>not a command you run directly</strong>: it is a compiler pass <code>cc</code> invokes only
+when you pass <code>-O</code>. This guide documents its calling convention so you can
+recognise it in <code>cc -v</code> output or drive it by hand when debugging.</p>
+<p>It computes nothing about the target era — the same assembly in gives the same
+assembly out. For how it works inside — the instruction list, the transforms, the
+register tracking — see the <a href="../c2-design/index.html">design document</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-c2 [+] [-] [infile [outfile]]
+</code></pre>
+<p>With no filenames it filters standard input to standard output, which is how
+<code>cc -O</code> runs it. With one name it reads that file and writes stdout; with two,
+the first is the input and the second the output. Two optional leading flags come
+before the filenames:</p>
+<table>
+<thead>
+<tr>
+<th>flag</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>+</code></td>
+<td>emit a debug dump (developer diagnostic)</td>
+</tr>
+<tr>
+<td><code>-</code></td>
+<td>print optimisation statistics to stderr at exit (iterations, jumps threaded, redundant moves, <code>sob</code>s added, literals eliminated, …)</td>
+</tr>
+</tbody>
+</table>
+<p>There are no other options: c2 has no era/universe setting and no knob for the
+loop-instruction distance guard, which is always on (see <a href="../c2-design/index.html">design §6</a>).</p>
+<hr />
+<h2 id="2-what-it-does">2. What it does</h2>
+<p>It rewrites the assembly, it does not regenerate it: branch shortening and jump
+threading, dead-code and redundant-instruction removal, cross-jumping and code
+motion, redundant-move elimination with register tracking, and turning a counted
+<code>dec</code>/<code>jne</code> loop into a single <code>sob</code>. The result reassembles to smaller,
+equivalent code — the same answer, fewer bytes.</p>
+<hr />
+<h2 id="3-invocation-via-cc">3. Invocation (via cc)</h2>
+<p><code>cc -O</code> runs c2 as the <code>c2</code> stage of <code>cpp → c0 → c1 → c2 → as → ld</code>. <code>c1</code> writes
+its assembly to a temp file (<code>tmp5</code>) instead of the usual output, and <code>cc</code>
+invokes</p>
+<pre><code>c2 tmp5 tmp3
+</code></pre>
+<p>so c2 reads <code>tmp5</code> and writes <code>tmp3</code>, the assembler source <code>as</code> then consumes.
+You do not choose these paths; <code>cc</code> allocates and removes them, and prints
+<code>Pass 2</code> under <code>cc -v</code> when it reaches c2. Without <code>-O</code> the pass is not run at
+all — the default pipeline matches <code>cc</code> without <code>-O</code>. If c2 fails, <code>cc</code> falls
+back to the unoptimised c1 output, so a c2 problem is invisible through <code>cc -O</code>
+alone (run c2 directly to see it).</p>
+<hr />
+<h2 id="4-exit-status">4. Exit status</h2>
+<p>c2 always exits <strong>0</strong>. It does not fail on the <em>content</em> of well-formed assembly
+— it either improves a construct or leaves it alone. A genuine failure is an I/O
+or resource problem reported to stderr and exited non-zero before optimisation
+begins: a file it cannot open (<code>C2: can't find …</code> / <code>can't create …</code>) or no
+memory for its node arena (<code>C2: no memory</code> / <code>C Optimizer: out of space</code>).</p>
+<hr />
+<h2 id="5-examples">5. Examples</h2>
+<p>Normally you never type c2; you turn it on through <code>cc</code>:</p>
+<pre><code>pdp11-cc -O prog.c -o prog          # compile with the peephole optimiser
+pdp11-cc -O -S prog.c               # stop after c2: optimised prog.s
+pdp11-cc -v -O -c prog.c            # see each pass, including &quot;Pass 2&quot; (c2)
+</code></pre>
+<p>To run the pass by hand for debugging (what <code>cc</code> does between its temp files):</p>
+<pre><code>pdp11-c2 &lt; foo.s &gt; foo.opt.s        # the filter form cc -O uses
+pdp11-c2 foo.s foo.opt.s            # named input and output
+pdp11-c2 - foo.s foo.opt.s          # same, and print stats to stderr
+pdp11-c2 + foo.s foo.opt.s          # same, with the debug dump
+</code></pre>
+<p>Continue to the <a href="../c2-design/index.html">design document</a> for the transformations c2 runs and
+the register tracking that keeps them safe.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

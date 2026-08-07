@@ -12,9 +12,8 @@ objects, executables, archives, and kernels.
   index-order walking, numbered-local synthesis, `.comm`/`.globl`
   interleave pinning, nearest-label±offset anchors.  Corpus-proven at
   1130/1130 wide-corpus objects and 1665/1665 2.11 objects.
-- **Stripped binaries and overlays too:** walks code from csv prologues
-  and computed-jump case bodies when there is no symbol table, and
-  slices 0430 overlay images per their `ovlhdr`.
+- **Stripped binaries too:** walks code from csv prologues
+  and computed-jump case bodies when there is no symbol table.
 - **String-table (2.11) and fixed-name symbol formats** are both native.
 
 ## Documentation

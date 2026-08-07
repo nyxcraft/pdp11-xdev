@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-nm — design | pdp11-xdev</title>
+  <meta name="description" content="This document describes how pdp11-nm lists an object&#x27;s symbols: the 16-bit PDP-11 a.out header it recognises, the three symbol-table dialects it decodes, the type letter it assigns each symbol, and how it walks the old b…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-nm — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-one-file-three-on-disk-structs">1. One file, three on-disk structs</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-the-a-out-header-and-the-magic-numbers">2. The a.out header and the magic numbers</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-the-symbol-table-and-its-dialects">3. The symbol table and its dialects</a></li>
+<li><a class="section-nav__link section-nav__link--l3" href="#3-1-the-2-9bsd-form-the-default-build">3.1 The 2.9BSD form (the default build)</a></li>
+<li><a class="section-nav__link section-nav__link--l3" href="#3-2-first-edition-0405">3.2 First Edition (`0405`)</a></li>
+<li><a class="section-nav__link section-nav__link--l3" href="#3-3-the-menlo-ovly-variant-not-in-the-default-build">3.3 The MENLO_OVLY variant (not in the default build)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-the-type-letter">4. The type letter</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-filtering-sorting-and-the-output-line">5. Filtering, sorting, and the output line</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-archives">6. Archives</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-reading-16-bit-structs-on-a-64-bit-host">7. Reading 16-bit structs on a 64-bit host</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#testing">Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#for-a-maintainer">For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-nm — design</h1>
+          <p class="docs-article__summary">This document describes how pdp11-nm lists an object&#x27;s symbols: the 16-bit PDP-11 a.out header it recognises, the three symbol-table dialects it decodes, the type letter it assigns each symbol, and how it walks the old b…</p>
+          <p class="docs-article__source">pdp11-nm — design</p>
+        </header>
+        <div class="prose">
+<p>This document describes how <code>pdp11-nm</code> lists an object's symbols: the 16-bit
+PDP-11 a.out header it recognises, the three symbol-table dialects it decodes,
+the type letter it assigns each symbol, and how it walks the old binary archive.
+For how to <em>use</em> it, see the <a href="../nm-guide/index.html">user guide</a>.</p>
+<p>The tool is one file, <code>nm.c</code> (~350 lines). It is a <strong>host</strong> program — built by
+the modern host <code>cc</code> and run on your LP64 Linux box — that reads little-endian
+16-bit PDP-11 objects. There is no shared reader class: <code>nm.c</code> freads the
+on-disk structs directly, using the width-corrected definitions of <code>struct exec</code>,
+<code>struct nlist</code>, and <code>struct ar_hdr</code> from <code>../../common/cross/a.out.h</code> and
+<code>../../common/cross/ar.h</code> (pulled in with <code>-Icross</code>) so K&amp;R-era source reads the
+right byte layout on a 64-bit machine (§7).</p>
+<hr />
+<h2 id="1-one-file-three-on-disk-structs">1. One file, three on-disk structs</h2>
+<p><code>nm</code> touches exactly three structures, all fixed-width in the <code>cross/</code> headers:</p>
+<table>
+<thead>
+<tr>
+<th>struct</th>
+<th>on disk</th>
+<th>fields of interest</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>exec</code></td>
+<td>8 words / <strong>16 bytes</strong></td>
+<td><code>a_magic</code>, segment sizes, <code>a_syms</code>, <code>a_flag</code></td>
+</tr>
+<tr>
+<td><code>nlist</code></td>
+<td><strong>12 bytes</strong></td>
+<td><code>char n_name[8]</code>, <code>int16_t n_type</code>, <code>uint16_t n_value</code></td>
+</tr>
+<tr>
+<td><code>ar_hdr</code></td>
+<td>26 bytes, packed</td>
+<td><code>ar_name[14]</code>, <code>ar_date</code>, <code>ar_size</code></td>
+</tr>
+</tbody>
+</table>
+<p>The whole program is: read the header, decide where the symbol table starts and
+how many entries it holds, read each 12-byte <code>nlist</code>, map it to a type letter,
+filter, sort, and print. Everything hard is in &quot;decide where it starts&quot; (the
+magics and the First Edition case, §2–3) and &quot;map it to a letter&quot; (§4).</p>
+<hr />
+<h2 id="2-the-a-out-header-and-the-magic-numbers">2. The a.out header and the magic numbers</h2>
+<p>The first word is the magic number; <code>N_BADMAG</code> rejects anything that is not one
+of the six PDP-11 magics before <code>nm</code> reads further:</p>
+<table>
+<thead>
+<tr>
+<th>macro</th>
+<th>octal</th>
+<th>meaning</th>
+<th>symbol table located by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>A_MAGIC1</code></td>
+<td><code>0407</code></td>
+<td>normal (writable text)</td>
+<td>header + text + data (+ reloc)</td>
+</tr>
+<tr>
+<td><code>A_MAGIC2</code></td>
+<td><code>0410</code></td>
+<td>read-only (pure) text</td>
+<td>same</td>
+</tr>
+<tr>
+<td><code>A_MAGIC3</code></td>
+<td><code>0411</code></td>
+<td>separated I&amp;D</td>
+<td>same</td>
+</tr>
+<tr>
+<td><code>A_MAGIC4</code></td>
+<td><code>0405</code></td>
+<td>First Edition a.out(V)</td>
+<td>its own path (§3.2)</td>
+</tr>
+<tr>
+<td><code>A_MAGIC5</code></td>
+<td><code>0430</code></td>
+<td>auto-overlay, non-separate</td>
+<td>same as normal</td>
+</tr>
+<tr>
+<td><code>A_MAGIC6</code></td>
+<td><code>0431</code></td>
+<td>auto-overlay, separate</td>
+<td>same</td>
+</tr>
+</tbody>
+</table>
+<p>For the normal magics the symbol table follows the text, the data, and — unless
+the relocation-stripped bit (<code>a_flag &amp; 01</code>) is set — an equal-sized block of
+relocation info. <code>nm</code> computes that offset inline (<code>o = a_text + a_data</code>, doubled
+when reloc is present, seeked from just past the 16-byte header) and reads
+<code>n = a_syms / 12</code> entries. The <code>a.out.h</code> comment still calls <code>0405</code> &quot;overlay&quot;
+(its later-BSD name), but the tools decode it as the First Edition layout — the
+reading their in-code comments document and the test objects need.</p>
+<hr />
+<h2 id="3-the-symbol-table-and-its-dialects">3. The symbol table and its dialects</h2>
+<h3 id="3-1-the-2-9bsd-form-the-default-build">3.1 The 2.9BSD form (the default build)</h3>
+<p>A <code>struct nlist</code> is a fixed 8-byte name, a 16-bit <code>n_type</code>, and a 16-bit
+<code>n_value</code> — 12 bytes. This is what the shipped <code>pdp11-nm</code> reads: one 16-bit
+<code>n_type</code> per symbol, no per-symbol overlay byte (2.9BSD keeps overlays out of the
+symbol table — they live in a <code>struct ovlhdr</code> on the <code>0430</code>/<code>0431</code> image).</p>
+<h3 id="3-2-first-edition-0405">3.2 First Edition (<code>0405</code>)</h3>
+<p>The Research V1 <code>a.out(V)</code> layout needs its own branch. Its 6-word header is
+<em>included in</em> <code>a_text</code>, so the symbol table (still 12-byte entries) begins at file
+offset <code>a_text</code>, its byte size is in <code>a_data</code>, and the <code>a_syms</code> slot holds the
+bss instead. <code>nm</code> seeks <strong>relative</strong> to the just-read header so the same code
+works for an archive member:</p>
+<pre><code class="language-c">fseek(fi, (long)(unsigned short)exph.a_text - (long)sizeof(struct exec), 1);
+n = (unsigned short)exph.a_data / sizeof(struct nlist);
+</code></pre>
+<p>The V1 type byte uses an older encoding — <code>00</code> undef, <code>01</code> abs, <code>02</code> register,
+<code>03</code> relocatable, <code>|040</code> global — which <code>nm</code> translates into the later
+<code>N_UNDF</code>/<code>N_ABS</code>/<code>N_REG</code>/<code>N_TEXT</code> + <code>N_EXT</code> values so the one type-letter switch
+(§4) handles every era.</p>
+<h3 id="3-3-the-menlo-ovly-variant-not-in-the-default-build">3.3 The MENLO_OVLY variant (not in the default build)</h3>
+<p><code>nm.c</code> also carries a <code>#ifdef MENLO_OVLY</code> variant that splits the middle word
+into a 1-byte <code>nn_type</code> + 1-byte <code>nn_ovno</code> (the 2.8BSD manual-text-overlay form)
+and prints the overlay number after the name. That macro is <strong>not</strong> defined when
+<code>nm.c</code> compiles — it includes <code>&lt;sys/param.h&gt;</code>, not <code>&lt;whoami.h&gt;</code> — so that code is
+inert unless someone builds with <code>-DMENLO_OVLY</code>. The shipped tool is the plain
+2.9BSD reader of §3.1.</p>
+<hr />
+<h2 id="4-the-type-letter">4. The type letter</h2>
+<p>Each symbol's letter comes from a switch on <code>n_type &amp; N_TYPE</code>, lower case first,
+then upper-cased if the <code>N_EXT</code> (global) bit is set:</p>
+<table>
+<thead>
+<tr>
+<th><code>n_type &amp; 037</code></th>
+<th>letter</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>N_UNDF</code> (0), value 0</td>
+<td><code>u</code> / <code>U</code></td>
+<td>undefined reference</td>
+</tr>
+<tr>
+<td><code>N_UNDF</code> (0), value ≠ 0</td>
+<td><code>c</code> / <code>C</code></td>
+<td>common (uninitialised global)</td>
+</tr>
+<tr>
+<td><code>N_ABS</code> (01) / default</td>
+<td><code>a</code> / <code>A</code></td>
+<td>absolute</td>
+</tr>
+<tr>
+<td><code>N_TEXT</code> (02)</td>
+<td><code>t</code> / <code>T</code></td>
+<td>text (code)</td>
+</tr>
+<tr>
+<td><code>N_DATA</code> (03)</td>
+<td><code>d</code> / <code>D</code></td>
+<td>data</td>
+</tr>
+<tr>
+<td><code>N_BSS</code> (04)</td>
+<td><code>b</code> / <code>B</code></td>
+<td>bss</td>
+</tr>
+<tr>
+<td><code>N_REG</code> (024)</td>
+<td><code>r</code> / <code>R</code></td>
+<td>register name</td>
+</tr>
+<tr>
+<td><code>N_FN</code> (037)</td>
+<td><code>f</code> / <code>F</code></td>
+<td>file-name symbol</td>
+</tr>
+</tbody>
+</table>
+<p>Two PDP-11 specifics. <strong><code>N_TYPE</code> is <code>037</code></strong> — it keeps all five low bits — so
+<code>N_FN</code> (<code>037</code>) survives the mask and reaches its <code>case</code> cleanly; there is no
+&quot;file symbol falls through the type mask&quot; hazard here. And <strong>common is decided by
+the value, not a distinct type</strong>: an <code>N_UNDF</code> entry with a non-zero <code>n_value</code> is a
+common block (<code>C</code>), matching the era's linker convention.</p>
+<hr />
+<h2 id="5-filtering-sorting-and-the-output-line">5. Filtering, sorting, and the output line</h2>
+<p>Filtering happens as symbols are read: <code>-g</code> drops any symbol without the <code>N_EXT</code>
+bit; <code>-u</code> drops any whose letter is not <code>u</code>. Survivors are collected into a
+<code>realloc</code>-grown array and sorted with <code>qsort(compare)</code> unless <code>-p</code> is given.
+<code>compare</code> sorts by the 8-byte name by default and by <code>n_value</code> first under <code>-n</code>;
+a single <code>revsort_flg</code> (1, or −1 under <code>-r</code>) is the return multiplier, so <code>-r</code>
+reverses whichever sort is active.</p>
+<p>Each line is <code>value type name</code>:</p>
+<ul>
+<li>the <strong>value</strong> is 6-digit zero-padded <strong>octal</strong> (<code>FORMAT</code> is <code>&quot;%06o&quot;</code>) — PDP-11
+<code>nm</code> has always printed octal, and six octal digits is exactly the width of a
+16-bit <code>n_value</code>;</li>
+<li>an <strong>undefined</strong> symbol (<code>u</code>/<code>U</code>) prints <strong>six blanks</strong> instead of a value;</li>
+<li>with <strong><code>-u</code></strong> the value and letter are suppressed and only the name is printed
+— a bare list of unresolved references.</li>
+</ul>
+<hr />
+<h2 id="6-archives">6. Archives</h2>
+<p>An archive is recognised by its first word, <code>ARMAG</code> (<code>0177545</code>). That comparison
+is the one genuine host bug this port fixes: <code>ARMAG</code> has bit 15 set and
+<code>a_magic</code> is a signed <code>int16_t</code>, so on an LP64 host it sign-extends to a negative
+<code>int</code> and would never equal the positive <code>int</code> constant <code>ARMAG</code>. <code>nm</code> compares
+<strong>as <code>unsigned short</code></strong> on both sides (<code>(unsigned short)exph.a_magic == (unsigned short)ARMAG</code>) so the match holds.</p>
+<p><code>nextel()</code> walks the members: it seeks to the running <code>off</code>, reads a 26-byte
+<code>ar_hdr</code>, byte-swaps <code>ar_size</code>/<code>ar_date</code> with <code>PDPL</code> (the PDP-11 stores a <code>long</code>
+high-word-first — &quot;middle-endian&quot;, §7), rounds an odd member size up to the even
+boundary, and advances <code>off</code>. Each member is then read as an <code>exec</code>; one that
+fails <code>N_BADMAG</code> — including the <code>__.SYMDEF</code> ranlib index — is silently skipped,
+so there is no name-based special case for the directory member.</p>
+<p>Member names are the other hardening. <code>ar_name[14]</code> is <strong>not</strong> NUL-terminated
+when a name fills all 14 bytes, so a raw <code>%s</code> would over-read into the following
+<code>ar_date</code>. The <code>nmname()</code> helper copies the 14 bytes into a 15-byte static
+buffer and terminates it, and every place that prints or sorts a member name goes
+through it (plain file names, already C strings, pass straight through).</p>
+<hr />
+<h2 id="7-reading-16-bit-structs-on-a-64-bit-host">7. Reading 16-bit structs on a 64-bit host</h2>
+<p><code>nm</code> runs on the host but reads objects written for a machine where <code>int</code> is
+2 bytes and <code>long</code> is 4:</p>
+<ul>
+<li><strong>Fixed widths.</strong> <code>cross/a.out.h</code> and <code>cross/ar.h</code> spell every on-disk field
+with <code>int16_t</code>/<code>uint16_t</code>/<code>int32_t</code>, so <code>struct exec</code> is 16 bytes and
+<code>struct nlist</code> 12 bytes on the host — no field silently widens to the host's
+<code>int</code>.</li>
+<li><strong>No byte swap for a.out.</strong> PDP-11 and x86-64 are both little-endian, so the
+16-bit fields need only the right width.</li>
+<li><strong>Middle-endian longs and packing for <code>ar</code>.</strong> A PDP-11 <code>long</code> stores its high
+half first, so <code>ar_date</code>/<code>ar_size</code> cross the disk boundary through <code>PDPL</code> (the
+swap is its own inverse), and <code>struct ar_hdr</code> is <code>__attribute__((packed))</code> so
+the host inserts no padding before its 4-byte fields.</li>
+</ul>
+<p>Built <code>-std=c99 -D_POSIX_C_SOURCE=200809L</code> with the tree's correctness flags
+(<code>-fno-strict-aliasing</code> for the on-disk word type-punning, <code>-fwrapv</code>, <code>-fcommon</code>);
+compiles warning-free with no <code>-Wno-*</code> suppressions.</p>
+<hr />
+<h2 id="testing">Testing</h2>
+<p><code>tests/binutils/size_nm_strip.sh</code> (from the repo root) runs <code>nm</code> against a
+committed real 2.9BSD kernel object, <code>tests/fixtures/dsort.o</code>, and checks that it
+decodes the 39-entry symbol table and emits the first line in the <code>value type name</code> octal shape. Because the source is the authentic 2.8/2.9 tool, where it
+disagrees with GNU <code>pdp11-aout</code> <code>nm</code> on an old object (GNU reports &quot;no symbols&quot;
+on some), <em>ours</em> is the reference; the two agree on objects GNU can read (see
+<code>docs/binutils-porting.md</code>).</p>
+<hr />
+<h2 id="for-a-maintainer">For a maintainer</h2>
+<ul>
+<li><strong>The magic table lives in <code>cross/a.out.h</code></strong> (<code>A_MAGIC1..6</code>, <code>N_BADMAG</code>) — add a
+format there, not in <code>nm.c</code>.</li>
+<li><strong>The symbol offset is computed inline</strong> (header + text + data + reloc), <em>not</em>
+via <code>N_TXTOFF</code>. Making the default build handle <code>0430</code>/<code>0431</code> overlay symbol
+tables means adding the <code>struct ovlhdr</code> skip to that inline math — today it
+exists only on the <code>MENLO_OVLY</code> path.</li>
+<li><strong>The type letter is one switch</strong>; a new type is a new <code>case</code>, and remember
+common is <code>N_UNDF</code> with a value, not its own type.</li>
+<li><strong>Keep member names going through <code>nmname()</code></strong>, and keep the <code>ARMAG</code> compare
+<code>unsigned short</code> on both sides — a signed compare silently stops recognising
+archives on an LP64 host.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

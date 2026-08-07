@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-cpp — design | pdp11-xdev</title>
+  <meta name="description" content="This document explains what pdp11-cpp is, how it was made a cross preprocessor for the PDP-11 without changing what it does, and the handful of things the LP64 host forced. For how to use it, see the user guide.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-cpp — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-what-it-is">1. What it is</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-made-a-cross-preprocessor">2. Made a cross preprocessor</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-bufsiz-is-pinned-to-512">3. `BUFSIZ` is pinned to 512</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-the-superimposed-code-fast-path">4. The superimposed-code fast path</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-the-if-parser">5. The `#if` parser</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-the-lp64-port">6. The LP64 port</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-recent-hardening">7. Recent hardening</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#testing">Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#for-a-maintainer">For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-cpp — design</h1>
+          <p class="docs-article__summary">This document explains what pdp11-cpp is, how it was made a cross preprocessor for the PDP-11 without changing what it does, and the handful of things the LP64 host forced. For how to use it, see the user guide.</p>
+          <p class="docs-article__source">pdp11-cpp — design</p>
+        </header>
+        <div class="prose">
+<p>This document explains what <code>pdp11-cpp</code> is, how it was made a <em>cross</em>
+preprocessor for the PDP-11 without changing what it does, and the handful of
+things the LP64 host forced. For how to <em>use</em> it, see the
+<a href="../cpp-guide/index.html">user guide</a>.</p>
+<p>The sources are <code>cpp.c</code> (the preprocessor), <code>cpy.y</code> (the <code>#if</code> expression
+grammar) and the <code>cpy.c</code> a yacc run generates from it, <code>yylex.c</code> (the <code>#if</code>
+lexer, <code>#include</code>d by the grammar's tail), and <code>universe.h</code> (the shared table
+that names the era include subdirectories). A companion
+<a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-cpp/docs/porting.md">porting guide</a> covers the LP64 diff in more detail.</p>
+<hr />
+<h2 id="1-what-it-is">1. What it is</h2>
+<p>This is <strong>John Reiser's <code>cpp</code></strong> (July/August 1978), the fast C preprocessor of
+the 2.9BSD line — the one pcc was built against and that the 1978 comment blocks
+throughout <code>cpp.c</code> still describe. It handles <code>#define</code>/<code>#undef</code>,
+<code>#include</code>, the <code>#if</code>/<code>#ifdef</code>/<code>#ifndef</code>/<code>#else</code>/<code>#endif</code> family, <code>#line</code>, macro
+expansion (object- and function-like, with formals recognised even inside
+quotes, exactly as the <code>README</code> documents), and comment removal. It is a
+<strong>pre-ANSI</strong> preprocessor: there is no <code>#</code>/<code>##</code> stringise-and-paste, and that is
+deliberate — it is the contract pcc compiles against.</p>
+<p>It is built with <strong><code>FLEXNAMES</code></strong> (<code>-DFLEXNAMES</code> in the Makefile), which sets
+<code>NCPS</code> to 128 so macro names run to 128 characters like the native 2.9 binary,
+rather than the historic 8. <code>FLEXNAMES</code> only widens cpp's internal symbol
+table; the emitted text is byte-for-byte what the un-widened cpp would emit,
+which is what lets the toolchain's downstream byte-exact oracles work.</p>
+<hr />
+<h2 id="2-made-a-cross-preprocessor">2. Made a cross preprocessor</h2>
+<p>The one thing a preprocessor must get right for a <em>different</em> machine is where
+it finds headers, and what it predefines. Both are aimed at the PDP-11 target,
+never the build host.</p>
+<p><strong>Predefined macros.</strong> The Makefile compiles <code>cpp.c</code> with <code>-Dunix=1 -Dpdp11=1</code>,
+which selects the <code>#if unix</code> and <code>#if pdp11</code> arms of <code>main()</code>; those call
+<code>stsym(&quot;unix&quot;)</code> and <code>stsym(&quot;pdp11&quot;)</code>, so the built binary predefines <strong><code>unix</code></strong>
+and <strong><code>pdp11</code></strong> (both to <code>1</code>). It also installs the dynamic <strong><code>__LINE__</code></strong> and
+<strong><code>__FILE__</code></strong> (<code>ulnloc</code>/<code>uflloc</code>, expanded in <code>subst()</code>). That is the classic
+set — the system and the machine — and everything else comes from the target
+headers or from <code>-D</code>. (The <code>pdp11-cc</code> driver passes <code>-Dunix -Dpdp11</code> on the cpp
+command line as well; harmless, since cpp already defines them to the same
+value.)</p>
+<p><strong>Include search.</strong> The original walked <code>$PATH</code> through the UCB library to turn
+each <code>.../bin</code> element into <code>.../include</code>; that assumes an installed <code>/usr</code>
+tree. <code>getincdir()</code> replaces it with the same binary-relative scheme cc and ld
+use: if <code>argv[0]</code> is a bare name it reads <code>/proc/self/exe</code>, finds the final
+path component, requires the directory above it to be exactly <code>bin</code>, and
+rewrites <code>.../bin/&lt;prefix&gt;-cpp</code> to <code>.../include</code>. It then appends the era
+subdirectory <code>include/&lt;universe&gt;</code> — <code>$PDP11_UNIVERSE</code>, or
+<code>PDP11_UNIV_DEFAULT_NAME</code> (<code>&quot;bsd29&quot;</code>, from <code>universe.h</code>) — and <code>stat()</code>s it,
+falling back to a flat <code>.../include</code> when that subdir is absent. <code>main()</code>
+appends this resolved directory, then a relative <code>include</code> (build-tree headers,
+pre-install), then <code>/usr/include</code>, after any <code>-I</code> directories.</p>
+<hr />
+<h2 id="3-bufsiz-is-pinned-to-512">3. <code>BUFSIZ</code> is pinned to 512</h2>
+<p>cpp scans in a fixed window, <code>buffer[NCPS + BUFSIZ + BUFSIZ + NCPS]</code>, split at
+<code>pbeg</code>/<code>pbuf</code>/<code>pend</code>, and when macro expansion needs to back up past the start
+of the window it spills text into a side buffer (<code>sbf[SBSIZE]</code>, <code>SBSIZE</code>
+24000) whose slabs are <code>BUFSIZ</code> bytes each. All the threshold arithmetic — the
+<code>SBSIZE - BUFSIZ</code> &quot;no space&quot; guards, the <code>(p - inp) &gt;= BUFSIZ</code> long-comment
+split, <code>unfill()</code>'s slab size — is written for <strong><code>BUFSIZ == 512</code></strong>, the PDP-11
+stdio value. glibc defines <code>BUFSIZ</code> as 8192, which makes <code>SBSIZE - BUFSIZ</code> tiny
+and trips the side-buffer bounds checks immediately, so <code>cpp.c</code> does
+<code>#undef BUFSIZ</code> / <code>#define BUFSIZ 512</code> up front and every buffer is sized from
+that. The same 512 is handed explicitly to <code>setvbuf()</code> on the output file,
+because stdio would otherwise assume its own 8192-byte <code>BUFSIZ</code> for the
+512-byte <code>_sobuf</code> and overrun it (4 NULs at the boundary).</p>
+<hr />
+<h2 id="4-the-superimposed-code-fast-path">4. The superimposed-code fast path</h2>
+<p>Reiser's speed comes from not calling the symbol table for tokens that cannot be
+macros. <code>main()</code> builds byte-classification tables — <code>fastab</code>/<code>slotab</code> (bit
+flags <code>IB</code>/<code>SB</code>/<code>NB</code>/<code>CB</code>/<code>QB</code>/<code>WB</code> for identifier, separator, number, comment,
+quote, warn), <code>toktyp</code> (<code>BLANK</code>/<code>IDENT</code>/<code>NUMBR</code>), and <code>macbit</code>, a superimposed
+code keyed by each character <em>and its position</em> in the identifier. As
+<code>cotoken()</code> scans an identifier it ANDs <code>macbit</code> bit-by-bit (<code>scw1</code>, bits
+<code>b0..b7</code>); the moment a position's bit is clear, no defined macro has that
+character there, so the token jumps to <code>nomac</code> and is emitted without a
+<code>slookup()</code>. <code>#define</code> sets those bits (<code>xmac1</code>) when it records a name. The
+pairwise variant <code>scw2</code> is compiled out (<code>scw1 1</code>, <code>scw2 0</code>).</p>
+<p>The tables are indexed by a plain <code>char</code>. On the LP64 host that is signed and
+runs −128..127, so every table access is offset by <strong><code>COFF</code></strong> — 128 under
+<code>#if pdp11 | vax</code>, 0 elsewhere — as in <code>(fastab + COFF)[c]</code>. <code>COFF</code> is defined
+identically at the top of both <code>cpp.c</code> <em>and</em> <code>yylex.c</code>; the two agree only
+because the Makefile compiles both translation units with <code>-Dpdp11=1</code>. Getting
+that wrong (one side offsetting, the other not) makes a high-bit byte misclassify
+and <code>defined</code> fail to lex.</p>
+<hr />
+<h2 id="5-the-if-parser">5. The <code>#if</code> parser</h2>
+<p><code>cpy.y</code> is the yacc grammar for <code>#if</code> constant expressions — the full C
+operator set with C precedence, the <code>?:</code> and comma operators, and the two forms
+of <code>defined</code> (<code>DEFINED '(' number ')'</code> and <code>DEFINED number</code>). <code>control()</code> calls
+<code>yyparse()</code> for a <code>#if</code>; a true result bumps <code>trulvl</code>, a false one bumps
+<code>flslvl</code>, and nothing (not even newlines) is emitted while <code>flslvl</code> is nonzero.</p>
+<p><code>yylex.c</code> is the lexer, <code>#include</code>d at the very end of <code>cpy.y</code>, so it compiles as
+part of the generated parser rather than as its own object. It recognises the
+two-character operators, one-character operators, numeric constants (via
+<code>tobinary</code>, which also handles hex, octal, and the <code>l</code>/<code>L</code> suffix), character
+constants with escapes, and identifiers — an undefined identifier evaluates to
+<code>0</code>. <code>defined</code> is handled by raising <code>flslvl</code> so its operand is not macro-expanded
+and lowering it again once the operand is read; that balance is the fix for the
+2.8 <code>defined()</code>/<code>flslvl</code> state leak (preserved as a golden record — see Testing).</p>
+<p>Unlike the VAX port, <strong><code>cpy.c</code> here is a build artifact</strong>: the Makefile
+regenerates it from <code>cpy.y</code> with the host <code>yacc</code> (<code>YACC</code>, which resolves to
+GNU bison), it is <code>.gitignore</code>d, and <code>make clean</code> removes it. It is not a file
+to edit — change <code>cpy.y</code>.</p>
+<hr />
+<h2 id="6-the-lp64-port">6. The LP64 port</h2>
+<p>The diff against the historic source is modernisation plus the era-neutral
+changes above. The parts the 64-bit host forced:</p>
+<ul>
+<li><strong><code>stdarg</code>, not K&amp;R varargs.</strong> <code>pperror</code>/<code>yyerror</code>/<code>ppwarn</code> funnel through
+<code>vpperror(char *, va_list)</code>. Under the old implicit-<code>int</code> varargs a pointer
+argument (a filename, e.g. in <code>Can't find include file %s</code>) was truncated to
+<code>int</code>, so <code>%s</code> read a bad pointer and crashed.</li>
+<li><strong>Prototypes for pointer-returning functions.</strong> <code>lookup()</code> (called from
+<code>yylex.c</code>) and the other symbol-table routines are declared returning
+<code>struct symtab *</code>; without the prototype the returned pointer was truncated to
+<code>int</code>.</li>
+<li><strong><code>fout</code> set in <code>main()</code>.</strong> It is initialised to <code>stdout</code> at the top of
+<code>main()</code> rather than as a static initialiser, since <code>stdout</code> is not a
+constant on modern libc.</li>
+</ul>
+<hr />
+<h2 id="7-recent-hardening">7. Recent hardening</h2>
+<p>Bounds fixes on the option-parsing path, output-neutral for valid input:</p>
+<ul>
+<li><strong><code>dirs[]</code> grown <code>10 → 32</code>.</strong> The <code>-I</code> cap (<code>nd &gt; 8</code>) plus the roughly seven
+unconditional trailing appends (the resolved include dir, <code>include</code>,
+<code>/usr/include</code>, the <code>0</code> terminator, <code>dirs[0]</code>) overflowed a <code>dirs[10]</code> once a
+build passed six or more <code>-I</code> flags — an ordinary occurrence.</li>
+<li><strong><code>-D</code>/<code>-U</code> guards fixed to <code>&gt;=</code>.</strong> <code>predef</code>/<code>prund</code> were tested with <code>&gt;</code>, so
+the 21st <code>-D</code> or <code>-U</code> (with <code>NPREDEF == 20</code>) wrote one past <code>prespc</code>/<code>punspc</code>.</li>
+</ul>
+<hr />
+<h2 id="testing">Testing</h2>
+<p><code>tests/cpp/</code> holds the golden suite, run by the repo's <code>tests/run.sh</code>
+(<code>-u</code> regenerates the <code>.expected</code> files). It compares <strong>whole output</strong> — the
+<code># line &quot;file&quot;</code> directives included — across the pre-ANSI contract, object- and
+function-like macros, nested expansion, the <code>#if</code>/<code>#ifdef</code> conditionals, the
+<code>defined</code> operator with and without parentheses, <code>#include</code> resolution, and the
+predefined <code>pdp11</code>/<code>unix</code>. Separately, <code>tests/cpp-bsd28/</code> pins the <em>old</em> 2.8
+<code>defined()</code>/<code>flslvl</code> quirk as a golden record, so the fix in §5 cannot be undone
+without the difference showing. Whole-output comparison is the point: cpp's text
+feeds the byte-exact oracles for the rest of the toolchain, so a silent
+character-classification or line-directive regression here would surface far
+downstream.</p>
+<hr />
+<h2 id="for-a-maintainer">For a maintainer</h2>
+<ul>
+<li><strong>Keep it pre-ANSI.</strong> <code>#</code>/<code>##</code> inert is the contract with pcc, not a bug.</li>
+<li><strong><code>BUFSIZ</code> must stay 512.</strong> The side-buffer arithmetic and the output
+<code>setvbuf()</code> size both depend on it; do not let glibc's 8192 back in.</li>
+<li><strong><code>COFF</code> is defined in both <code>cpp.c</code> and <code>yylex.c</code>.</strong> They agree only because
+the Makefile builds both with <code>-Dpdp11=1</code> — keep that flag on <code>cpy.o</code> too.</li>
+<li><strong><code>cpy.c</code> is generated and <code>.gitignore</code>d.</strong> Edit <code>cpy.y</code>; the host bison
+regenerates <code>cpy.c</code>.</li>
+<li><strong>The include default is binary-relative.</strong> <code>getincdir()</code> resolves
+<code>include/&lt;universe&gt;</code> from <code>/proc/self/exe</code>; there is no <code>/usr</code>-tree assumption
+and no <code>$PATH</code> search left.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

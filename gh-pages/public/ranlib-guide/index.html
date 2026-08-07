@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-ranlib — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-ranlib builds an archive&#x27;s __.SYMDEF symbol directory — the table of contents that lets pdp11-ld find which member of a .a library defines a given symbol without scanning every member in order.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-ranlib — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-options">2. Options</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-what-it-does-and-when-you-need-it">3. What it does, and when you need it</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-what-gets-indexed">4. What gets indexed</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-determinism-and-the-stamped-date">5. Determinism and the stamped date</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-exit-status">6. Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-notes-per-universe">7. Notes per universe</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#8-examples">8. Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-ranlib — user guide</h1>
+          <p class="docs-article__summary">pdp11-ranlib builds an archive&#x27;s __.SYMDEF symbol directory — the table of contents that lets pdp11-ld find which member of a .a library defines a given symbol without scanning every member in order.</p>
+          <p class="docs-article__source">pdp11-ranlib — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-ranlib</code> builds an archive's <code>__.SYMDEF</code> <strong>symbol directory</strong> — the table
+of contents that lets <code>pdp11-ld</code> find which member of a <code>.a</code> library defines a
+given symbol without scanning every member in order. It is the companion of
+<a href="https://github.com/nyxcraft/pdp11-xdev/tree/main/src/pdp11-ar"><code>pdp11-ar</code></a>, which deliberately does <em>not</em> build one: on the
+PDP-11 UNIX line that has always been <code>ranlib</code>'s job. It runs on your host and
+rewrites a library of PDP-11 objects in place.</p>
+<p>For how it works inside — the <code>__.SYMDEF</code> layout, the a.out symbol reader, the
+offset arithmetic, and the safe <code>ar</code> call-out — see the
+<a href="../ranlib-design/index.html">design document</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-ranlib archive ...
+</code></pre>
+<p>Point it at one or more <code>.a</code> files. For each, it reads the exported symbols from
+the object members, writes a <code>__.SYMDEF</code> directory, and asks <code>pdp11-ar</code> to
+splice that in as the archive's first member. Running it again is a rebuild, not
+an accumulation: an existing <code>__.SYMDEF</code> is replaced in place.</p>
+<hr />
+<h2 id="2-options">2. Options</h2>
+<p>There are none — every argument is an archive name, exactly as the vintage
+V7/2.9BSD <code>ranlib</code> behaved. It takes no flags, no format selector, and no
+verbosity control; the format is always the authentic <code>__.SYMDEF</code> and there is
+nothing to choose. (This differs from later <code>ranlib</code>s and from the sibling VAX
+toolchain, which grew <code>-t</code>/<code>-v</code>.)</p>
+<hr />
+<h2 id="3-what-it-does-and-when-you-need-it">3. What it does, and when you need it</h2>
+<p>A library links faster — and, when its members are not dependency-ordered,
+links <em>correctly</em> — with a symbol directory. <code>pdp11-ld</code> otherwise scans a plain
+archive in a single front-to-back pass, so a member whose definition sits before
+the member that references it is missed. <code>__.SYMDEF</code> removes that ordering
+requirement.</p>
+<p>You need to run it after <strong>building or changing</strong> a library:</p>
+<pre><code>pdp11-ar rc libc.a *.o        # build the archive (ar does NOT index)
+pdp11-ranlib libc.a           # add __.SYMDEF so ld resolves in any order
+</code></pre>
+<p><code>pdp11-ar</code> never maintains the index itself — there is no <code>s</code>-modifier shortcut
+on this line — so a plain <code>ar</code> edit leaves the old <code>__.SYMDEF</code> stale (or absent)
+and you re-run <code>pdp11-ranlib</code>. It finds the matching <code>ar</code> next to its own binary
+(via <code>/proc/self/exe</code>), so the two always pair up.</p>
+<hr />
+<h2 id="4-what-gets-indexed">4. What gets indexed</h2>
+<p>A symbol is entered in the directory if it is <strong>external and defined in this
+member</strong>:</p>
+<ul>
+<li>an <strong>external, defined</strong> symbol (a function or global the member provides) —
+indexed;</li>
+<li>an <strong>external undefined</strong> symbol — <em>not</em> indexed: it is a <em>reference</em>, and
+indexing it would make <code>ld</code> pull in a member that cannot satisfy it;</li>
+<li>a <strong>local / debug</strong> symbol — not indexed.</li>
+</ul>
+<p>This is the classic V7/2BSD <code>ranlib</code> rule. Symbol names are stored <strong>inline in 8
+bytes</strong> and truncated past that, as the format has always done. <code>pdp11-ranlib</code>
+reads the symbols from real PDP-11 <strong>a.out</strong> objects; a member whose magic is not
+a recognised a.out magic (<code>A_MAGIC1..4</code>) contributes nothing and is skipped
+harmlessly. A single archive may hold at most 700 indexed symbols.</p>
+<hr />
+<h2 id="5-determinism-and-the-stamped-date">5. Determinism and the stamped date</h2>
+<p><code>__.SYMDEF</code> carries a date, and <code>ld</code> treats the table as stale — falling back to
+a single-pass scan — unless that date is at least the archive's modification
+time. <code>pdp11-ranlib</code> writes a fixed <strong>far-future</strong> date so the table is always
+honoured regardless of host filesystem clock skew. Because the date is a
+constant (not <code>time()</code>), the tool's output is <strong>byte-identical run to run</strong> on
+the same input — no environment variable is needed to make it reproducible.</p>
+<hr />
+<h2 id="6-exit-status">6. Exit status</h2>
+<ul>
+<li><strong>0</strong> — normal completion. This includes archives it skipped and reported: a
+file it could not open (<code>nm: cannot open …</code>) or one that is not an archive
+(<code>not archive: …</code>) is announced and the next argument is processed.</li>
+<li><strong>1</strong> — a fatal error: it could not create the temporary <code>__.SYMDEF</code>, or the
+archive has more than 700 external symbols (<code>symbol table overflow</code>).</li>
+</ul>
+<p>If <code>pdp11-ar</code> cannot be run to splice the member in, it prints <code>can't run …</code> and
+moves on; the exit status still reflects only the fatal cases above.</p>
+<hr />
+<h2 id="7-notes-per-universe">7. Notes per universe</h2>
+<ul>
+<li><strong>V7, 2BSD, 2.9BSD</strong> all shipped this <code>ranlib</code> and the <code>__.SYMDEF</code> directory —
+the pair is byte-identical across the PDP-11 line, and this is its native
+ground. <code>libc.a</code> for each is built with <code>pdp11-ar</code> and indexed here.</li>
+<li>The pairing is the historical PDP-11 one: <code>ranlib</code> drives <code>ar</code> (<code>ar rlb …</code>),
+the reverse of later toolchains where <code>ar</code> drives <code>ranlib</code>.</li>
+</ul>
+<hr />
+<h2 id="8-examples">8. Examples</h2>
+<pre><code># Index a freshly built library
+pdp11-ranlib libc.a
+
+# Full build: archive then index (two steps -- ar does not index)
+pdp11-ar rc libc.a *.o &amp;&amp; pdp11-ranlib libc.a
+
+# Re-index after editing a library
+pdp11-ar r libc.a printf.o &amp;&amp; pdp11-ranlib libc.a
+
+# Re-index several libraries at once
+pdp11-ranlib lib*.a
+</code></pre>
+<p>Continue to the <a href="../ranlib-design/index.html">design document</a> for the directory layout and the
+internals.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

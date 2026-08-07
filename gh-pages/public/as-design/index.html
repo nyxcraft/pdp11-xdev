@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-as — design | pdp11-xdev</title>
+  <meta name="description" content="This document describes how pdp11-as turns 2BSD assembler source into a PDP-11 object file: how one binary covers every era from First Edition (1972) to 2.11BSD, where the opcode knowledge lives, how a name is looked up…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-as — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-one-binary-three-orthogonal-era-axes">1. One binary, three orthogonal era axes</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-the-opcode-and-keyword-tables">2. The opcode and keyword tables</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-name-lookup-and-era-gating">3. Name lookup and era gating</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-two-passes-and-span-relaxation">4. Two passes and span relaxation</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-the-sys-pseudo-op-and-named-system-calls">5. The `sys` pseudo-op and named system calls</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-the-local-symbol-replay">6. The `~` local-symbol replay</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-three-a-out-formats-on-the-way-out">7. Three a.out formats on the way out</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#8-testing">8. Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#9-for-a-maintainer">9. For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-as — design</h1>
+          <p class="docs-article__summary">This document describes how pdp11-as turns 2BSD assembler source into a PDP-11 object file: how one binary covers every era from First Edition (1972) to 2.11BSD, where the opcode knowledge lives, how a name is looked up…</p>
+          <p class="docs-article__source">pdp11-as — design</p>
+        </header>
+        <div class="prose">
+<p>This document describes how <code>pdp11-as</code> turns 2BSD assembler source into a
+PDP-11 object file: how one binary covers every era from First Edition (1972)
+to 2.11BSD, where the opcode knowledge lives, how a name is looked up and
+era-gated, the two-pass span relaxation, the <code>sys</code> pseudo-op and the <code>~</code>
+local-symbol replay, and the three a.out formats it can write. For how to <em>use</em>
+it, see the <a href="../as-guide/index.html">user guide</a>; for the era dialects in full, see
+<a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-as/docs/std.md">std.md</a>.</p>
+<p>The tool is one file, <code>as.c</code> (~2400 lines), a C reimplementation of the 2BSD
+<code>as</code> — which is itself pure PDP-11 assembly and so could not be cross-compiled.
+It runs on a modern LP64 host and produces the classic objects this toolchain's
+<code>ld</code> and <code>nm</code> read (<strong>not</strong> the newer string-table a.out GNU <code>pdp11-aout</code>
+emits). The opcode knowledge lives in two hand-laid tables, <code>optab.h</code> and
+<code>extoptab.h</code>.</p>
+<hr />
+<h2 id="1-one-binary-three-orthogonal-era-axes">1. One binary, three orthogonal era axes</h2>
+<p>The awkward fact <code>as</code> exists to handle: across the lineage it descends from,
+the <em>instruction set</em>, the <em>system-call vocabulary</em>, and the <em>object format</em>
+each changed on their own schedule. Rather than an assembler per era, <code>as</code>
+carries three independent switches, each also reachable through a <code>--std</code>
+preset that sets a sanctioned combination:</p>
+<table>
+<thead>
+<tr>
+<th>axis</th>
+<th>flag</th>
+<th>state</th>
+<th>choices</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>instructions</td>
+<td><code>--isa=</code></td>
+<td><code>isa</code> / <code>jflag</code></td>
+<td><code>1972</code> (V1–V3), <code>0</code> common (V4–2.10, default), <code>211</code> (2.11 / J-11), <code>extended</code> (full hardware line, <code>jflag</code>)</td>
+</tr>
+<tr>
+<td>syscall names</td>
+<td><code>--sys=</code></td>
+<td><code>sysnames</code></td>
+<td><code>0</code> none (V7+), <code>1972</code>, <code>6</code> (V4–V6)</td>
+</tr>
+<tr>
+<td>object format</td>
+<td><code>--aout=</code></td>
+<td><code>v1fmt</code> / <code>newsym</code></td>
+<td><code>v1</code> First Edition, <code>v2</code> 0407 (default), <code>v2+</code> 2.11 string-table</td>
+</tr>
+</tbody>
+</table>
+<p>The axes are genuinely orthogonal: <code>--isa=211 --sys=v6</code> describes a machine
+that never existed, and the assembler will happily be it. A <code>--std=&lt;era&gt;</code> token
+sets all three plus <code>v7flag</code> (undefined-symbol strictness) to one historical
+combination — it is a preset, never a fourth axis.</p>
+<hr />
+<h2 id="2-the-opcode-and-keyword-tables">2. The opcode and keyword tables</h2>
+<p><code>as</code> never hard-codes a mnemonic; every one lives in a <code>struct op {name, type, opcode}</code> table. There are two headers:</p>
+<ul>
+<li><strong><code>optab.h</code></strong> — the default table, extracted verbatim from the authentic
+2.8BSD <code>as19.s</code>: registers, the double- and single-operand instructions, the
+branches and their <code>jbr</code>/<code>jxxx</code> pseudo-forms, <code>sys</code>, the FP11 group, EAE,
+and the directives.</li>
+<li><strong><code>extoptab.h</code></strong> — four tables that are <strong>not</strong> in the default set: <code>tab211</code>
+(the 2.11 / J-11 additions — <code>mfpi</code>, <code>spl</code>, <code>mfpt</code>, <code>csm</code>, …), <code>v1systab</code>
+(the 1972 syscall-name keywords), <code>v6systab</code> (the V4–V6 list), and <code>extoptab</code>
+(the extended hardware line — FIS, the full CIS, <code>med</code>/<code>xfc</code>, FP11 DEC
+names). They are opt-in because their names collide with symbols in the era
+corpora, and a builtin name silently suppresses a same-named <code>^</code>-alias
+definition at write-out.</li>
+</ul>
+<p>Both headers are wrapped in <code>/* clang-format off */</code> on purpose: <strong>the tab
+columns are the documentation</strong>, hand-aligned so the table reads as a table.
+The marker must be exactly <code>clang-format off</code> — trailing text on that line is
+not honoured, so the columns would silently reflow otherwise.</p>
+<p>The <code>type</code> field is a class key (also from <code>as19.s</code>) that selects the operand
+encoder:</p>
+<table>
+<thead>
+<tr>
+<th>type</th>
+<th>class</th>
+<th>type</th>
+<th>class</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>01</code></td>
+<td>absolute / no-operand</td>
+<td><code>020</code></td>
+<td><code>.even</code></td>
+</tr>
+<tr>
+<td><code>06</code></td>
+<td>branch</td>
+<td><code>023</code></td>
+<td><code>.globl</code></td>
+</tr>
+<tr>
+<td><code>07</code></td>
+<td>jsr / xor</td>
+<td><code>024</code></td>
+<td>register name</td>
+</tr>
+<tr>
+<td><code>010</code></td>
+<td>rts</td>
+<td><code>025</code>/<code>026</code>/<code>027</code></td>
+<td><code>.text</code>/<code>.data</code>/<code>.bss</code></td>
+</tr>
+<tr>
+<td><code>011</code></td>
+<td>sys</td>
+<td><code>030</code></td>
+<td>mul / div (EIS)</td>
+</tr>
+<tr>
+<td><code>013</code></td>
+<td>double-operand</td>
+<td><code>031</code></td>
+<td>sob</td>
+</tr>
+<tr>
+<td><code>015</code></td>
+<td>single-operand</td>
+<td><code>032</code></td>
+<td><code>.comm</code></td>
+</tr>
+<tr>
+<td><code>016</code></td>
+<td><code>.byte</code></td>
+<td><code>035</code>/<code>036</code></td>
+<td>jbr / jxxx</td>
+</tr>
+<tr>
+<td><code>017</code></td>
+<td><code>.ascii</code></td>
+<td><code>040</code></td>
+<td><code>.word</code> (bare expression)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-name-lookup-and-era-gating">3. Name lookup and era gating</h2>
+<p><code>oplook()</code> walks the tables in a fixed order and returns the first live match:
+<code>optab</code> (filtered by <code>kwskip</code>), then <code>tab211</code> (if <code>isa==211</code> or <code>jflag</code>),
+<code>v1systab</code> (if <code>sysnames==1972</code>), <code>v6systab</code> (if <code>sysnames==6</code>), and <code>extoptab</code>
+(if <code>jflag</code>). Duplicate mnemonics in the base table — <code>mul</code>/<code>div</code>/<code>ash</code> appear
+first as absolute EAE addresses and later as the EIS instruction — are resolved
+<strong>last-wins</strong>, so <code>mul</code> is the instruction, matching 2BSD's last-wins symbol
+table.</p>
+<p><code>kwskip()</code> era-gates entries that exist in <code>optab</code> but not in the selected era:</p>
+<ul>
+<li>under <code>isa==1972</code>: the <code>jbr</code>/<code>jxxx</code> pseudo-branches (types 035/036), <code>.ascii</code>,
+and the V4 FP additions <code>ldfps</code>/<code>stfps</code>/<code>movie</code>/<code>movei</code> are hidden;</li>
+<li>under any <code>sysnames</code>: the <code>wait</code> <strong>instruction</strong> is hidden, because every era
+that names its calls makes <code>wait</code> the syscall (7), so <code>v1systab</code>/<code>v6systab</code>
+win;</li>
+<li>under <code>isa==211</code>: the ancient EAE keywords (<code>ac</code>, <code>mq</code>, <code>csw</code>, <code>mpy</code>, …)
+disappear, exactly as 2.11 dropped them.</li>
+</ul>
+<hr />
+<h2 id="4-two-passes-and-span-relaxation">4. Two passes and span relaxation</h2>
+<p><code>as</code> is a two-pass assembler — pass 1 assigns addresses, pass 2 emits code,
+relocation and symbols — but pass 1 is really a three-part span relaxation that
+reproduces the 2BSD <code>as1</code>+<code>as2</code> structure so the branch sizes come out
+identical:</p>
+<ol>
+<li><strong>the <code>as1</code> estimate</strong> — a single top-to-bottom pass sizing each branch
+inline: a forward text branch is long, a backward one short iff its
+displacement fits <code>[-254,0)</code>. Not iterated to a fixpoint — that over-sizes
+backward branches.</li>
+<li><strong>the <code>as2</code> sizing pass</strong>, run once over that estimate — each branch decides
+from <code>target − dot</code> (forward refs corrected by <code>brdelt</code>, the most recent
+label's estimate drift); the choices are final, recorded in <code>spanlong[]</code>.</li>
+<li><strong>pass 2</strong> replays those choices and emits.</li>
+</ol>
+<p><code>jbr</code>/<code>jxxx</code> (types 035/036) collapse to the short branch form when the target
+is a near text label; otherwise they stay in the long <code>jmp</code> form — correct if
+not always minimal. Symbol-table indices are assigned <strong>between</strong> the relaxation
+and pass 2, because <code>emitword()</code> stamps a symbol's index into each external
+relocation word and the index must already match the symbol's position in the
+table <code>writeout()</code> emits.</p>
+<hr />
+<h2 id="5-the-sys-pseudo-op-and-named-system-calls">5. The <code>sys</code> pseudo-op and named system calls</h2>
+<p><code>sys</code> (type 011) reaches <code>sysop()</code>, which requires an absolute operand and emits
+<code>base | (v &amp; 0377)</code> — base <code>0104400</code>. The trap code is the <strong>low 8 bits</strong>, not
+6: the library's job-control stubs write <code>sys read+200</code>, and a <code>&amp;077</code> mask would
+truncate the <code>0200</code> flag bit. <code>emt</code> (type 041) takes an <em>optional</em> operand
+(<code>emt</code> alone is <code>emt 0</code>).</p>
+<p>When a <code>--sys</code> list is active its names become keywords, so <code>sys write</code>
+assembles by name instead of <code>sys 4</code>. The two lists that ever existed are
+carried verbatim: the 1972 table (<code>v1systab</code>, with <code>quit</code>/<code>intr</code>/<code>cemt</code>/
+<code>ilgins</code>) and the V4–V6 table (<code>v6systab</code>, with <code>signal</code>). Both make <code>wait</code>
+the call, never the instruction.</p>
+<hr />
+<h2 id="6-the-local-symbol-replay">6. The <code>~</code> local-symbol replay</h2>
+<p>c2 emits local/sdb symbols spelled with a leading tilde (<code>~~funcname:</code>,
+<code>~var=reg</code>). The authentic <code>as</code> (<code>as14.s</code>) strips one <code>~</code>, marks the symbol &quot;not
+for the hash table&quot;, and appends it to the symbol list directly — so these are
+<strong>never deduplicated</strong>: each <code>~var=reg</code> in a different function is a distinct
+entry (the source of the +10 symbol count versus a hashing assembler).</p>
+<p><code>as.c</code> mirrors that with <code>tildesym()</code>: a per-pass occurrence counter
+(<code>tildeidx</code>) indexes a flat <code>tildesyms[]</code> array, so the Nth <code>~</code>-symbol is the
+<em>same object</em> across every relaxation pass (stable values and <code>brdelt</code>) while
+distinct occurrences stay distinct. They are never hashed, so ordinary lookup
+never returns one — matching the define-only, stripped-from-the-binary role.</p>
+<hr />
+<h2 id="7-three-a-out-formats-on-the-way-out">7. Three a.out formats on the way out</h2>
+<p><code>writeout()</code> emits the symbol table in first-creation order (walking the
+<code>onext</code> insertion chain, not the hash buckets) because <code>ld</code> assigns
+common/bss addresses in that order — the order is load-bearing. All three
+formats bias a symbol's value into the unified object address space (text@0,
+data@<code>txtsize</code>, bss@<code>txtsize+datsize</code>), which <code>ld</code> backs out when combining
+objects.</p>
+<table>
+<thead>
+<tr>
+<th><code>--aout=</code></th>
+<th>header</th>
+<th>relocation</th>
+<th>symbols</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>v1</code> (<code>v1fmt</code>)</td>
+<td>6-word, magic <strong>0405</strong>, 12 bytes</td>
+<td>2-bit <strong>bit-stream</strong>, MSB-first: <code>00</code> abs, <code>01</code> reloc, <code>10</code> pcrel-external, <code>1101</code> abs-external (<code>1100</code>/<code>1110</code> carry a 16-bit addend extension); external words hold the symtab offset <code>12*index</code></td>
+<td>V1 flags (00 undef / 01 abs / 02 reg / 03 reloc, `</td>
+</tr>
+<tr>
+<td><code>v2</code> (default)</td>
+<td>8-word, magic <strong>0407</strong>, 16 bytes</td>
+<td>one 16-bit word per code word, <code>(index&lt;&lt;4) | rtype | pcrel</code>, <code>rtype ∈ {0, 02 text, 04 data, 06 bss, 010 ext}</code></td>
+<td>12 bytes: <code>name[8]</code>, <code>n_type</code>, <code>n_ovly=0</code>, value</td>
+</tr>
+<tr>
+<td><code>v2+</code> (<code>newsym</code>, <code>-n</code>)</td>
+<td>as <code>v2</code></td>
+<td>as <code>v2</code></td>
+<td>8-byte nlist (<code>strx</code> as a PDP-11 long, high word first; type; value) plus a trailing string table; names up to 32 chars</td>
+</tr>
+</tbody>
+</table>
+<p>The First Edition path merges text and data into one contiguous body before
+streaming relocation (their addresses are already contiguous there); the result
+is a file a simulated 1971 system, or apout, can <code>exec()</code>.</p>
+<hr />
+<h2 id="8-testing">8. Testing</h2>
+<p>The standard of proof is byte-identity to the native 2.9 <code>as</code>, run under apsim:</p>
+<ul>
+<li><strong><code>oracle/selfhost.sh</code></strong> rebuilds the toolchain's own binaries from source —
+assembling 2.9's <code>as0.s</code>/<code>as2.s</code> with this <code>as</code> reproduces the native
+<code>/bin/as</code> and <code>/lib/as2</code> <strong>byte-for-byte</strong>.</li>
+<li><strong><code>oracle/as-corpus.sh</code></strong>, <strong><code>cc-corpus.sh</code></strong> and <strong><code>tree-sweep.sh</code></strong> sweep
+whole 2.9 source trees and <code>cmp</code> each <code>.o</code> against native <code>as</code>: <strong>~1400 files,
+zero differences</strong>. The one non-match (<code>sys/lfstat.s</code>) is a <code>sys.s</code> version
+skew, not an assembler bug.</li>
+<li><strong><code>tests/as/encode.sh</code></strong> disassembles the output with GNU <code>objdump -m pdp11</code>
+to confirm every mode, target and immediate decodes; an apsim CIS golden
+exercises the <code>--isa=extended</code> encodings.</li>
+<li>The <strong>das round-trip</strong> oracles (<code>das → as → identical object</code>) prove the
+symbol-table order and external-relocation indices survive losslessly.</li>
+</ul>
+<hr />
+<h2 id="9-for-a-maintainer">9. For a maintainer</h2>
+<ul>
+<li><strong>The tables are the spec.</strong> <code>optab.h</code>/<code>extoptab.h</code> are hand-columned under
+<code>clang-format off</code>; add an entry in the right alignment and never let the
+formatter reflow them. Put an era-specific mnemonic in the era table
+(<code>tab211</code>/<code>extoptab</code>), not the default one.</li>
+<li><strong>Era-gate through <code>kwskip</code>/<code>oplook</code></strong>, not by editing the base table. A
+builtin name suppresses a same-named <code>^</code>-alias symbol at write-out, so adding
+a keyword can silently drop a corpus symbol.</li>
+<li><strong>Keep the three axes orthogonal.</strong> <code>--isa</code>/<code>--sys</code>/<code>--aout</code> are independent; a
+<code>--std</code> token is only a bundle of them plus <code>v7flag</code>.</li>
+<li><strong>Hold output to <code>cmp</code> against native <code>as</code></strong> (selfhost + the corpus sweeps) —
+that catches a wrong data/bss bias, relocation type, or symbol order, which a
+disassembly check alone does not.</li>
+<li><strong>The object is written even when assembly errored</strong> (authentic 2BSD: <code>as</code>
+never unlinks a partial <code>.o</code>); the nonzero status is reported after
+<code>writeout()</code>.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

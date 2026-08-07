@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-cc — design | pdp11-xdev</title>
+  <meta name="description" content="This document explains what pdp11-cc is, how it was turned into a cross driver without changing what it does, and how it fits the toolchain&#x27;s universe model. For how to use it, see the user guide.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-cc — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-what-it-is">1. What it is</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-finding-the-passes-no-compiled-in-paths">2. Finding the passes: no compiled-in paths</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-the-pipeline-in-detail">3. The pipeline in detail</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-the-universe-chosen-at-link-stamped-into-the-image">4. The universe: chosen at link, stamped into the image</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-scratch-files-a-private-directory-no-race">5. Scratch files: a private directory, no race</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-the-private-exec-and-the-header-cleanup">6. The private exec, and the header cleanup</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#testing">Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#for-a-maintainer">For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-cc — design</h1>
+          <p class="docs-article__summary">This document explains what pdp11-cc is, how it was turned into a cross driver without changing what it does, and how it fits the toolchain&#x27;s universe model. For how to use it, see the user guide.</p>
+          <p class="docs-article__source">pdp11-cc — design</p>
+        </header>
+        <div class="prose">
+<p>This document explains what <code>pdp11-cc</code> is, how it was turned into a <em>cross</em>
+driver without changing what it does, and how it fits the toolchain's universe
+model. For how to <em>use</em> it, see the <a href="../cc-guide/index.html">user guide</a>.</p>
+<p>The source is one file, <code>cc.c</code> — the authentic 2.9BSD <code>cc</code> (SCCS id <code>cc.c 2.6</code>),
+the MENLO_OVLY-capable driver with the overlay pipeline built in — plus the
+generated <code>universe.h</code> it validates target eras against. It folds in the
+<a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-cc/docs/porting.md">porting guide</a>; nothing here contradicts it.</p>
+<hr />
+<h2 id="1-what-it-is">1. What it is</h2>
+<p><code>pdp11-cc</code> is the C compiler <strong>driver</strong>. It compiles nothing itself: it parses
+the options, then forks and execs the passes in order, threading the scratch
+files between them —</p>
+<pre><code>cpp  →  c0  →  c1  [→ c2 with -O]  →  as  →  ld
+</code></pre>
+<p>— stopping early per the flags (<code>-E</code>/<code>-P</code> after cpp, <code>-S</code> after c1, <code>-c</code> after
+as; <code>-O</code> inserts c2). The compiler proper is the two-pass <code>c0</code>/<code>c1</code> of the
+period PDP-11 compiler, not a single <code>ccom</code>. The C it accepts is what that
+compiler is itself written in: K&amp;R / pre-1977 C — old-style function
+definitions, implicit <code>int</code>, and so on.</p>
+<p>The port is faithful: the vintage option handling, the pipeline sequencing and
+the <code>ld -X crt0 … -lc</code> link line are unchanged. Every delta is about making a
+compiler that <em>is</em> the system's compiler into a cross driver that lives wherever
+it was unpacked, and about choosing the target era at link time.</p>
+<hr />
+<h2 id="2-finding-the-passes-no-compiled-in-paths">2. Finding the passes: no compiled-in paths</h2>
+<p>The vintage driver named each pass as a relative path (<code>../lib/c0</code>, …), right
+for a native compiler and wrong for a relocatable cross toolchain.
+<code>setup_tools(argv[0])</code> (called first thing in <code>main</code>) replaces that:</p>
+<ul>
+<li>If <code>cc</code> was reached by an explicit path, that path is used; if it was reached
+by a <strong>bare name</strong>, its real location is read from <code>/proc/self/exe</code>, so a
+symlink or a <code>PATH</code> lookup still resolves to the actual binary.</li>
+<li>The <strong>pass prefix</strong> is <code>cc</code>'s own name up to and including its last <code>-</code>. So
+<code>pdp11-cc</code> runs its siblings <code>pdp11-{cpp,c0,c1,c2,as,ld}</code>; a copy installed as
+<code>foo-cc</code> runs <code>foo-*</code>, and two toolchains side by side can never be crossed.</li>
+<li>The passes are those siblings in <code>cc</code>'s own directory (<code>base</code>). The
+<strong>library root</strong> is derived by rewriting a trailing <code>bin/</code> in that directory
+to <code>lib/</code> (<code>libroot</code>), which is where <code>crt0.o</code>, <code>libc.a</code> and the headers live.</li>
+</ul>
+<p>There is deliberately <strong>no fallback path</strong> — a fallback is just a hardcoded path
+that waits for the interesting case to be wrong. <code>pass0</code>/<code>pass1</code>/<code>pass2</code>/<code>passp</code>
+and the <code>as</code>/<code>ld</code> name buffers were enlarged from the vintage 20 bytes to 1–2 KB
+to hold absolute paths.</p>
+<p>Two vintage substitution knobs survive and still use <em>relative</em> pass names, so
+they are outside the relocatable scheme: <code>-B&lt;dir&gt;</code> names an alternative pass
+directory and <code>-t[012p]</code> selects which of <code>c0</code>/<code>c1</code>/<code>c2</code>/<code>cpp</code> to take from it;
+<code>-f</code> substitutes <code>c1</code> with the floating-point code generator <code>fc1</code>. Ordinary
+builds touch none of these.</p>
+<hr />
+<h2 id="3-the-pipeline-in-detail">3. The pipeline in detail</h2>
+<p>Each stage is one <code>callsys()</code> — <code>fork</code> + <code>cc_execvp</code> + <code>wait</code> — and a non-zero
+status drops the current file and moves on (a fatal signal, or a pass that can't
+be found, ends the run). The arguments cc builds per stage:</p>
+<ul>
+<li><strong>cpp</strong> <code>&lt;src&gt; &lt;out&gt; -Dunix -Dpdp11 [-D/-I/-U/-C …]</code>. The output is the
+private scratch file <code>tmp4</code>, or <code>-</code> (stdout) under <code>-E</code>. cc predefines
+<strong><code>-Dunix -Dpdp11</code></strong> because the native PDP-11 cpp did so and ours does not,
+so <code>#ifdef pdp11</code> still fires (the driver test checks this). <code>-P</code> writes the
+preprocessed text to a <code>.i</code> file and stops; <code>-E</code> writes to stdout and stops.</li>
+<li><strong>c0</strong> <code>&lt;cpp-out&gt; tmp1 tmp2 [-P if profiling]</code> — produces the two
+intermediate files the second pass consumes.</li>
+<li><strong>c1</strong> <code>tmp1 tmp2 &lt;asm-out&gt;</code> — writes assembly. Under <code>-S</code> the output is
+<code>&lt;src&gt;.s</code> and cc stops here; otherwise it is a scratch file (<code>tmp5</code> when <code>-O</code>
+is on, so c2 can rewrite it into <code>tmp3</code>).</li>
+<li><strong>c2</strong> (only with <code>-O</code>) <code>tmp5 tmp3</code> — the peephole optimiser; if it fails cc
+falls back to the un-optimised <code>tmp5</code>.</li>
+<li><strong>as</strong> <code>-u -o &lt;src&gt;.o &lt;asm&gt;</code> — assembles; only <code>&gt; 1</code> counts as failure. cc
+stops here under <code>-c</code>.</li>
+<li><strong>ld</strong> <code>-X &lt;crt0&gt; [-o out] &lt;objects/libs…&gt; -lc</code> — the link. <code>&lt;crt0&gt;</code> and
+<code>-lc</code> come from <code>libroot</code> (see §2/§4). <code>-p</code> swaps the startup to <code>mcrt0.o</code>;
+the separate-I&amp;D <code>-2</code>/<code>-20</code> selects <code>crt2.o</code>/<code>crt20.o</code> (and <code>-l2</code> for <code>-20</code>);
+<code>-f</code> links <code>-lfpsim</code> with the <code>fcrt0.o</code> startup. A single compile-and-link of
+one source tidies its intermediate <code>.o</code> away afterward.</li>
+</ul>
+<p>Files are dispatched by suffix: <code>.c</code>/<code>.s</code> are sources to compile/assemble, <code>.o</code>
+is handed straight to <code>ld</code>, and anything unrecognised (e.g. <code>-lm</code>, <code>-L&lt;dir&gt;</code>) is
+passed through to the link line unchanged.</p>
+<hr />
+<h2 id="4-the-universe-chosen-at-link-stamped-into-the-image">4. The universe: chosen at link, stamped into the image</h2>
+<p>Every tool in this toolchain answers to a <strong>universe</strong> — a PDP-11 UNIX era.
+<code>resolve_universe()</code> picks it from <code>--universe</code>/<code>-u</code>, else <code>$PDP11_UNIVERSE</code>,
+else the default <strong><code>bsd29</code></strong> (2.9BSD). It then:</p>
+<ol>
+<li><strong>normalises aliases</strong> to the canonical name using the same
+<code>PDP11_UNIVERSE_ALIASES</code> table apsim uses (<code>2.9</code>→<code>bsd29</code>, <code>1bsd</code>→<code>bsd1</code>, …),
+so the name it exports is always canonical;</li>
+<li><strong>validates</strong> the name against the generated <code>PDP11_UNIVERSES</code> table,
+accepting only universes marked <strong><code>full</code></strong> — those the one universal <code>libc.a</code>
+and headers actually serve. An unknown or unbuildable name prints the list of
+valid universes and exits 8;</li>
+<li><strong>exports</strong> the resolved name back into the environment with <code>setenv</code>, so the
+children read the same era with no flags of their own: <code>cpp</code> selects
+<code>include/&lt;universe&gt;/</code>, <code>ld</code> selects the era and stamps it into the image.</li>
+</ol>
+<p>The key design point is that there is <strong>one universal libc</strong>, not a library per
+era. <code>crt0.o</code>, <code>libc.a</code> and the headers live <em>flat</em> in <code>lib/</code>; the universe
+selects only the era id <code>ld</code> stamps into the executable as <code>__univ</code>, which crt0
+records for the library to dispatch on at run time. So <code>resolve_universe</code>
+composes the crt0 path as <code>libroot + crtname</code> — the same startup for every
+universe — rather than reaching into a per-era directory.</p>
+<p>This is why the object format does not move with the universe: the intermediate
+objects and the universal libc stay one format so a link can mix them; only the
+final executable carries the era, via <code>__univ</code>, and via whatever native a.out
+shape <code>ld</code> writes for that era.</p>
+<hr />
+<h2 id="5-scratch-files-a-private-directory-no-race">5. Scratch files: a private directory, no race</h2>
+<p>For a real compile (not <code>-E</code>/<code>-P</code>), cc makes <strong>one private temp directory per
+run</strong> with <code>mkdtemp()</code> under <code>$TMPDIR</code> (else <code>/tmp</code>), mode 0700, and puts the
+fixed-named scratch files <code>0</code>…<code>5</code> inside it. Because no other user can traverse
+a 0700 directory, the passes may open those fixed paths directly with no
+symlink/TOCTOU race and no reliance on a sticky <code>/tmp</code>. <code>dexit()</code> (normal exit)
+and <code>idexit()</code> (SIGINT/SIGTERM) unlink the files and <code>rmdir</code> the directory.
+Under <code>-E</code>/<code>-P</code> no directory is made and the scratch pointers stay <code>NULL</code> —
+they are unused on that path, so nothing needs guarding.</p>
+<p>Honouring <code>$TMPDIR</code> rather than a hardcoded <code>/tmp</code> lets the build sidestep a
+flaky or namespaced host <code>/tmp</code> (WSL drvfs, systemd <code>PrivateTmp</code>); it never
+affects the emitted object.</p>
+<hr />
+<h2 id="6-the-private-exec-and-the-header-cleanup">6. The private exec, and the header cleanup</h2>
+<p>cc ships its own path-searching exec, historically the external <code>execvp</code> and
+here renamed <strong><code>cc_execvp</code></strong> and made <code>static</code>. It behaves like the standard
+one — but with cc's rules: a name containing <code>/</code> is exec'd <strong>directly with no
+<code>$PATH</code> search</strong> (cc now passes absolute pass paths, and a PATH walk would both
+be wrong and overflow the name buffer), <code>ENOEXEC</code> re-runs the target under
+<code>/bin/sh</code>, and <code>ETXTBSY</code> is retried.</p>
+<p>Renaming it is what let cc <code>#include &lt;unistd.h&gt;</code> and <code>&lt;string.h&gt;</code> <strong>directly</strong>,
+with no hand-written prototypes: the old <code>execvp</code> name shadowed libc's, which
+blocked those headers, so the pointer-returning functions cc calls (<code>strchr</code>,
+<code>strstr</code>, <code>strncpy</code>, …) had no real declarations and an LP64 host truncated the
+returned pointers. With the standard headers in and the shadow gone, that whole
+class of 64-bit bug is closed.</p>
+<hr />
+<h2 id="testing">Testing</h2>
+<p>There is no <code>make check</code> inside this directory; cc is exercised by the
+end-to-end suite at the repo root (<code>tests/cc/*.sh</code>), which is where a driver bug
+actually shows up — as a program that builds wrong or runs wrong:</p>
+<ul>
+<li><strong><code>driver.sh</code></strong> — <code>cc -S</code> drives <code>cpp → c0 → c1</code> and writes real PDP-11
+assembly, with the passes resolved relative to the install; it also checks the
+<code>-Dpdp11</code> predefine reaches the source.</li>
+<li><strong><code>programs.sh</code></strong> — <code>cc -c</code> compiles a range of K&amp;R programs to objects and
+checks the expected globals with <code>pdp11-nm</code>, and recompiles repeatedly to
+guard against the LP64 pointer/uninitialised-memory regressions.</li>
+<li><strong><code>endtoend.sh</code>, <code>printf.sh</code>, <code>libc.sh</code></strong> — full compile→link→run under
+<code>pdp11-apsim</code>: <code>main</code>'s return becomes the process exit code, <code>write(2)</code> and
+buffered <code>printf</code>/stdio reach the host, and libc string/numeric/<code>qsort</code>/long
+and file-I/O routines behave.</li>
+<li><strong><code>optimizer.sh</code></strong> — for each program the <code>-O</code> build must give the <em>same</em>
+result as the plain build and a text segment no larger.</li>
+</ul>
+<hr />
+<h2 id="for-a-maintainer">For a maintainer</h2>
+<ul>
+<li><strong>No compiled-in paths, ever.</strong> The passes, <code>crt0.o</code>, <code>libc.a</code> and the
+headers are all found relative to cc's real location via <code>/proc/self/exe</code>; a
+fallback path is a latent bug. <code>-B</code>/<code>-t</code>/<code>-f</code> are the vintage relative-path
+substitution and are intentionally <em>not</em> part of that scheme.</li>
+<li><strong>The universe is chosen at link and validated.</strong> cc accepts only <code>full</code>
+universes, normalises aliases, and exports the canonical name so <code>cpp</code> and
+<code>ld</code> agree without their own flags. Keep <code>crt0</code>/<code>libc</code> flat in <code>lib/</code>: the era
+is <code>__univ</code>, not a directory.</li>
+<li><strong><code>-Dunix -Dpdp11</code> are cc's job</strong>, not cpp's — do not remove them.</li>
+<li><strong><code>cc_execvp</code>, not <code>execvp</code>.</strong> The rename is load-bearing: it keeps
+<code>&lt;unistd.h&gt;</code>/<code>&lt;string.h&gt;</code> includable, which is what keeps the driver
+LP64-clean. Do not reintroduce a symbol that shadows libc.</li>
+<li><strong>The port is faithful to 2.9.</strong> New behaviour belongs behind a flag with a
+reason, as the universe selection is.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

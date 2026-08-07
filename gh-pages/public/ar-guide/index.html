@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-ar — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-ar is the archive tool (ar) for this PDP-11 cross-toolchain.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-ar — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-key-letters">2. Key letters</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-modifiers">3. Modifiers</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-symbol-tables-and-pdp11-ranlib">4. Symbol tables and `pdp11-ranlib`</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-reading-a-first-edition-archive">5. Reading a First Edition archive</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-exit-status">6. Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-examples">7. Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-ar — user guide</h1>
+          <p class="docs-article__summary">pdp11-ar is the archive tool (ar) for this PDP-11 cross-toolchain.</p>
+          <p class="docs-article__source">pdp11-ar — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-ar</code> is the archive tool (<code>ar</code>) for this PDP-11 cross-toolchain. It builds
+and edits <code>.a</code> libraries of PDP-11 objects in the authentic V7 binary format
+(magic <code>0177545</code>, 26-byte member headers) that this toolchain's <code>pdp11-ld</code>
+reads — the format <code>libc.a</code> is built in for every PDP-11 universe. It is a host
+program: it runs on your Linux box.</p>
+<p>If you have used the classic <code>ar(1)</code> before it will feel identical — the
+key-plus-modifiers command line is preserved exactly. It also <em>reads</em> (but never
+writes) the older First Edition archive format.</p>
+<p>For how it works inside, see the <a href="../ar-design/index.html">design document</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-ar key [posname] archive [member ...]
+</code></pre>
+<p>The <strong>key</strong> is the first word: exactly one operation letter, with any modifiers
+glued onto it the way <code>ar</code> has always taken them — <code>tv</code>, <code>ru</code>, <code>rc</code>, <code>ma</code> (the
+tool's own usage line is <code>ar [uvnbail][mrxtdpq] archive files ...</code>). A leading
+dash is tolerated but not required. <code>posname</code> is present only with the
+<code>a</code>/<code>b</code>/<code>i</code> positioning modifiers, and names the member to position relative to.</p>
+<hr />
+<h2 id="2-key-letters">2. Key letters</h2>
+<p>Exactly one is required (<code>man = &quot;mrxtdpq&quot;</code>):</p>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>r</code></td>
+<td><strong>replace / merge</strong> — add each file, replacing any same-named member in place; creates the archive if it does not exist</td>
+</tr>
+<tr>
+<td><code>d</code></td>
+<td><strong>delete</strong> the named members</td>
+</tr>
+<tr>
+<td><code>q</code></td>
+<td><strong>quick-append</strong> the files to the end, no duplicate check (creates the archive if absent)</td>
+</tr>
+<tr>
+<td><code>t</code></td>
+<td><strong>table</strong> of contents — list member names, one per line</td>
+</tr>
+<tr>
+<td><code>p</code></td>
+<td><strong>print</strong> the named members' contents to standard output</td>
+</tr>
+<tr>
+<td><code>m</code></td>
+<td><strong>move</strong> the named members within the archive (to the <code>a</code>/<code>b</code>/<code>i</code> position, else the end)</td>
+</tr>
+<tr>
+<td><code>x</code></td>
+<td><strong>extract</strong> the named members as files in the current directory</td>
+</tr>
+</tbody>
+</table>
+<p>For <code>t</code>/<code>p</code>/<code>x</code>, naming no members means <em>all of them</em>. Names are matched by
+<strong>basename</strong>, so <code>x lib.a printf.o</code> finds <code>printf.o</code> however its path was stored.</p>
+<p><code>r</code> merges rather than starting over: a file whose basename matches an existing
+member replaces it in place (keeping its position); a file with no match is
+added at the <code>a</code>/<code>b</code>/<code>i</code> position if given, else at the end; with <code>u</code> a member
+is replaced only if the incoming file is newer. <code>q</code> instead appends to the end
+with no name check — so it can leave duplicates — and is the only op that does
+not rewrite the whole file (<code>a</code>/<code>b</code>/<code>i</code> are not allowed with it).</p>
+<hr />
+<h2 id="3-modifiers">3. Modifiers</h2>
+<p>Glued onto the key (<code>opt = &quot;uvnbail&quot;</code>, plus <code>c</code>):</p>
+<table>
+<thead>
+<tr>
+<th>mod</th>
+<th>with</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>v</code></td>
+<td>any</td>
+<td><strong>verbose</strong> — name each member as it is added/deleted/extracted; <code>tv</code> gives an <code>ls -l</code>-style long listing</td>
+</tr>
+<tr>
+<td><code>u</code></td>
+<td><code>r</code></td>
+<td><strong>update</strong> — replace a member only if the incoming file is <em>newer</em> than the stored member</td>
+</tr>
+<tr>
+<td><code>c</code></td>
+<td><code>r</code>/<code>q</code></td>
+<td><strong>create quietly</strong> — suppress the &quot;creating archive&quot; notice when the archive does not yet exist</td>
+</tr>
+<tr>
+<td><code>a</code></td>
+<td><code>r</code>/<code>m</code></td>
+<td>position <strong>after</strong> <code>posname</code></td>
+</tr>
+<tr>
+<td><code>b</code>, <code>i</code></td>
+<td><code>r</code>/<code>m</code></td>
+<td>position <strong>before</strong> <code>posname</code> (<code>i</code> is a synonym for <code>b</code>)</td>
+</tr>
+<tr>
+<td><code>l</code></td>
+<td>any</td>
+<td>put temp files in the <strong>current directory</strong> (<code>arXXXXXX</code>) instead of <code>/tmp</code>; this is the flag <code>pdp11-ranlib</code> passes as <code>ar rlb</code></td>
+</tr>
+<tr>
+<td><code>n</code></td>
+<td>any</td>
+<td>accepted for compatibility with the vintage <code>ar</code>; no effect</td>
+</tr>
+</tbody>
+</table>
+<p><code>a</code>/<code>b</code>/<code>i</code> take the <strong>position name</strong> as the first argument after the archive:
+<code>pdp11-ar rb strlen.o lib.a strcpy.o</code> inserts <code>strcpy.o</code> just before <code>strlen.o</code>.</p>
+<hr />
+<h2 id="4-symbol-tables-and-pdp11-ranlib">4. Symbol tables and <code>pdp11-ranlib</code></h2>
+<p><code>pdp11-ar</code> does not build a symbol table — that is
+<a href="https://github.com/nyxcraft/pdp11-xdev/tree/main/src/pdp11-ranlib"><code>pdp11-ranlib</code></a>'s job, as on the PDP-11 UNIX line. After
+building or editing a library, run <code>pdp11-ranlib libc.a</code> to add the <code>__.SYMDEF</code>
+table of contents so <code>pdp11-ld</code> resolves members regardless of order; the
+call-out runs <code>ranlib</code> → <code>ar rlb …</code> (which is why <code>ar</code> honours the <code>l</code>
+local-temp modifier). Without an index a library still links, but <code>ld</code> scans it
+front to back, so <strong>member order is load-bearing</strong> for an un-<code>ranlib</code>'d archive
+(<code>m</code> exists for that reason).</p>
+<hr />
+<h2 id="5-reading-a-first-edition-archive">5. Reading a First Edition archive</h2>
+<p><code>pdp11-ar</code> transparently reads the older First Edition format (magic <code>0177555</code>,
+16-byte headers) for <code>t</code>/<code>p</code>/<code>x</code>, but will <strong>not modify</strong> one: <code>r</code>/<code>d</code>/<code>q</code>/<code>m</code>
+on such an archive is refused (<code>ar: … is a First Edition (V1/V2) archive; read-only (t/p/x)</code>), because this toolchain's own archives are the modern V7
+container, not that layout.</p>
+<hr />
+<h2 id="6-exit-status">6. Exit status</h2>
+<ul>
+<li><strong>0</strong> — success, all named members found.</li>
+<li><strong>N</strong> — for a modifying op, the number of named members that were <strong>not
+found</strong> in the archive (each reported as <code>ar: NAME not found</code>), so a script
+can rely on the count.</li>
+<li><strong>1</strong> — an error: a bad key/modifier, a non-archive or unreadable input, a
+modify attempt on a First Edition archive, a write error, or a temp-file
+failure. A one-line <code>ar: …</code> message says what.</li>
+<li><strong>100</strong> — interrupted by a signal (temp files are cleaned up first).</li>
+</ul>
+<hr />
+<h2 id="7-examples">7. Examples</h2>
+<pre><code># Build a library, then index it (two steps: ar does not index)
+pdp11-ar rc libc.a *.o
+pdp11-ranlib libc.a
+
+# Quick-append while building from scratch (fast, no dup check)
+pdp11-ar cq libc.a printf.o scanf.o
+
+# Replace one object; update only if newer; long listing
+pdp11-ar r  libc.a printf.o
+pdp11-ar ru libc.a *.o
+pdp11-ar tv libc.a
+
+# Insert before / move to just after a named member
+pdp11-ar rb strlen.o libc.a strcpy.o
+pdp11-ar ma flsbuf.o libc.a exit.o cleanup.o
+
+# Delete a member (verbose), then re-index
+pdp11-ar dv libc.a stale.o &amp;&amp; pdp11-ranlib libc.a
+
+# Extract everything into a fresh directory
+mkdir unpack &amp;&amp; cd unpack &amp;&amp; pdp11-ar x ../libc.a
+</code></pre>
+<p>Continue to the <a href="../ar-design/index.html">design document</a> for the on-disk layout and the
+internals.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

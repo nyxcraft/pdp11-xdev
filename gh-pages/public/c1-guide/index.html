@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-c1 — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-c1 is the code generator of Ritchie&#x27;s PDP-11 C compiler — the second pass. It reads the intermediate form pdp11-c0 produced and writes PDP-11 assembler text for pdp11-as.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-c1 — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-what-it-emits">2. What it emits</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-invocation-via-cc">3. Invocation (via cc)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-exit-status">4. Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-examples">5. Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-c1 — user guide</h1>
+          <p class="docs-article__summary">pdp11-c1 is the code generator of Ritchie&#x27;s PDP-11 C compiler — the second pass. It reads the intermediate form pdp11-c0 produced and writes PDP-11 assembler text for pdp11-as.</p>
+          <p class="docs-article__source">pdp11-c1 — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-c1</code> is the <strong>code generator</strong> of Ritchie's PDP-11 C compiler — the second
+pass. It reads the intermediate form <code>pdp11-c0</code> produced and writes PDP-11
+assembler text for <code>pdp11-as</code>. It is <strong>not a command you run directly</strong>: it is a
+compiler pass, driven by <code>pdp11-cc</code>, with a fixed three-argument calling
+convention and temp files <code>cc</code> creates and cleans up. This guide documents that
+convention so you can recognise it in <code>cc -v</code> output or drive it by hand when
+debugging.</p>
+<p>For how it works inside — the code table, the table build pipeline, the soft
+floating point — see the <a href="../c1-design/index.html">design document</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-c1 intfile strfile out.s [-V]
+</code></pre>
+<ul>
+<li><code>intfile</code> — c0's first temp file, the intermediate expression/statement stream
+(read as stdin);</li>
+<li><code>strfile</code> — c0's second temp file, the strings and initialised data, appended
+in <code>.data</code>; pass <code>&quot;-&quot;</code> to skip it;</li>
+<li><code>out.s</code> — the assembler output (written as stdout);</li>
+<li><code>-V</code> — enable Menlo overlay mode (only in a <code>MENLO_OVLY</code> build); <code>cc</code> passes it
+when overlays are requested.</li>
+</ul>
+<p>All three positional arguments are required — c1 exits with <code>Arg count</code> if fewer
+are given. It reads no environment and no other options.</p>
+<hr />
+<h2 id="2-what-it-emits">2. What it emits</h2>
+<p>Assembler text for <code>pdp11-as</code>: <code>.text</code>/<code>.data</code>/<code>.bss</code> segments, <code>.globl</code>
+directives, function labels with the <code>jsr r5,csv</code> / <code>jmp cret</code> prologue and
+epilogue, and the instruction stream chosen by the code table. Integer constants
+are printed in <strong>octal</strong> (the 2BSD <code>as</code> convention), so <code>return 42</code> emits
+<code>mov $52,r0</code>. Floating-point constants are emitted as DEC F/D-format <code>.data</code>
+words computed by the soft floating point (see <a href="../c1-design/index.html">design §5</a>), and any
+FP use emits a <code>.globl fltused</code> reference.</p>
+<hr />
+<h2 id="3-invocation-via-cc">3. Invocation (via cc)</h2>
+<p><code>cc</code> runs c1 as the <code>c1</code> stage of <code>cpp → c0 → c1 [→ c2 with -O] → as → ld</code>. It is
+invoked as</p>
+<pre><code>c1 tmp1 tmp2 tmp3          # or  c1 tmp1 tmp2 tmp5   under -O
+</code></pre>
+<p>where <code>tmp1</code>/<code>tmp2</code> are c0's two temp files and the third argument is the
+assembler source: <code>tmp3</code> normally, or <code>tmp5</code> under <code>-O</code> so that <code>pdp11-c2</code> can
+rewrite it into <code>tmp3</code> afterwards. <code>cc -S</code> names the output <code>file.s</code> and stops
+after this pass. You do not choose these paths; <code>cc</code> allocates and removes them.
+<code>cc -v</code> prints <code>Pass 1</code> when it reaches c1.</p>
+<hr />
+<h2 id="4-exit-status">4. Exit status</h2>
+<ul>
+<li><strong>0</strong> — success (assembly written).</li>
+<li><strong>non-zero</strong> — one or more errors were emitted (<code>nerror != 0</code>): a missing temp
+file, an unwritable output, a malformed intermediate stream, an illegal
+operation, or register/table exhaustion. Each error is printed to stderr as
+<code>&lt;line&gt;: &lt;message&gt;</code>.</li>
+</ul>
+<p><code>cc</code> treats a non-zero c1 status as a failed compile for that file and moves on.</p>
+<hr />
+<h2 id="5-examples">5. Examples</h2>
+<p>Normally you never type c1; you drive the pipeline through <code>cc</code>:</p>
+<pre><code>pdp11-cc -S prog.c            # stop after c1: leaves prog.s
+pdp11-cc -O -S prog.c         # same, but c2-optimised assembly
+pdp11-cc -v -c prog.c         # see each pass, including &quot;Pass 1&quot; (c1)
+</code></pre>
+<p>To run the pass by hand for debugging (reproducing what <code>cc</code> does between the
+temp files):</p>
+<pre><code>pdp11-cpp prog.c &gt; prog.i
+pdp11-c0  prog.i t1 t2        # c0 writes its two temp files
+pdp11-c1  t1 t2 prog.s        # c1: intermediate + strings -&gt; assembly
+pdp11-c1  t1 -  prog.s        # skip the string/data file
+</code></pre>
+<p>Continue to the <a href="../c1-design/index.html">design document</a> for the code-table interpreter and
+how <code>table.s</code> becomes compiled-in C.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

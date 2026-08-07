@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-objcopy — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-objcopy copies a PDP-11 a.out, or extracts its loadable image (text plus initialized data, with no header or symbols) or a single segment.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-objcopy — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-what-it-does">2. What it does</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-options">3. Options</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-exit-status">4. Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-examples">5. Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-objcopy — user guide</h1>
+          <p class="docs-article__summary">pdp11-objcopy copies a PDP-11 a.out, or extracts its loadable image (text plus initialized data, with no header or symbols) or a single segment.</p>
+          <p class="docs-article__source">pdp11-objcopy — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-objcopy</code> copies a PDP-11 <code>a.out</code>, or extracts its loadable image (text plus
+initialized data, with no header or symbols) or a single segment. PDP-11 is an
+<code>a.out</code>-only world — there is no ELF target — so, unlike the VAX tree's <code>objcopy</code>,
+there is no format conversion; the useful operations are the raw-image and
+segment <strong>extractions</strong>. Removing the symbol table and relocation is
+<a href="../strip-guide/index.html"><code>pdp11-strip</code></a>'s job. It runs on your host.</p>
+<p>For how each operation works inside — the identity copy, the contiguous-layout
+slicing, the refused formats, and the bounds check — see the
+<a href="../objcopy-design/index.html">design document</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-objcopy [-O binary] [-j text|data] infile outfile
+</code></pre>
+<p>Both <code>infile</code> and <code>outfile</code> are required; there is no in-place default. The input
+format is detected. <code>-O</code> accepts only <code>binary</code>; <code>-j</code> accepts only <code>text</code> or
+<code>data</code>.</p>
+<hr />
+<h2 id="2-what-it-does">2. What it does</h2>
+<table>
+<thead>
+<tr>
+<th>invocation</th>
+<th>result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>(no options)</em></td>
+<td>identity copy: <code>infile</code> → <code>outfile</code>, byte for byte (any magic)</td>
+</tr>
+<tr>
+<td><code>-O binary</code></td>
+<td>the <strong>loadable image</strong>: text + initialized data, no header, no symbols</td>
+</tr>
+<tr>
+<td><code>-j text</code></td>
+<td>the text segment only, raw</td>
+</tr>
+<tr>
+<td><code>-j data</code></td>
+<td>the initialized-data segment only, raw</td>
+</tr>
+</tbody>
+</table>
+<p>The plain copy is format-agnostic and works for every magic, including the First
+Edition (<code>0405</code>) and auto-overlay (<code>0430</code>/<code>0431</code>) forms. The extractions
+(<code>-O binary</code>, <code>-j</code>) need the contiguous on-disk layout of the ordinary magics
+<code>0407</code>/<code>0410</code>/<code>0411</code>; <code>0405</code> and <code>0430</code>/<code>0431</code> are <strong>refused</strong> rather than
+mis-sliced. See <a href="../objcopy-design/index.html">design §3–§4</a>.</p>
+<hr />
+<h2 id="3-options">3. Options</h2>
+<ul>
+<li><strong><code>-O binary</code></strong> — the only <code>-O</code> value accepted. Writes the loadable text+data
+image with no header and no symbol table: the bytes the loader maps.</li>
+<li><strong><code>-j text</code> / <code>-j data</code></strong> — extract a single segment, raw. If both <code>-O binary</code>
+and <code>-j</code> are given, <code>-j</code> selects the slice.</li>
+</ul>
+<p>An extraction validates the header's text and data sizes against the actual file
+length before writing anything, so a corrupt or hostile header is refused, not
+read out of bounds.</p>
+<p>There is no option to convert between object formats and no option to strip
+symbols: <code>objcopy</code> here copies or extracts bytes only. The whole input is read
+into memory before the output is written, so naming the same path for <code>infile</code>
+and <code>outfile</code> is safe — but the write is a plain create, not an atomic
+rename, so a crash mid-write can still leave a partial output file.</p>
+<hr />
+<h2 id="4-exit-status">4. Exit status</h2>
+<ul>
+<li><strong>0</strong> — success.</li>
+<li><strong>1</strong> — any error: a bad option, the wrong number of file arguments, an input
+that is not a PDP-11 <code>a.out</code> (too short, or bad magic), a format that cannot be
+extracted (<code>0405</code>/<code>0430</code>/<code>0431</code>), header sizes that exceed the file, or an I/O
+error.</li>
+</ul>
+<p>There is no separate usage exit code — every error, usage included, exits 1.</p>
+<hr />
+<h2 id="5-examples">5. Examples</h2>
+<pre><code>pdp11-objcopy prog prog.copy             # identity copy, byte for byte
+pdp11-objcopy -O binary prog prog.bin    # the loadable text+data image
+pdp11-objcopy -j text prog text.bin      # just the text segment, raw
+pdp11-objcopy -j data prog data.bin      # just the initialized data, raw
+</code></pre>
+<p>To drop the symbol table and relocation instead of extracting bytes, use
+<a href="../strip-guide/index.html"><code>pdp11-strip</code></a>.</p>
+<p>Continue to the <a href="../objcopy-design/index.html">design document</a> for the identity copy, the slicing,
+and the hostile-header bounds check.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

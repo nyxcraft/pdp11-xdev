@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-cc — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-cc is the C compiler driver — the authentic 2.9BSD cc, the program that runs the preprocessor, the two compiler passes, the optional optimiser, the assembler and the linker in order and hands each the right argumen…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-cc — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#options">Options</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#the-universe-target-era">The universe (target era)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#files-it-produces">Files it produces</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#exit-status">Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#examples">Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-cc — user guide</h1>
+          <p class="docs-article__summary">pdp11-cc is the C compiler driver — the authentic 2.9BSD cc, the program that runs the preprocessor, the two compiler passes, the optional optimiser, the assembler and the linker in order and hands each the right argumen…</p>
+          <p class="docs-article__source">pdp11-cc — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-cc</code> is the C compiler <strong>driver</strong> — the authentic 2.9BSD <code>cc</code>, the program
+that runs the preprocessor, the two compiler passes, the optional optimiser, the
+assembler and the linker in order and hands each the right arguments. It
+compiles nothing itself. It is a <em>cross</em> driver: it finds its passes relative to
+itself and targets the PDP-11, while running on your host. The C it accepts is
+K&amp;R / pre-1977 C (old-style definitions, implicit <code>int</code>), the language the
+period compiler is itself written in.</p>
+<p>For why it is built the way it is — the pass discovery, the universe model — see
+the <a href="../cc-design/index.html">design document</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-cc [-c] [-S] [-E] [-P] [-O] [-v] [-V]
+         [-Dname[=def]] [-Uname] [-Idir] [-C]
+         [--universe=ERA | -u ERA] file ... [-lx ...]
+</code></pre>
+<p>Each <code>file.c</code> is preprocessed, compiled, assembled, and (unless a stage flag
+stops earlier) all objects are linked with <code>crt0.o</code> and <code>-lc</code> into <code>a.out</code>, or
+into <code>-o</code>'s target. <code>file.s</code> is assembled; <code>file.o</code> and any other unrecognised
+argument (a <code>-lm</code>, a <code>-L&lt;dir&gt;</code>) go straight to the linker.</p>
+<p>The pipeline is <code>cpp → c0 → c1 [→ c2 with -O] → as → ld</code>. cc carries <strong>no
+compiled-in paths</strong>: it resolves its own real location through <code>/proc/self/exe</code>,
+runs the sibling passes that share its prefix (<code>pdp11-cc</code> → <code>pdp11-cpp</code>,
+<code>pdp11-c0</code>, …), and finds <code>crt0.o</code>, <code>libc.a</code> and the target headers in the
+<code>lib/</code> and <code>include/</code> beside the <code>bin/</code> it lives in. So an installed <code>pdp11-cc</code>
+compiles and links with nothing but a source file.</p>
+<hr />
+<h2 id="options">Options</h2>
+<table>
+<thead>
+<tr>
+<th>option</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-c</code></td>
+<td>compile and assemble to <code>.o</code>; do not link</td>
+</tr>
+<tr>
+<td><code>-S</code></td>
+<td>stop after the compiler, leaving <code>.s</code> assembly</td>
+</tr>
+<tr>
+<td><code>-E</code></td>
+<td>preprocess only, to standard output</td>
+</tr>
+<tr>
+<td><code>-P</code></td>
+<td>preprocess only, to a <code>.i</code> file</td>
+</tr>
+<tr>
+<td><code>-O</code></td>
+<td>run the <code>c2</code> peephole optimiser</td>
+</tr>
+<tr>
+<td><code>-v</code></td>
+<td>verbose: name each stage as it runs</td>
+</tr>
+<tr>
+<td><code>-V</code></td>
+<td>compile for text overlays (overlay <code>cpp</code>/<code>as</code>/<code>ld</code> path, <code>-lovc</code>)</td>
+</tr>
+<tr>
+<td><code>-Dname[=def]</code>, <code>-Uname</code>, <code>-Idir</code>, <code>-C</code></td>
+<td>passed through to <code>cpp</code></td>
+</tr>
+<tr>
+<td><code>-o outfile</code></td>
+<td>name the output (refuses to overwrite a <code>.c</code> or <code>.o</code>)</td>
+</tr>
+<tr>
+<td><code>-p</code></td>
+<td>profiling: link <code>mcrt0.o</code></td>
+</tr>
+<tr>
+<td><code>-2</code> / <code>-20</code></td>
+<td>separate I&amp;D startup/library (<code>crt2.o</code> / <code>crt20.o</code> + <code>-l2</code>)</td>
+</tr>
+<tr>
+<td><code>-f</code></td>
+<td>floating-point-interpreter build (<code>fc1</code>, <code>fcrt0.o</code>, <code>-lfpsim</code>)</td>
+</tr>
+<tr>
+<td><code>-B&lt;dir&gt;</code> / <code>-t[012p]</code></td>
+<td>substitute some passes from <code>&lt;dir&gt;</code> (vintage)</td>
+</tr>
+<tr>
+<td><code>--universe=ERA</code> / <code>-u ERA</code></td>
+<td>the target era (see below)</td>
+</tr>
+</tbody>
+</table>
+<p><code>-Dunix</code> and <code>-Dpdp11</code> are always supplied to <code>cpp</code>, so <code>#ifdef pdp11</code> works
+without your having to define it. <code>-O</code> is opt-in; the default pipeline does not
+run <code>c2</code>. <code>-B</code>/<code>-t</code>/<code>-f</code> are inherited from the vintage driver and use relative
+pass paths, so they sit outside the relocatable install — an ordinary build
+needs none of them.</p>
+<hr />
+<h2 id="the-universe-target-era">The universe (target era)</h2>
+<p>The universe is the PDP-11 UNIX era the program is <em>for</em>. Select it with
+<code>--universe=ERA</code> / <code>-u ERA</code>, or by exporting <code>PDP11_UNIVERSE</code>; an explicit flag
+wins over the environment, and with neither the default is <strong><code>bsd29</code></strong> (2.9BSD).</p>
+<p>cc validates the name against the toolchain's universe table and exports the
+canonical spelling to its children, so:</p>
+<ul>
+<li><strong><code>ld</code></strong> stamps the era id into the executable as <code>__univ</code> (which the one
+universal libc's crt0 records and dispatches on at run time) and writes the
+image in that era's native a.out shape;</li>
+<li><strong><code>cpp</code></strong> takes its header directory (<code>include/&lt;universe&gt;/</code>) from it;</li>
+<li><strong><code>pdp11-apsim</code></strong>, when you run the result, uses it as the emulated-kernel
+personality.</li>
+</ul>
+<p>Only universes marked <strong>buildable</strong> are accepted — those the single universal
+<code>libc.a</code> and headers serve. Give an unknown or unbuildable name and cc prints
+the list of valid ones and exits. Names are the canonical eras and their
+historical aliases: <code>v1</code>…<code>v7</code>, <code>bsd1</code>, <code>bsd2</code>, <code>bsd28</code>, <code>bsd29</code> (default),
+<code>bsd210</code>, <code>bsd211</code>, <code>sys3</code>, <code>sys5v2</code>, <code>ultrix1</code>/<code>ultrix2</code>/<code>ultrix3</code>/<code>ultrix31</code>,
+with spellings like <code>2.9</code>, <code>2bsd</code>, <code>sysiii</code> normalised for you.</p>
+<pre><code>export PDP11_UNIVERSE=bsd211      # every compile in this shell targets 2.11BSD
+pdp11-cc foo.c -o foo             # foo built for 2.11BSD
+pdp11-cc --universe=v7 foo.c -o foo   # or pick the era per compile
+</code></pre>
+<hr />
+<h2 id="files-it-produces">Files it produces</h2>
+<p>What is left on disk depends on where the flags stop the pipeline:</p>
+<table>
+<thead>
+<tr>
+<th>you run</th>
+<th>you get</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pdp11-cc foo.c</code></td>
+<td><code>a.out</code> (compiled, assembled, linked)</td>
+</tr>
+<tr>
+<td><code>pdp11-cc -o foo foo.c</code></td>
+<td><code>foo</code></td>
+</tr>
+<tr>
+<td><code>pdp11-cc -c foo.c</code></td>
+<td><code>foo.o</code>, no link</td>
+</tr>
+<tr>
+<td><code>pdp11-cc -S foo.c</code></td>
+<td><code>foo.s</code> (PDP-11 assembly)</td>
+</tr>
+<tr>
+<td><code>pdp11-cc -E foo.c</code></td>
+<td>preprocessed text on <strong>stdout</strong></td>
+</tr>
+<tr>
+<td><code>pdp11-cc -P foo.c</code></td>
+<td><code>foo.i</code> (preprocessed text)</td>
+</tr>
+</tbody>
+</table>
+<p>The scratch files each pass hands the next live in a private per-run directory
+under <code>$TMPDIR</code> (else <code>/tmp</code>) and are removed on exit, even on interrupt — they
+never appear in your working directory. A lone compile-and-link
+(<code>cc foo.c -o foo</code>) also removes the intermediate <code>foo.o</code> for you.</p>
+<hr />
+<h2 id="exit-status">Exit status</h2>
+<ul>
+<li><strong>0</strong> — success.</li>
+<li><strong>8</strong> — a fatal error: a pass died on a signal, <code>-o</code> would overwrite a source,
+or the requested universe is unknown/unbuildable.</li>
+<li><strong>other non-zero</strong> — a pass exited non-zero; cc drops that file and reports
+(<code>Fatal error in &lt;pass&gt;</code>), or <code>Can't find &lt;pass&gt;</code> when a pass could not be
+exec'd — check the install layout or the pass's name.</li>
+<li><strong>100</strong> — interrupted (SIGINT/SIGTERM), or a pass could not be found at all.</li>
+</ul>
+<hr />
+<h2 id="examples">Examples</h2>
+<pre><code>pdp11-cc -o hello hello.c              # compile + link; headers and libc found beside cc
+pdp11-cc -c foo.c bar.c                # compile each to an object, no link
+pdp11-cc -O -S foo.c                   # optimised PDP-11 assembly, foo.s
+pdp11-cc -E -DDEBUG -I. foo.c          # preprocess only, to stdout
+pdp11-cc --universe=bsd211 -o foo foo.c bar.o -lm   # link for 2.11BSD
+pdp11-cc -p -o foo foo.c               # profiled build (mcrt0.o)
+pdp11-cc -v -o foo foo.c               # narrate each stage as it runs
+</code></pre>
+<p>Continue to the <a href="../cc-design/index.html">design document</a> for pass discovery, the universe
+model, and the link path.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

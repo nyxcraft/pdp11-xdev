@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-c0 — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-c0 is pass 1 of the classic Ritchie PDP-11 C compiler: it reads already-preprocessed C and writes the intermediate token/operator stream that pdp11-c1 turns into PDP-11 assembly.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-c0 — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-invocation-normally-via-cc">2. Invocation (normally via cc)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-output">3. Output</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-exit-status">4. Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-examples">5. Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-c0 — user guide</h1>
+          <p class="docs-article__summary">pdp11-c0 is pass 1 of the classic Ritchie PDP-11 C compiler: it reads already-preprocessed C and writes the intermediate token/operator stream that pdp11-c1 turns into PDP-11 assembly.</p>
+          <p class="docs-article__source">pdp11-c0 — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-c0</code> is <strong>pass 1</strong> of the classic Ritchie PDP-11 C compiler: it reads
+already-preprocessed C and writes the intermediate token/operator stream that
+<code>pdp11-c1</code> turns into PDP-11 assembly. It is a <strong>compiler pass, not a user
+command</strong> — normally <code>pdp11-cc</code> runs it for you, between the preprocessor and the
+code generator. It emits <strong>no assembly</strong> itself. For how it works inside — the
+parser, the symbol table, the stream format — see the <a href="../c0-design/index.html">design document</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-c0 source.i temp1 temp2 [-P] [-V]
+</code></pre>
+<p>Unlike a filter, <code>c0</code> takes three <strong>file</strong> arguments and does not read stdin:</p>
+<ul>
+<li><strong><code>source.i</code></strong> — the input, C that has <strong>already been preprocessed</strong> (run
+<code>pdp11-cpp</code> first; <code>c0</code> does not do <code>#include</code> or macros);</li>
+<li><strong><code>temp1</code></strong> — receives the intermediate <strong>code</strong> stream;</li>
+<li><strong><code>temp2</code></strong> — receives the <strong>strings and data</strong>; <code>c1</code> reads it after <code>temp1</code>.</li>
+</ul>
+<p>Options (each is normally supplied by <code>cc</code>, not by hand):</p>
+<table>
+<thead>
+<tr>
+<th>flag</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-P</code></td>
+<td>emit profiling counters (<code>cc -p</code>)</td>
+</tr>
+<tr>
+<td><code>-V</code></td>
+<td>compile for text overlays (<code>cc -V</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Giving fewer than three filenames is an error (<code>Arg count</code>).</p>
+<hr />
+<h2 id="2-invocation-normally-via-cc">2. Invocation (normally via cc)</h2>
+<p><code>c0</code> is one stage of a five-stage pipeline that <code>pdp11-cc</code> drives in order:</p>
+<pre><code>pdp11-cpp  -&gt;  pdp11-c0  -&gt;  pdp11-c1  [ -&gt;  pdp11-c2 ]  -&gt;  pdp11-as  -&gt;  pdp11-ld
+</code></pre>
+<ul>
+<li><strong><code>pdp11-cpp</code></strong> — the preprocessor; produces the <code>.i</code> <code>c0</code> consumes.</li>
+<li><strong><code>pdp11-c0</code></strong> — this pass: preprocessed C → the intermediate stream.</li>
+<li><strong><code>pdp11-c1</code></strong> — the code generator: the stream → PDP-11 assembly.</li>
+<li><strong><code>pdp11-c2</code></strong> — the optional peephole optimiser (<code>cc -O</code>).</li>
+<li><strong><code>pdp11-as</code> / <code>pdp11-ld</code></strong> — assemble and link.</li>
+</ul>
+<p><code>cc</code> invokes <code>c0</code> exactly as <code>c0 &lt;input.i&gt; tmp1 tmp2 [-P] [-V]</code>, forwarding <code>-P</code>
+when you compiled with <code>-p</code> and <code>-V</code> when you compiled with <code>-V</code>. So for an
+ordinary compile you never name <code>c0</code> at all:</p>
+<pre><code class="language-sh">pdp11-cc -c foo.c            # cc runs cpp, c0, c1, as for you
+</code></pre>
+<p>Reach for <code>c0</code> directly only to inspect the intermediate stream a translation
+unit produces, or to work on the compiler itself — see the examples below.</p>
+<hr />
+<h2 id="3-output">3. Output</h2>
+<p><code>c0</code> writes <strong>two files, not assembly</strong>:</p>
+<ul>
+<li><strong><code>temp1</code></strong> — the intermediate code stream: a flat sequence of operator bytes,
+16-bit words, symbol names and constants (the <code>c0 → c1</code> interface, documented
+in <a href="../c0-design/index.html">design §4</a>). It is host-independent: the exact same bytes on the
+PDP-11 and on your host.</li>
+<li><strong><code>temp2</code></strong> — string literals and initialised data, which <code>c1</code> folds in after
+the code.</li>
+</ul>
+<p>Neither file is human-readable text; both are meant for <code>c1</code>. To eyeball the
+stream, dump <code>temp1</code> with <code>od</code> (see §5).</p>
+<p><strong>Diagnostics</strong> go to <strong>stderr</strong>, prefixed <code>file:line:</code> (the file name comes from
+the <code>#line</code> directives <code>cpp</code> left in the input), e.g.</p>
+<pre><code>foo.c:12: x undefined; func. main
+</code></pre>
+<hr />
+<h2 id="4-exit-status">4. Exit status</h2>
+<ul>
+<li><strong>0</strong> — the translation unit parsed with no errors.</li>
+<li><strong>1</strong> — one or more source errors were diagnosed (<code>exit(nerror != 0)</code>), or a
+fatal startup/resource condition (<code>Arg count</code>, <code>Can't find …</code>, <code>Out of space</code>,
+a table overflow), each reported before exit.</li>
+</ul>
+<p>A <strong>signal</strong> exit (a segfault) is a compiler/port bug, not a source error. This
+port specifically hardened the syntax-error paths that used to follow a NULL tree
+pointer — harmless on the PDP-11, a fault on a 64-bit host — so that even
+malformed input now yields a diagnostic and a clean status 1 (see
+<a href="../c0-design/index.html">design §6</a>).</p>
+<hr />
+<h2 id="5-examples">5. Examples</h2>
+<pre><code class="language-sh"># The normal way: let cc drive the pass.
+pdp11-cc -c foo.c
+
+# Run c0 by hand on one preprocessed unit (what the test suite does).
+pdp11-cpp -Dpdp11=1 foo.c &gt; foo.i     # preprocess first
+pdp11-c0 foo.i foo.1 foo.2            # foo.1 = code stream, foo.2 = strings/data
+pdp11-c1 foo.1 foo.2 foo.s            # then c1 turns it into assembly
+
+# Inspect the intermediate stream c0 produced.
+od -An -tx1 foo.1 | less
+
+# Profiling counters (equivalently, pdp11-cc -p foo.c).
+pdp11-c0 foo.i foo.1 foo.2 -P
+</code></pre>
+<p>Continue to the <a href="../c0-design/index.html">design document</a> for the parser, the symbol table,
+and the byte-for-byte layout of the stream in <code>foo.1</code>/<code>foo.2</code>.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

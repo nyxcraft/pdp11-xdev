@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-ranlib — design | pdp11-xdev</title>
+  <meta name="description" content="This document describes how pdp11-ranlib builds an archive&#x27;s __.SYMDEF symbol directory: the on-disk table it writes, how it reads symbols out of the a.out members, the offset arithmetic that keeps the directory pointing…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-ranlib — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-the-job">1. The job</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-the-symdef-layout-byte-exact">2. The `__.SYMDEF` layout (byte-exact)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-reading-a-member-s-symbols">3. Reading a member&#x27;s symbols</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-what-counts-the-qualification">4. What counts — the qualification</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-the-offset-that-moves-when-the-directory-is-inserted">5. The offset that moves when the directory is inserted</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-handing-the-splice-to-pdp11-ar-safely">6. Handing the splice to `pdp11-ar` — safely</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-the-date-it-stamps">7. The date it stamps</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#8-testing">8. Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#9-for-a-maintainer">9. For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-ranlib — design</h1>
+          <p class="docs-article__summary">This document describes how pdp11-ranlib builds an archive&#x27;s __.SYMDEF symbol directory: the on-disk table it writes, how it reads symbols out of the a.out members, the offset arithmetic that keeps the directory pointing…</p>
+          <p class="docs-article__source">pdp11-ranlib — design</p>
+        </header>
+        <div class="prose">
+<p>This document describes how <code>pdp11-ranlib</code> builds an archive's <code>__.SYMDEF</code>
+symbol directory: the on-disk table it writes, how it reads symbols out of the
+a.out members, the offset arithmetic that keeps the directory pointing at the
+right members after insertion, how it resolves and safely invokes this
+toolchain's own <code>ar</code>, and the date it stamps. For how to <em>use</em> it, see the
+<a href="../ranlib-guide/index.html">user guide</a>.</p>
+<p>The tool is one file, <code>ranlib.c</code> (~250 lines), sharing the archive-format model
+with <a href="https://github.com/nyxcraft/pdp11-xdev/tree/main/src/pdp11-ar"><code>pdp11-ar</code></a> through <code>../../common/cross/ar.h</code> (the packed
+26-byte header and the <code>PDPL()</code> middle-endian swap) and reading object symbols
+through <code>../../common/cross/a.out.h</code>, so each kind of knowledge lives in one
+place and all three tools agree on the bytes.</p>
+<hr />
+<h2 id="1-the-job">1. The job</h2>
+<p><code>pdp11-ld</code> resolving a library either scans every member's symbol table in turn
+(which only works if the members are dependency-ordered) or consults a <strong>symbol
+directory</strong> at the front mapping each exported symbol to the member that defines
+it. The directory — a member named <code>__.SYMDEF</code>, placed first — is what lets <code>ld</code>
+pull members regardless of order. <code>pdp11-ranlib</code> builds it; <code>pdp11-ar</code> does not.</p>
+<hr />
+<h2 id="2-the-symdef-layout-byte-exact">2. The <code>__.SYMDEF</code> layout (byte-exact)</h2>
+<p>The directory is an array of fixed-width entries, one per exported symbol,
+written to a temp file that is then spliced into the archive as its first
+member. Each entry is a <code>struct tab</code>:</p>
+<pre><code class="language-c">struct tab {
+    char    cname[8];   /* symbol name, inline, blank/NUL-filled */
+    int32_t cloc;       /* byte offset of the DEFINING member's header */
+} __attribute__((packed));      /* exactly 12 bytes */
+</code></pre>
+<p>Two details are load-bearing and were the porting fixes:</p>
+<ul>
+<li><strong>12 bytes, not 16.</strong> On an LP64 host a bare <code>long</code> would make the entry 16
+bytes; it is pinned to <code>int32_t</code> and packed to 12. <code>ld</code>'s own reader computes
+<code>tnum = symdef_size / 12</code> and <code>step(offset &gt;&gt; 1)</code> (byte → word), so the width
+must match to the byte.</li>
+<li><strong><code>cloc</code> is a PDP-11 middle-endian long</strong>, written through the same <code>PDPL()</code>
+half-swap <code>ar</code> and <code>ld</code> use (high 16-bit word first on disk); the whole table
+is swapped in a final pass before it is written.</li>
+</ul>
+<p>The name is carried <strong>inline</strong> in 8 bytes — no separate string table — and names
+longer than 8 characters are truncated, exactly as V7/2BSD <code>ranlib</code> did.</p>
+<hr />
+<h2 id="3-reading-a-member-s-symbols">3. Reading a member's symbols</h2>
+<p><code>main()</code> walks the archive with <code>nextel()</code>, which reads each 26-byte header
+(swapping <code>ar_size</code>/<code>ar_date</code> to host order via <code>PDPL()</code>), rounds an odd size up
+to the even on-disk boundary, and records <code>oldoff</code> — the byte offset of <em>this</em>
+member's header, which the directory will point at. For each member it reads the
+a.out <code>struct exec</code>, skips anything whose magic is not <code>A_MAGIC1..A_MAGIC4</code>
+(<code>BADMAG</code> — a non-object member), seeks past text and data (<code>o = a_text + a_data</code>, doubled when reloc info is present, i.e. <code>(a_flag &amp; 01) == 0</code>), and
+reads the <code>n = a_syms / sizeof(struct nlist)</code> symbols that follow.</p>
+<hr />
+<h2 id="4-what-counts-the-qualification">4. What counts — the qualification</h2>
+<pre><code class="language-c">if ((sym.n_type &amp; N_EXT) == 0)           continue;   /* not external */
+switch (sym.n_type &amp; N_TYPE) {
+case N_UNDF:                             continue;   /* undefined: a reference */
+default:                                 stash(&amp;sym);
+}
+</code></pre>
+<p>A symbol is indexed only if it is <strong>external and defined</strong> — <code>N_EXT</code> set and its
+type not <code>N_UNDF</code>. A plain undefined entry is a <em>reference</em>; indexing it would
+make <code>ld</code> pull a member that satisfies nothing. This is the V7/2BSD <code>ranlib</code>
+rule verbatim. <code>stash()</code> copies the 8-byte name and the member's header offset
+(<code>oldoff</code>) into <code>tab[]</code> (capacity <code>TABSZ</code> = 700; overflow is fatal).</p>
+<hr />
+<h2 id="5-the-offset-that-moves-when-the-directory-is-inserted">5. The offset that moves when the directory is inserted</h2>
+<p>Every <code>cloc</code> names a member by its offset <strong>in the finished archive</strong> — but
+inserting <code>__.SYMDEF</code> first is what shifts every following member forward.
+<code>fixsize()</code> closes the loop: because every entry is fixed width, the directory's
+length depends only on the symbol <em>count</em>, so it can be computed before
+placement:</p>
+<pre><code>offdelta = tnum * sizeof(struct tab) + sizeof(arp)   /* directory + its 26-byte header */
+</code></pre>
+<p>It then rewinds to the first real member to decide the mode: with <strong>no existing
+<code>__.SYMDEF</code></strong> (<code>new = 1</code>) the members all shift by <code>offdelta</code> and the first
+member's name is saved in <code>firstname</code> so the directory can be inserted <em>before</em>
+it; when an <strong><code>__.SYMDEF</code> is already first</strong> (<code>new = 0</code>, a rebuild) <code>offdelta</code> is
+reduced by the old directory's total size so the members do not move, only
+re-index. Every <code>cloc</code> is then adjusted by <code>offdelta</code> and the table written.</p>
+<hr />
+<h2 id="6-handing-the-splice-to-pdp11-ar-safely">6. Handing the splice to <code>pdp11-ar</code> — safely</h2>
+<p><code>pdp11-ranlib</code> does not edit the archive itself; it writes <code>__.SYMDEF</code> to a temp
+file and asks <code>ar</code> to insert it — the historical PDP-11 division of labour, in
+which <code>ranlib</code> drives <code>ar</code> (the reverse of the VAX toolchain). Two things make
+it robust.</p>
+<p><strong>Resolving the matching <code>ar</code>.</strong> <code>setup_ar()</code> reads <code>/proc/self/exe</code> and rewrites
+the trailing <code>ranlib</code> in its own path to <code>ar</code>, preserving any toolchain prefix —
+so <code>.../usr/bin/pdp11-bsd29-ranlib</code> invokes <code>.../usr/bin/pdp11-bsd29-ar</code> (the
+same <code>/proc/self/exe</code> scheme <code>cc</code> and <code>ld</code> use), never a stray system <code>ar</code>; it
+falls back to a bare <code>ar</code> on <code>PATH</code> if the readlink fails.</p>
+<p><strong>fork/exec, not <code>system()</code>.</strong></p>
+<pre><code class="language-c">av[n++] = arcmd;
+av[n++] = first ? &quot;rlb&quot; : &quot;rl&quot;;   /* rlb &lt;firstname&gt; to insert before it; rl to replace */
+if (first) av[n++] = first;
+av[n++] = archive;  av[n++] = temp;
+if ((pid = fork()) == 0) { execvp(arcmd, av); _exit(127); }
+</code></pre>
+<p><code>run_ar()</code> builds an <strong>argv array and <code>fork</code>/<code>execvp</code>s</strong> it — it does <strong>not</strong> go
+through <code>system()</code>/<code>/bin/sh</code>. This is a deliberate security fix: the <code>firstname</code>
+argument comes straight from an on-disk <code>ar_name</code>, so a crafted member name in
+an untrusted archive would otherwise be read as shell text and could inject
+commands; a single argv element makes that impossible. (The <em>native</em> 2.9BSD
+<code>ranlib</code> did <code>system(&quot;ar rlb …&quot;)</code> via <code>/bin/sh</code>; this port keeps the
+byte-identical output while closing the hole.) The <code>rlb</code>/<code>rl</code> choice mirrors §5:
+<code>ar rlb &lt;firstname&gt;</code> inserts <code>__.SYMDEF</code> <em>before</em> the old first member for a new
+index; <code>ar rl</code> replaces the existing one for a rebuild.</p>
+<hr />
+<h2 id="7-the-date-it-stamps">7. The date it stamps</h2>
+<p>After <code>ar</code> inserts the member, <code>fixdate()</code> reopens the archive and overwrites
+the <code>__.SYMDEF</code> header's <code>ar_date</code> directly. <code>ld</code> treats the table as stale —
+falling back to a single-pass scan — unless that date is at least the archive's
+mtime. The native tool used <code>time()+5</code>; on a host, where clock skew is possible,
+this writes a <strong>far-future</strong> date (<code>PDPL(0x7fffffff)</code>) so the table is always
+honoured, and exactly <strong>4 bytes</strong> (the on-disk <code>ar_date</code>, not the host's 8-byte
+long).</p>
+<hr />
+<h2 id="8-testing">8. Testing</h2>
+<p>Two layers. <code>tests/ld/ranlib.sh</code> (via <code>make check</code>) builds a deliberately
+<strong>mis-ordered</strong> archive — <code>_helper</code> defined in a member placed <em>before</em> the one
+that references it — runs <code>pdp11-ranlib</code>, checks <code>__.SYMDEF</code> is now first, and
+requires <code>ld</code> to resolve <code>_helper</code> through it.</p>
+<p>The weight is the <strong>oracle</strong>: <code>oracle/lib-sweep.sh</code> runs the native 2.9BSD
+<code>ranlib</code> <strong>end-to-end under apsim</strong> (it forks <code>/bin/sh</code> to <code>system(&quot;ar rlb&quot;)</code>,
+so the shell and native <code>ar</code> run under the simulator too) over every <code>.a</code> in the
+tree, and byte-compares the <code>__.SYMDEF</code> <strong>member content</strong> against ours. Only
+the header date differs (native stamps <code>time()+5</code>), so the comparison drops the
+header and checks names, offsets, and layout. Proven: <strong>26/26</strong> ranlib'd
+libraries match to the byte.</p>
+<hr />
+<h2 id="9-for-a-maintainer">9. For a maintainer</h2>
+<ul>
+<li><strong>Formats live in <code>cross/ar.h</code></strong> (packed header + <code>PDPL()</code>, shared with
+<code>ar</code>/<code>ld</code>) and object symbols in <code>cross/a.out.h</code> (shared with <code>nm</code>/<code>size</code>).
+Don't grow either here.</li>
+<li><strong>Walk → qualify → index → splice:</strong> <code>nextel()</code> → the external-and-defined
+filter → <code>stash()</code> → <code>fixsize()</code> (offset delta) → <code>run_ar()</code>.</li>
+<li><strong>The entry is 12 bytes and its offset is <code>PDPL()</code>-swapped</strong> — <code>ld</code> divides by
+12 and shifts byte→word, so both are pinned by the on-disk contract.</li>
+<li><strong><code>run_ar()</code> must stay <code>fork</code>/<code>execvp</code>, never <code>system()</code></strong> — the member name it
+passes is untrusted; do not reintroduce a shell.</li>
+<li><strong>The date must be <code>&gt;=</code> the archive mtime</strong>, written as 4 bytes; the
+far-future value guards against host clock skew.</li>
+<li>Hold byte-layout changes against <code>oracle/lib-sweep.sh</code> and <code>tests/ld/ranlib.sh</code>.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

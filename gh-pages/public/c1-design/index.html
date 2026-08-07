@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-c1 — design | pdp11-xdev</title>
+  <meta name="description" content="This document explains what pdp11-c1 is, how it turns c0&#x27;s intermediate form into PDP-11 assembly, the code table that drives it and how that table is built on the host, the soft floating-point path, and the LP64 correct…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-c1 — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-what-it-is-and-where-it-runs">1. What it is and where it runs</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-reading-the-intermediate-form">2. Reading the intermediate form</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-code-generation-by-table">3. Code generation by table</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-the-code-table-authored-expanded-converted-compiled">4. The code table: authored, expanded, converted, compiled</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-floating-point-the-dec-path-not-the-host-s">5. Floating point — the DEC path, not the host&#x27;s</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-switches-comparisons-and-longs">6. Switches, comparisons, and longs</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-lp64-correctness-fixes">7. LP64 correctness fixes</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#testing">Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#for-a-maintainer">For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-c1 — design</h1>
+          <p class="docs-article__summary">This document explains what pdp11-c1 is, how it turns c0&#x27;s intermediate form into PDP-11 assembly, the code table that drives it and how that table is built on the host, the soft floating-point path, and the LP64 correct…</p>
+          <p class="docs-article__source">pdp11-c1 — design</p>
+        </header>
+        <div class="prose">
+<p>This document explains what <code>pdp11-c1</code> is, how it turns c0's intermediate form
+into PDP-11 assembly, the code table that drives it and how that table is built
+on the host, the soft floating-point path, and the LP64 correctness fixes the
+port carries. For how to <em>invoke</em> it (it is a compiler pass, not a command you
+run by hand), see the <a href="../c1-guide/index.html">user guide</a>.</p>
+<p>The sources are <code>c10.c</code> (the driver — <code>match</code>/<code>rcexpr</code>/<code>cexpr</code>, the code-table
+interpreter), <code>c11.c</code> (naming, switches, comparisons, and the intermediate-file
+reader <code>getree</code>), <code>c12.c</code> (<code>optim</code>/<code>unoptim</code>/<code>acommute</code> — the expression-tree
+rewriter that runs before codegen), <code>c13.c</code> (the operator-dope and
+instruction-mnemonic tables), and <code>c1.h</code> (the node superset and operator codes).
+The code table is authored in <code>table.s</code> and turned into C by two build-time
+programs, <code>cvopt.c</code> and <code>mktab.c</code> (§4); FP constants go through <code>softfp.c</code> (§5).</p>
+<hr />
+<h2 id="1-what-it-is-and-where-it-runs">1. What it is and where it runs</h2>
+<p><code>pdp11-c1</code> is the <strong>second pass of Ritchie's PDP-11 C compiler</strong> — the code
+generator (<code>c0</code> is the first pass, the parser; the file header still reads &quot;C
+compiler, part 2&quot;). <code>cc</code> runs it as the <code>c1</code> stage of</p>
+<pre><code>cpp → c0 → c1 [→ c2 with -O] → as → ld
+</code></pre>
+<p>reading the two temp files <code>c0</code> produced and writing assembler text. <code>c10.c</code>'s
+<code>main</code> opens <code>argv[1]</code> (the intermediate tree stream) as stdin and <code>argv[3]</code> as
+stdout, calls <code>getree()</code> to generate code, then — unless <code>argv[2]</code> is <code>&quot;-&quot;</code> —
+reopens <code>argv[2]</code> (the string/initialised-data file) and runs <code>getree()</code> again,
+tacking its output on in <code>.data</code>. It runs entirely on the LP64 host.</p>
+<hr />
+<h2 id="2-reading-the-intermediate-form">2. Reading the intermediate form</h2>
+<p><code>getree()</code> (c11.c) reads a byte stream of 16-bit words via <code>geti()</code>, which packs
+two bytes little-endian and <strong>sign-extends to 16 bits</strong> (a PDP-11 <code>int</code>). Each
+operator word is tagged <code>0177000</code> in its high byte; the low byte is the operator
+(the <code>#define</code>s in <code>c1.h</code>). Leaf operators (<code>NAME</code>, <code>CON</code>, <code>LCON</code>, <code>FCON</code>, …)
+push a freshly built <code>tnode</code> on a small expression stack; a unary or binary
+operator pops its operands and pushes <code>tnode(op, type, …)</code>. Whole statements
+arrive as <code>EXPR</code>/<code>CBRANCH</code>/<code>SWIT</code>/<code>INIT</code>/… records that hand the finished tree to
+<code>optim</code> and then to <code>rcexpr</code>.</p>
+<p>Nodes are allocated from a per-function arena (<code>getblk</code>): <code>curbase</code> is reset to
+<code>funcbase</code> at each statement, so one function's tree is all that need fit. On the
+PDP-11 this arena grew by <code>sbrk</code>; on the host that would corrupt the libc heap
+c1's own stdio uses, so <code>main</code> allocates one 16 MB <code>malloc</code> region up front and
+<code>getblk</code> sub-allocates from it (§7).</p>
+<hr />
+<h2 id="3-code-generation-by-table">3. Code generation by table</h2>
+<p>The heart of c1 is <code>match</code>/<code>rcexpr</code>/<code>cexpr</code> in c10.c, driven by four <strong>code
+tables</strong> (c13.c-adjacent, built in §4):</p>
+<ul>
+<li><strong><code>regtab</code></strong> — produce the value in a register (this table must succeed, or
+it is a &quot;No code table for op&quot; error);</li>
+<li><strong><code>cctab</code></strong> — only the condition codes are wanted (a test before a branch);</li>
+<li><strong><code>efftab</code></strong> — the value is discarded, evaluate for side effect;</li>
+<li><strong><code>sptab</code></strong> — push the value on the stack (a function argument).</li>
+</ul>
+<p><code>match()</code> walks the table for the operator, then scans that operator's <code>optab</code>
+rows for one whose operand <em>degrees</em> (register pressure, from <code>dcalc</code>) and
+<em>types</em> (<code>notcompat</code>) fit; a row's <code>tabstring</code> is a template. <code>cexpr()</code>
+interprets the template: control bytes select an operand address (<code>A</code>/<code>B</code> →
+<code>pname</code>), a register (<code>I</code>/<code>J</code>), a subtree to recurse into with a named table
+(<code>G</code>/<code>K</code>/<code>H</code> → <code>rcexpr</code>), or an instruction mnemonic (<code>M</code> → <code>prins</code>), and the
+<code>0200</code> bit asks for a tab. <code>rcexpr()</code> wraps <code>cexpr</code> with the fallback logic
+(cctab → regtab + <code>tst</code>, sptab → regtab + push, …) and the register bookkeeping
+that keeps long values (two registers) and odd/even register pairing correct.</p>
+<p>Two families of tree rewrites feed the tables: <code>reorder</code>/<code>sreorder</code> turn
+<code>reg = x + y</code> into <code>reg = x; reg += y</code>, and <code>delay</code>/<code>sdelay</code> pull a postfix
+<code>++</code>/<code>--</code> out to run after the expression. Both got NULL guards for the port (§7).</p>
+<hr />
+<h2 id="4-the-code-table-authored-expanded-converted-compiled">4. The code table: authored, expanded, converted, compiled</h2>
+<p>The tables are not hand-written C. They are <strong>authored in <code>table.s</code></strong>, a compact
+template language (<code>%a,n</code> / <code>jmp A1</code> etc.), the way the 1981 compiler wrote them.
+On the PDP-11 <code>table.s</code> was expanded to assembler by <code>cvopt</code>, assembled, and
+linked in as data the code generator interprets. The host cannot assemble
+PDP-11, so a fourth stage turns the assembler into C:</p>
+<pre><code>table.s ──cvopt──▶ table.i ──mktab──▶ table.c ──cc──▶ table.o
+        (templates → asm)   (asm → C)
+</code></pre>
+<ul>
+<li><strong><code>cvopt.c</code></strong> is the authentic 2BSD table compiler: it maps the template
+letters to the <code>cexpr</code> control bytes, emits each template as a labelled
+<code>&lt;...&gt;;.byte N;&lt;...&gt;</code> fragment string, and emits the degree/type match bytes
+(with <code>.byte %o</code>, i.e. <strong>octal</strong>) and the index/optab arrays. Its only source
+change was the <code>=op</code> → <code>op=</code> operator spelling so it compiles on the host.</li>
+<li><strong><code>mktab.c</code></strong> is a new host helper that parses <code>cvopt</code>'s output and writes
+<code>table.c</code>: each template becomes <code>static char Ln[] = &quot;…&quot;</code> (a <code>.byte N</code> →
+<code>\NNN</code>), each optab label becomes <code>static struct optab L[] = {{d,t,d,t,str},…, {0,…}}</code>, and each <code>_NAME=.</code> index becomes <code>struct table NAME[] = {{op,optab},…}</code>.
+It parses those match bytes back <strong>in octal</strong> — reading them as decimal was the
+bug that made no arithmetic operator match any row (&quot;No code table for op: +&quot;).
+Templates are emitted first, then aliases, then optabs, then index tables, so
+every name is defined before use.</li>
+</ul>
+<p><code>c13.c</code> supplies the fixed tables the templates lean on: <code>opdope[]</code> (per-operator
+flag bits — LEAF, BINARY, RELAT, COMMUTE, …), <code>opntab[]</code> (names for diagnostics),
+and the mnemonic tables <code>instab[]</code>/<code>branchtab[]</code> that <code>prins</code> indexes (<code>mov</code>,
+<code>add</code>, <code>jeq</code>/<code>jne</code>, the 200+ pointer-test forms, …).</p>
+<hr />
+<h2 id="5-floating-point-the-dec-path-not-the-host-s">5. Floating point — the DEC path, not the host's</h2>
+<p>PDP-11 floating point is DEC F/D format, not IEEE-754, and the port computes it
+that way. <code>softfp.c</code> is a soft D-format (56-bit) implementation whose add / mul /
+div / normalise sequence mirrors 2.8 libc <code>atof.c</code> statement for statement, so
+every intermediate rounding lands where the 1981 machine's did (FP11 rounds by
+adding one at the first discarded bit — no sticky, no round-to-even). At read
+time <code>getree</code> calls <code>softfp_atof</code> and stores the exact four D-format words on the
+<code>FCON</code> node; <code>fcwords()</code> returns those. <code>decfloat()</code> — a direct host <code>double</code> →
+D-format conversion — is only the defensive fallback when the stored words are
+all zero (in practice, <code>0.0</code>). <code>softfp_dtof</code> narrows to F-format for <code>float</code>
+initialisers, <code>softfp_fromlong</code> handles the <code>long</code>→float folds, and FP negation
+flips the sign bit of the DEC word directly (c12.c), not a bit of the host double.</p>
+<hr />
+<h2 id="6-switches-comparisons-and-longs">6. Switches, comparisons, and longs</h2>
+<p><code>c11.c</code> holds the non-table codegen. <code>pswitch</code> chooses a <strong>direct</strong> jump table
+(dense ranges), a <strong>simple</strong> compare chain (&lt; 10 cases), or a <strong>hash</strong> table
+(case values hashed with <code>% (unsigned short)</code>; <code>sort</code> orders and dup-checks
+them). <code>cbranch</code>/<code>branch</code> emit conditional branches, mapping a relation to its
+<code>jeq</code>/<code>jlt</code>/… and its inverse (the <code>200+</code> variants are pointer tests against
+zero). <code>longrel</code>/<code>xlongrel</code> drive the two-word comparison off <code>lrtab</code>, emitting
+only the tests a given relation needs.</p>
+<hr />
+<h2 id="7-lp64-correctness-fixes">7. LP64 correctness fixes</h2>
+<p>c1 is pre-1977 K&amp;R C manipulating 16-bit quantities on a 64-bit host; the port's
+fixes cluster in a few classes:</p>
+<ul>
+<li><strong>Pointer truncation.</strong> Every node-returning function has an explicit
+<code>struct tnode *</code> return type and a visible prototype (<code>c1.h</code>), or its 64-bit
+result truncates to <code>int</code>; K&amp;R-implicit pointer <em>parameters</em> were typed too.</li>
+<li><strong>16-bit integer semantics.</strong> <code>geti()</code> sign-extends, so a negative <code>switch</code>
+case or <code>-1</code> constant reads correctly; <code>CON</code> sign-extends a signed <code>int</code>; the
+<code>LCON</code> int-fold masks both halves with <code>&amp; 0177777</code> before testing (so <code>-1L</code>
+and a <code>long</code> whose low word is ≥ <code>0100000</code> fold right); <code>ANAME</code> prints a
+negative auto offset as 16-bit octal to match the native listing; the switch
+hash and modulo use <code>(unsigned short)</code>.</li>
+<li><strong>The <code>(signed char)</code> ITOC fold.</strong> A <code>(char)</code> constant cast is folded with
+<code>(signed char)</code>; the original <code>value&lt;&lt;8&gt;&gt;8</code> sign-extended from bit 23 on the
+host, so bit-7-set constants (<code>(char)0300</code>) came out wrong.</li>
+<li><strong>Sequencing, NULL, and the arena.</strong> The <code>FSEL</code> case sequences its stack pop
+against the input read (was unsequenced UB); <code>reorder</code>/<code>sreorder</code>/<code>xdcalc</code>/
+<code>sdelay</code> guard the NULL / reduced-to-leaf subtree the PDP-11 read harmlessly
+from low memory; <code>getblk</code> allocates at least <code>sizeof(struct tnode)</code> (the
+variant structs are smaller than the union superset) and zeroes each block,
+because the per-function arena is reused rather than served fresh from <code>sbrk</code>.</li>
+<li><strong>The table octal bug</strong> (§4) and <strong>DEC vs IEEE float</strong> (§5).</li>
+</ul>
+<hr />
+<h2 id="testing">Testing</h2>
+<p><code>tests/c1/codegen.sh</code> drives <code>cpp → c0 → c1</code> and checks the emitted assembly:
+<code>return 42</code> → <code>mov $52,r0</code> (52 octal), <code>2 + 3*4</code> folds to <code>mov $16,r0</code>, and a
+global <code>int x = 7</code> lands in <code>.data</code> as <code>_x:</code> with <code>mov _x,r0</code>, all with the
+<code>jsr r5,csv</code> / <code>jmp cret</code> prologue and epilogue. <code>tests/cc/programs.sh</code>
+disassembles c1's output for locals, loops, arithmetic, arrays, K&amp;R calls and
+recursion with GNU <code>objdump -m pdp11</code>.</p>
+<p>The strong check is the oracle: <code>oracle/run.sh</code> compiles the small corpus and
+runs <strong>our c1 against the 1981 native c1</strong> under <code>pdp11-apsim</code>, and
+<code>oracle/cc-corpus.sh</code> feeds the same preprocessed <code>.i</code> to our and native
+<code>c0/c1/c2</code>, assembles both, and byte-compares the <code>.o</code>. Across the trees it can
+run under apsim's ~64 KB the whole <code>cpp→c0→c1→c2</code> chain is <strong>byte-identical to
+the native 2.9 compiler</strong> (the CC oracle matches on every file it can run,
+91/91).</p>
+<hr />
+<h2 id="for-a-maintainer">For a maintainer</h2>
+<ul>
+<li><strong>The table is generated; edit <code>table.s</code>, never <code>table.c</code>.</strong> <code>table.c</code> is
+rebuilt by <code>cvopt</code> + <code>mktab</code> on every <code>make</code> and is marked &quot;do not edit&quot;. A
+codegen change is a <code>table.s</code> change; a pipeline change is <code>cvopt</code>/<code>mktab</code>.</li>
+<li><strong>Match bytes are octal end to end.</strong> <code>cvopt</code> emits them <code>%o</code> and <code>mktab</code>
+reads them <code>%o</code>; a decimal slip there silently unmatches whole operators.</li>
+<li><strong><code>softfp.c</code> is authoritative for FP constants; <code>decfloat</code> is the zero
+fallback.</strong> Do not &quot;simplify&quot; FP conversion back to the host double — the last
+mantissa bits must match the FP11.</li>
+<li><strong>Pointer-returning functions need a prototype</strong>, in <code>c1.h</code> beside the others,
+or the LP64 truncation crash returns; and <strong><code>getblk</code> returns full-<code>tnode</code>
+blocks</strong> — do not allocate a variant struct at its own size and read it as a
+node.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

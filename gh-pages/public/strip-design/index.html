@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-strip — design | pdp11-xdev</title>
+  <meta name="description" content="This document describes how pdp11-strip removes the symbol table and relocation from a PDP-11 a.out: the default header poke + truncating copy that handles the ordinary magics, the overlay-aware copy for the auto-overlay…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-strip — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-stripping-is-a-header-poke-not-a-symbol-walk">1. Stripping is a header poke, not a symbol walk</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-the-auto-overlay-header-0430-0431">2. The auto-overlay header (`0430`/`0431`)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-first-edition-a-out-0405">3. First Edition `a.out` (`0405`)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-the-n-inverse-keep-only-the-name-list">4. The `-n` inverse: keep only the name list</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-hardening-and-the-write-model">5. Hardening and the write model</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#testing">Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#for-a-maintainer">For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-strip — design</h1>
+          <p class="docs-article__summary">This document describes how pdp11-strip removes the symbol table and relocation from a PDP-11 a.out: the default header poke + truncating copy that handles the ordinary magics, the overlay-aware copy for the auto-overlay…</p>
+          <p class="docs-article__source">pdp11-strip — design</p>
+        </header>
+        <div class="prose">
+<p>This document describes how <code>pdp11-strip</code> removes the symbol table and
+relocation from a PDP-11 <code>a.out</code>: the default header poke + truncating copy that
+handles the ordinary magics, the overlay-aware copy for the auto-overlay
+(<code>0430</code>/<code>0431</code>) form, the First Edition (<code>0405</code>) special case whose text size
+includes the header, and the hardening around a hostile header. For how to <em>use</em>
+it, see the <a href="../strip-guide/index.html">user guide</a>.</p>
+<p>The tool is <code>strip.c</code> — the 2.9BSD <code>/bin/strip</code>, modernized to clean C99 — over
+<code>../../common/cross/a.out.h</code>, the fixed-width on-disk view of the 16-bit header
+(<code>struct exec</code>), the overlay header (<code>struct ovlhdr</code>), and the magic macros.</p>
+<hr />
+<h2 id="1-stripping-is-a-header-poke-not-a-symbol-walk">1. Stripping is a header poke, not a symbol walk</h2>
+<p>The default strip <strong>never reads a symbol</strong>. It copies the 16-byte header with
+<code>a_syms</code> zeroed and the no-relocation bit set (<code>a_flag |= 1</code> — the header field is
+commented &quot;relocation info stripped&quot;), then copies the text and initialized-data
+image straight through, and stops. Everything that follows the data — the symbol
+table and the relocation — is simply not copied, so it all falls off together.</p>
+<p>Because the tail is discarded wholesale rather than parsed, one code path strips
+the ordinary magics <code>0407</code> (normal), <code>0410</code> (read-only text), and <code>0411</code>
+(separated I&amp;D) identically: they differ only in load-time promises, not in what
+sits after the image. An object that is already stripped — <code>ISSTRIPPED(x)</code> is
+<code>a_syms == 0 &amp;&amp; (a_flag &amp; 1)</code> — is reported as &quot;already stripped&quot; and counts as an
+error (see <a href="#6-for-a-maintainer">§6</a> on the exit status), matching the era tool.</p>
+<hr />
+<h2 id="2-the-auto-overlay-header-0430-0431">2. The auto-overlay header (<code>0430</code>/<code>0431</code>)</h2>
+<p>An auto-overlay object (<code>ISOVERLAID</code> = magic <code>0430</code> or <code>0431</code>) carries a <code>struct ovlhdr</code> — <code>max_ovl</code> plus seven <code>ov_siz[]</code> words — immediately after the <code>exec</code>
+header, describing several overlay text segments that sit <em>between</em> the root text
+and the data. <code>N_TXTOFF</code> accounts for that extra header for these magics.</p>
+<p>Strip reads the <code>ovlhdr</code>, re-emits it, and then copies <code>a_text + Σ ov_siz[] + a_data</code> bytes. That <code>Σ ov_siz[]</code> term is the &quot;overlay-aware truncation&quot; the README
+advertises: the overlay segments are preserved, and only the trailing symbol
+table and relocation are dropped. Omitting the sum would truncate live overlay
+code, so it is load-bearing.</p>
+<hr />
+<h2 id="3-first-edition-a-out-0405">3. First Edition <code>a.out</code> (<code>0405</code>)</h2>
+<p>Magic <code>0405</code> is treated as First Edition <code>a.out(V)</code>, a genuinely different layout:
+a 6-word header <strong>whose <code>a_text</code> includes the 12-byte header itself</strong>, with the
+symbol table and V1 relocation bits following the text. Strip rebuilds the header
+as <code>{a_magic, a_text, 0, 0, a_syms, a_entry}</code> — carrying over the magic, text
+size, symbol word, and entry, and zeroing the two size words that in this layout
+record the following symbol-table and relocation-bits sizes — then seeks to offset
+12 and copies <code>a_text - 12</code> bytes: the text image minus the header it has already
+re-emitted. Everything after that (the symbols and relocation) is discarded.</p>
+<p>Two guards frame this. A valid <code>0405</code> has <code>a_text &gt;= 12</code>; a crafted <code>a_text &lt; 12</code>
+is rejected as &quot;not in a.out format&quot; <strong>before</strong> the copy — previously that value
+drove the <code>a_text - 12</code> length negative and into <code>copy()</code>'s read/write loop, a
+buffer overflow. And a <code>0405</code> whose <code>a_data</code> and <code>a_bss</code> are both zero has nothing
+to strip and is reported &quot;already stripped&quot;.</p>
+<hr />
+<h2 id="4-the-n-inverse-keep-only-the-name-list">4. The <code>-n</code> inverse: keep only the name list</h2>
+<p><code>-n</code> is the complement of a default strip. It writes a header with
+<code>a_text</code>/<code>a_data</code>/<code>a_bss</code> zeroed and <code>a_syms</code> kept (the flag is <em>not</em> set), then
+seeks past the text, data, and relocation — <code>N_TXTOFF + a_text + a_data</code>, plus the
+overlay sizes for an auto-overlay object, plus <code>rellen</code> (the relocation length,
+<code>a_text + a_data</code> unless the object is already flagged no-relocation, in which
+case zero) — and copies <code>a_syms</code> bytes. The result is a bare header plus the
+symbol table: text and data gone, name list kept.</p>
+<hr />
+<h2 id="5-hardening-and-the-write-model">5. Hardening and the write model</h2>
+<ul>
+<li><strong>A fresh <code>mkstemp</code> temp per input file.</strong> Each pass copies the literal
+<code>&quot;/tmp/sXXXXXX&quot;</code> into a writable buffer and calls <code>mkstemp</code>, which reserves an
+unpredictable name and creates it <code>0600</code>. This replaced the historical
+predictable name recreated with <code>creat()</code> every pass, so no attacker-planted
+name or symlink is followed for the temp.</li>
+<li><strong><code>copy()</code> guards a negative length</strong> — <code>if (size &lt; 0)</code> prints &quot;corrupt object
+(negative length)&quot; and fails the file. This is belt-and-suspenders behind the
+<code>0405</code> <code>a_text &lt; 12</code> pre-check: no length reaches the read/write loop negative.</li>
+<li><strong>Signals ignored for the run.</strong> <code>SIGHUP</code>, <code>SIGINT</code>, and <code>SIGQUIT</code> are set to
+<code>SIG_IGN</code>, so an interrupt cannot leave a half-written file mid-rewrite.</li>
+<li><strong>Every read and write is length-checked</strong> — a short read is &quot;unexpected eof&quot;, a
+short write is <code>perror</code>'d; either aborts that file and counts an error.</li>
+<li><strong>Write-back.</strong> With the stripped image in the temp, the original is reopened
+with <code>creat(name, 0666)</code> and the temp copied back over it, then the temp is
+unlinked. The <code>creat(0666)</code> means the file's mode is <em>reset</em> (subject to umask),
+not preserved — the authentic 2.9BSD behavior, and a deliberate point of
+difference from the VAX tool's rename-preserve.</li>
+</ul>
+<hr />
+<h2 id="testing">Testing</h2>
+<p><code>tests/binutils/size_nm_strip.sh</code> (at the repo root) copies a committed real
+2.9BSD object, strips the copy, and runs <code>pdp11-nm</code> on the result, requiring the
+output to report &quot;no name list&quot; — the symbol table is provably gone and the
+no-relocation flag set. The fuzz harness <code>tests/fuzz/run.sh</code> builds <code>pdp11-strip</code>
+under ASan+UBSan and runs it over a corpus of malformed <code>a.out</code> objects on a
+scratch copy, treating any sanitizer report or abort as a failure; the
+negative-length and <code>0405</code> <code>a_text &lt; 12</code> guards are exercised there. Separately,
+rebuilding 2.9's <code>/bin/strip</code> with this toolchain against the era libc reproduces
+the shipped binary byte-for-byte (<code>oracle/selfhost.sh</code>).</p>
+<hr />
+<h2 id="for-a-maintainer">For a maintainer</h2>
+<ul>
+<li><strong>The default strip must stay format-agnostic.</strong> It only rewrites
+<code>a_syms</code>/<code>a_flag</code> and copies text/overlay/data; it never reads an <code>nlist</code>. Do
+not &quot;improve&quot; it into walking the symbol table — that is what breaks the
+one-path-strips-all-magics property.</li>
+<li><strong><code>0405</code> is First Edition, not the <code>0405</code> &quot;overlay&quot; the header comment names.</strong>
+The <code>a_text &gt;= 12</code> invariant is load-bearing; keep both the pre-check and the
+<code>copy()</code> negative guard.</li>
+<li><strong>The auto-overlay copy length is <code>a_text + Σ ov_siz[] + a_data</code>.</strong> Touch overlay
+handling and drop the <code>ov_siz</code> sum and you truncate live overlay code.</li>
+<li><strong>The temp is <code>mkstemp</code>; the write-back is <code>creat</code> over the original.</strong> Mode is
+not preserved. This matches the era — do not silently turn it into a
+mode-preserving rename without deciding to on purpose.</li>
+<li><strong>Exit status is the count of files that errored</strong> (<code>exit(errs)</code>), and
+already-stripped counts as an error; a temp that cannot be created exits
+<code>EX_TEMPFAIL</code> (75).</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

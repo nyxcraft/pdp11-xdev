@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-c0 — design | pdp11-xdev</title>
+  <meta name="description" content="This explains what pdp11-c0 is, where it sits in the compiler, how a translation unit becomes the intermediate stream c1 reads, and the two things the port had to get right: keeping this pre-1977 C compilable on a 64-bit…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-c0 — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-what-it-is-and-where-it-sits">1. What it is, and where it sits</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-the-six-files">2. The six files</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-from-source-to-stream">3. From source to stream</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-the-intermediate-stream-the-c0-c1-interface">4. The intermediate stream — the c0 → c1 interface</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-authentic-1970s-c-on-a-64-bit-host">5. Authentic 1970s C on a 64-bit host</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-the-syntax-error-null-guards">6. The syntax-error NULL guards</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-testing">7. Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#8-for-a-maintainer">8. For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-c0 — design</h1>
+          <p class="docs-article__summary">This explains what pdp11-c0 is, where it sits in the compiler, how a translation unit becomes the intermediate stream c1 reads, and the two things the port had to get right: keeping this pre-1977 C compilable on a 64-bit…</p>
+          <p class="docs-article__source">pdp11-c0 — design</p>
+        </header>
+        <div class="prose">
+<p>This explains what <code>pdp11-c0</code> is, where it sits in the compiler, how a
+translation unit becomes the intermediate stream <code>c1</code> reads, and the two things
+the port had to get right: keeping this pre-1977 C compilable on a 64-bit host,
+and keeping its output byte-for-byte what the 1981 compiler produced. For how to
+<em>run</em> it, see the <a href="../c0-guide/index.html">user guide</a>; for the line-by-line porting
+account see <a href="https://github.com/nyxcraft/pdp11-xdev/blob/main/src/pdp11-c0/docs/porting.md">porting.md</a>.</p>
+<p>The sources are <code>c00.c</code> (driver, lexer, expression parser), <code>c01.c</code> (tree
+building and conversions), <code>c02.c</code> (statements and externals), <code>c03.c</code>
+(declarations), <code>c04.c</code> (tree walk and emission), <code>c05.c</code> (the tables), and
+<code>c0.h</code> (the shared structs and <code>#define</code>s). It is the 2.9BSD <code>c0</code>, SCCS 2.x,
+near byte-identical upstream to 2.8's.</p>
+<hr />
+<h2 id="1-what-it-is-and-where-it-sits">1. What it is, and where it sits</h2>
+<p><code>pdp11-c0</code> is <strong>pass 1</strong> of Dennis Ritchie's two-pass PDP-11 C compiler. The
+full compile is</p>
+<pre><code>cpp  -&gt;  c0  -&gt;  c1  [ -&gt;  c2 ]  -&gt;  as  -&gt;  ld
+</code></pre>
+<p>— the preprocessor, then this pass, then <code>c1</code> the code generator, then the
+optional <code>c2</code> peephole optimiser (<code>cc -O</code>), then the assembler and linker.
+<code>c0</code> reads <strong>already-preprocessed</strong> C and does the front-end work: lexing,
+parsing declarations / statements / expressions, building the symbol table and
+the expression trees, and writing an <strong>intermediate token/operator stream</strong> that
+<code>c1</code> turns into PDP-11 assembly. It <strong>does not emit assembly</strong> — that is <code>c1</code>'s
+job. <code>cc</code> drives the chain and calls <code>c0</code> with three temp-file arguments (see the
+<a href="../c0-guide/index.html">user guide</a>).</p>
+<p>The 16-bit PDP-11 target is baked into <code>c0.h</code>: <code>int</code>, <code>short</code> and pointer are all
+2 bytes (<code>SZINT</code>/<code>SZPTR</code>), <code>NBPW</code> = 16. Those object-machine constants are
+unchanged by the port (§5).</p>
+<hr />
+<h2 id="2-the-six-files">2. The six files</h2>
+<ul>
+<li><strong><code>c00.c</code></strong> — <code>main</code>, the lexer (<code>symbol</code>, backed by the <code>ctab</code> character
+classes; <code>getnum</code>, <code>getcc</code>, <code>mapch</code>, <code>putstr</code>), the keyword hash, and <code>tree()</code>
+— the classic bottom-up, priority-driven expression parser, which shifts
+operands onto a stack and calls <code>build()</code> in <code>c01.c</code> to reduce.</li>
+<li><strong><code>c01.c</code></strong> — <code>build()</code>: takes the top operands off the stack, inserts the
+required type conversions (driven by <code>cvtab</code>/<code>cvntab</code>), folds constant
+sub-expressions (<code>fold</code>), and makes a new node. Also the node allocators
+(<code>block</code>/<code>cblock</code>/<code>fblock</code>/<code>nblock</code>/<code>gblock</code>) and <code>error()</code>.</li>
+<li><strong><code>c02.c</code></strong> — <code>extdef()</code> (one top-level external at a time) and <code>statement()</code>
+(the keyword-dispatched grammar: <code>if</code>/<code>while</code>/<code>for</code>/<code>do</code>/<code>switch</code>/<code>goto</code>/
+<code>return</code>/<code>break</code>/<code>continue</code>, blocks, labels), plus <code>cfunc</code> (function bodies)
+and <code>cinit</code>/<code>strinit</code> (initialisers).</li>
+<li><strong><code>c03.c</code></strong> — declarations: <code>getkeywords</code>, <code>declare</code>/<code>decl1</code>, <code>getype</code> (the
+declarator recursion → pointer/array/function types), <code>strdec</code> (struct/union/
+enum), <code>align</code> (member and bit-field layout), and the push-down (<code>pushdecl</code>).</li>
+<li><strong><code>c04.c</code></strong> — <code>treeout</code>/<code>rcexpr</code>/<code>cbranch</code>/<code>branch</code>/<code>label</code> walk a finished
+tree and emit it, the type arithmetic (<code>incref</code>/<code>decref</code>, <code>length</code>/<code>plength</code>),
+and <code>outcode()</code> — the one function that writes the byte stream.</li>
+<li><strong><code>c05.c</code></strong> — pure data: <code>opdope[]</code> (per-operator priority + flag bits),
+<code>cvtab</code>/<code>cvntab</code> (the conversion matrix and its operator mapping), and <code>ctab[]</code>
+(the 128-entry character-class table the lexer indexes).</li>
+</ul>
+<hr />
+<h2 id="3-from-source-to-stream">3. From source to stream</h2>
+<p><code>main()</code> loops <code>extdef()</code> until EOF. Each external is either a data definition —
+whose initialiser is walked by <code>cinit</code>/<code>strinit</code> and emitted as <code>DATA</code>/<code>BSS</code>/
+<code>SSPACE</code> items — or a function, handed to <code>cfunc()</code>, which frames the body
+(<code>PROG</code>/<code>SAVE</code>/<code>SETREG</code>/<code>RETRN</code>/<code>SETSTK</code>) and calls <code>statement()</code> for it.</p>
+<p>Names live in one open-addressed table, <code>hshtab[HSHSIZ]</code> (800 entries). <code>lookup()</code>
+hashes the 8-char name (<code>NCPS</code>) and linear-probes; keyword slots are pre-marked so
+a name that collides with a keyword is checked against <code>kwtab</code> first (<code>findkw</code>).
+Block scope is handled by <em>push-down</em>: an inner declaration of an outer name saves
+the outer entry through <code>hpdown</code> (<code>pushdecl</code>), and <code>blkend()</code> restores or discards
+it and rehashes retained names.</p>
+<p>Expressions are the heart of it. <code>tree()</code> reads tokens, using <code>opdope</code>
+priorities to decide shift-vs-reduce, and calls <code>build()</code> to reduce. <code>build()</code> is
+where the type rules live: it disarrays arrays and takes the address of functions
+(<code>disarray</code>/<code>chkfun</code>), consults <code>cvtab[lintyp(t1)][lintyp(t2)]</code> for each operand's
+conversion and applies it (<code>convert</code> → an <code>ITOF</code>/<code>ITOL</code>/… node), folds constant
+operands (<code>fold</code>, so array bounds and <code>case</code> values reduce to a <code>CON</code>), and builds
+the operator node. A finished tree is handed to <code>rcexpr()</code>/<code>treeout()</code> (c04),
+which post-order-walks it into <code>outcode()</code>.</p>
+<hr />
+<h2 id="4-the-intermediate-stream-the-c0-c1-interface">4. The intermediate stream — the c0 → c1 interface</h2>
+<p><code>outcode(fmt, ...)</code> writes a flat, host-independent stream. The code stream goes
+to <code>temp1</code>; strings and data go to <code>temp2</code> (selected by the global <code>strflg</code>),
+which <code>c1</code> reads after <code>temp1</code>. The format codes:</p>
+<table>
+<thead>
+<tr>
+<th>code</th>
+<th>bytes</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>B</code></td>
+<td>value, <code>0376</code></td>
+<td>an operator/opcode byte + marker</td>
+</tr>
+<tr>
+<td><code>N</code></td>
+<td>lo, hi</td>
+<td>a 16-bit little-endian word</td>
+</tr>
+<tr>
+<td><code>L</code></td>
+<td>4 bytes</td>
+<td>a 32-bit long (high word first, each word little-endian)</td>
+</tr>
+<tr>
+<td><code>S</code></td>
+<td><code>_name\0</code></td>
+<td>a symbol name (≤ <code>NCPS</code>, <code>_</code>-prefixed if non-empty)</td>
+</tr>
+<tr>
+<td><code>F</code></td>
+<td>string<code>\0</code></td>
+<td>a float-constant string</td>
+</tr>
+<tr>
+<td><code>0</code>/<code>1</code></td>
+<td>word</td>
+<td>the constant 0 / 1</td>
+</tr>
+</tbody>
+</table>
+<p>The opcodes are the <code>#define</code>s in <code>c0.h</code> (<code>SYMDEF</code>, <code>PROG</code>, <code>RLABEL</code>, <code>SAVE</code>,
+<code>CON</code>, <code>RFORCE</code>, <code>EXPR</code>, <code>RETRN</code>, <code>EOFC</code>, …). Because the stream is defined in
+bytes and 16-bit words, it is <strong>identical on the PDP-11 and on the host</strong> — only
+the programs at each end differ. This is the contract the whole port is measured
+against (§7): the bytes must match what native <code>c0</code> emitted — which is why the
+<code>L</code> code reproduces native's high-word-first long order, not the host's.</p>
+<hr />
+<h2 id="5-authentic-1970s-c-on-a-64-bit-host">5. Authentic 1970s C on a 64-bit host</h2>
+<p><code>c0</code>'s <em>own</em> source is pre-1977 C, and the hazard is the C it <em>is</em>, not the C it
+compiles. Target semantics are untouched (still 2-byte <code>int</code>s and pointers); only
+the compiler's own word assumptions widened. On the PDP-11 an <code>int</code> and a pointer
+were both 16 bits and freely interchanged — on LP64 they are 8 and 4 bytes, so
+every pointer-in-<code>int</code> had to be found.</p>
+<ul>
+<li><strong>The tree nodes are a union superset.</strong> Old C reached any variant tail
+(<code>cnode</code>/<code>lnode</code>/<code>fnode</code>) through a bare <code>struct tnode *</code>, relying on the
+shared <code>op/type/subsp/strp</code> prefix. <code>tnode</code> is made a superset whose anonymous
+union holds <code>{tr1,tr2} | value | lvalue | cstr</code> (built with <code>-fms-extensions</code>);
+the prefix still aliases the variant structs exactly, so a <code>tnode *</code> and a
+<code>cnode *</code>/<code>lnode *</code>/<code>fnode *</code> alias the same fields.</li>
+<li><strong>The parameter list carries a real pointer.</strong> It was chained through the
+<code>int hoffset</code> field; <code>hshtab</code> gained an honest <code>hpnext</code> pointer so the link is
+not truncated on LP64.</li>
+<li><strong>The pointer/int register-reuse idioms were made honest.</strong> Where the original
+reused one variable as both an <code>int</code> and a node pointer, the port splits them
+(<code>build</code>'s <code>SIZEOF</code> uses the spare <code>p3</code>) or fixes the type: <code>statement()</code>'s
+<code>o1</code>, which holds a label number <em>or</em> a token, is now an honest <code>int</code>; the spots
+reusing a <code>hshtab *</code> slot as an <code>lnode</code>/tree node are explicit casts.</li>
+<li><strong><code>outcode()</code> uses <code>&lt;stdarg.h&gt;</code>.</strong> The original walked its arguments as PDP-11
+stack words (a <code>long</code> = two words), invalid on a register-argument ABI;
+arguments are now gathered by type, the <code>L</code> code replacing the old two-<code>N</code> long
+walk. The on-disk bytes are unchanged.</li>
+<li><strong>The node arena is <code>malloc</code>, not <code>sbrk</code>.</strong> Raw <code>sbrk</code> collides with the host
+libc <code>malloc</code> that <code>c0</code>'s own stdio uses; <code>main</code> takes one 16 MB region,
+<code>gblock</code> bump-allocates through it (never less than a full <code>tnode</code>, zeroed),
+reset per function via <code>funcbase = curbase</code>.</li>
+</ul>
+<p>One subtle bug was a <em>dangling</em> one: <code>cmst[]</code>, the operand stack <code>tree()</code> builds
+via the global <code>cp</code>, was a <code>tree()</code>-local array — but callers keep writing through
+<code>cp</code> <strong>after</strong> <code>tree()</code> returns. On the PDP-11's stack that survived; on the host
+the reused frame's writes smash the stack. <code>cmst</code> is now file-scope (BSS).</p>
+<hr />
+<h2 id="6-the-syntax-error-null-guards">6. The syntax-error NULL guards</h2>
+<p>On the PDP-11, reading address 0 returned a harmless 0, so following a NULL tree
+pointer on an error path merely produced nonsense; a 64-bit host faults. The
+paths where <code>tree()</code> returns 0 (a diagnosed syntax error) are now guarded, so a
+bad input yields a diagnostic and a clean non-zero exit, not a crash:</p>
+<ul>
+<li><code>conexp()</code> returns <code>t ? t-&gt;value : 0</code> instead of dereferencing;</li>
+<li><code>dogoto()</code> returns early when <code>tree()</code> gave 0, rather than building on it;</li>
+<li><code>doret()</code> skips the return-value conversion on a 0 tree (still branching to
+<code>retlab</code>);</li>
+<li><code>chkfun()</code>/<code>disarray()</code> pass a NULL argument through untouched — the empty
+arglist of a no-argument call <code>g()</code> flows through them as 0.</li>
+</ul>
+<p>Relatedly, a <code>SEQNC</code> (comma-expression) node now copies the right operand's
+<code>subsp</code>/<code>strp</code>, so a struct- or array-typed sequence does not later hand
+<code>length()</code>/<code>treeout()</code> a NULL <code>strp</code>.</p>
+<hr />
+<h2 id="7-testing">7. Testing</h2>
+<p>The output is held to the strongest standard available: <strong>byte-identity with the
+compiler that actually built 2.xBSD.</strong></p>
+<ul>
+<li><strong><code>tests/c0/return42.sh</code></strong> parses <code>int main(){return 42;}</code> through <code>cpp</code> + <code>c0</code>
+and checks the emitted stream by opcode — <code>SYMDEF _main</code>, <code>RLABEL _main</code>, the
+constant 42 as <code>CON</code>/<code>INT</code>/<code>0x2a</code>, <code>RETRN</code> — decoding the <code>od</code> hex directly.</li>
+<li><strong>The <code>cc</code> end-to-end suite</strong> (<code>tests/cc/*</code>) compiles, assembles, links and
+runs real programs through the whole chain, so a change that still parses but
+emits a wrong tree is caught downstream.</li>
+<li><strong>The native-compiler oracle</strong> (<code>oracle/run.sh</code>, <code>oracle/cc-corpus.sh</code>) is the
+decisive check: it feeds the same input to our <code>c0|c1|c2</code> and to the <strong>original
+1981 2.8/2.9BSD binaries under <code>apsim</code></strong> and compares — the <code>c2</code> stage
+byte-exact, the <code>c1</code> stage by assembling both outputs and comparing the <code>.o</code>.
+This is where &quot;byte-identical to native&quot; is proven (cc-corpus 91/91).</li>
+</ul>
+<hr />
+<h2 id="8-for-a-maintainer">8. For a maintainer</h2>
+<ul>
+<li><strong>The intermediate stream is the contract.</strong> Any change must keep the
+<code>temp1</code>/<code>temp2</code> bytes identical to native <code>c0</code>; the oracle proves it — run it,
+don't eyeball the tree.</li>
+<li><strong>Do not reorder the node prefix.</strong> <code>op/type/subsp/strp</code> must stay first and
+identical across <code>tnode</code>/<code>cnode</code>/<code>lnode</code>/<code>fnode</code>; the union superset and
+<code>-fms-extensions</code> are load-bearing, not stylistic.</li>
+<li><strong>Keep the arena on <code>malloc</code>.</strong> Reintroducing <code>sbrk</code> corrupts the host heap
+<code>c0</code>'s stdio shares; the fixed region and per-function reset are deliberate.</li>
+<li><strong>Keep the NULL guards on the error paths.</strong> They turn a host segfault back
+into the diagnostic the PDP-11 would have limped through.</li>
+<li><strong><code>MENLO_OVLY</code> must stay defined</strong> (via <code>whoami.h</code>). <code>c0</code> unconditionally emits
+<code>SETSTK</code> as <code>-maxauto+STAUTO</code>, and only <code>c1</code>'s MENLO stack formula matches it;
+with it undefined the two passes disagree on the frame and a callee clobbers a
+saved register. The <code>-V</code> overlay path it enables stays dormant (<code>cc</code> passes
+only <code>-P</code>).</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

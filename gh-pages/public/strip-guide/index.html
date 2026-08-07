@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-strip — user guide | pdp11-xdev</title>
+  <meta name="description" content="pdp11-strip removes the symbol table and relocation from a PDP-11 a.out, in place — the 2.9BSD strip.">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-strip — user guide</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-synopsis">1. Synopsis</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-what-it-removes">2. What it removes</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-options">3. Options</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-what-it-reads">4. What it reads</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-exit-status">5. Exit status</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-examples">6. Examples</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-strip — user guide</h1>
+          <p class="docs-article__summary">pdp11-strip removes the symbol table and relocation from a PDP-11 a.out, in place — the 2.9BSD strip.</p>
+          <p class="docs-article__source">pdp11-strip — user guide</p>
+        </header>
+        <div class="prose">
+<p><code>pdp11-strip</code> removes the symbol table and relocation from a PDP-11 <code>a.out</code>, in
+place — the 2.9BSD <code>strip</code>. It reads the header, detects which <code>a.out</code> form it is
+looking at, drops the symbol table and relocation, and sets the no-relocation
+flag. It runs on your host.</p>
+<p>For how it works inside — the header poke, the overlay-aware copy, the First
+Edition special case, and the hardening — see the <a href="../strip-design/index.html">design document</a>.</p>
+<hr />
+<h2 id="1-synopsis">1. Synopsis</h2>
+<pre><code>pdp11-strip [-n] file ...
+</code></pre>
+<p>Each <code>file</code> is edited in place; several may be given. <code>-n</code>, when present, must be
+the first argument.</p>
+<hr />
+<h2 id="2-what-it-removes">2. What it removes</h2>
+<p>The default removes <strong>everything a linker or debugger added and a finished program
+does not need to run</strong> — the symbol table and the relocation — and sets the
+header's no-relocation flag. What is left is the header (with <code>a_syms</code> zeroed), the
+text, and the initialized data: smaller, no longer relinkable, but still runnable.</p>
+<p>An object that is already stripped — its symbol table gone and its no-relocation
+flag already set — is left alone and reported (and counts toward the exit status;
+see <a href="#5-exit-status">§5</a>).</p>
+<hr />
+<h2 id="3-options">3. Options</h2>
+<table>
+<thead>
+<tr>
+<th>option</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>(none)</em></td>
+<td>full strip — drop the symbol table and relocation, set the no-relocation flag</td>
+</tr>
+<tr>
+<td><code>-n</code></td>
+<td>keep <strong>only the name list</strong> (the symbol table); discard text and data</td>
+</tr>
+</tbody>
+</table>
+<p><code>-n</code> is the complement of a plain strip: it writes a header with the text, data,
+and bss sizes zeroed and copies out just the symbol table, so you are left with
+the name list on its own.</p>
+<hr />
+<h2 id="4-what-it-reads">4. What it reads</h2>
+<p>The <code>a.out</code> form is <strong>detected</strong>, never declared:</p>
+<ul>
+<li>the ordinary magics <strong><code>0407</code></strong> (normal), <strong><code>0410</code></strong> (read-only text), and
+<strong><code>0411</code></strong> (separated I&amp;D) — the common case, stripped by one format-agnostic
+code path that never reads a symbol (see <a href="../strip-design/index.html">design §1</a>);</li>
+<li>the <strong>auto-overlay</strong> magics <strong><code>0430</code></strong>/<strong><code>0431</code></strong> — the overlay text segments
+named by the overlay header are preserved; only the trailing symbols and
+relocation are dropped (<a href="../strip-design/index.html">design §2</a>);</li>
+<li><strong>First Edition</strong> <strong><code>0405</code></strong>, whose text size includes its 12-byte header
+(<a href="../strip-design/index.html">design §3</a>).</li>
+</ul>
+<p>A file that is not a PDP-11 <code>a.out</code> is reported and skipped.</p>
+<hr />
+<h2 id="5-exit-status">5. Exit status</h2>
+<ul>
+<li><strong>0</strong> — every file was stripped successfully.</li>
+<li><strong>nonzero</strong> — the number of files that failed. <code>strip</code> returns the count, and a
+file counts as failed if it is not a PDP-11 <code>a.out</code>, is <strong>already stripped</strong>, or
+hits an I/O error. (Note that already-stripped is a failure here, not a silent
+success.)</li>
+<li><strong>75</strong> (<code>EX_TEMPFAIL</code>) — a temporary file could not be created.</li>
+</ul>
+<hr />
+<h2 id="6-examples">6. Examples</h2>
+<pre><code>pdp11-strip prog                  # drop symbols + relocation, in place
+pdp11-strip *.o                   # strip many files in place
+pdp11-strip -n prog               # keep only the symbol table (the name list)
+</code></pre>
+<p>The companion <a href="../objcopy-guide/index.html"><code>pdp11-objcopy</code></a> does the
+raw-image and single-segment extraction that is the other half of an <code>a.out</code>
+toolkit; stripping symbols is this tool's job, not its.</p>
+<p>Continue to the <a href="../strip-design/index.html">design document</a> for the header rewrite, the
+overlay-aware copy, and the hostile-header guards.</p>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

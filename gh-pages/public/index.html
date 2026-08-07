@@ -75,49 +75,49 @@
             <h4><a href="cc/index.html">pdp11-cc</a></h4>
             <p class="tool-card__tagline">The compiler driver</p>
             <p>Runs cpp → c0 → c1 [→ c2 with -O] → as → ld in order and propagates the chosen universe to each pass. Ritchie&#x27;s own cc, made cross and universe-aware.</p>
-
+            <p class="tool-card__links"><a href="cc-design/index.html">Design</a> · <a href="cc-guide/index.html">User guide</a></p>
           </article>
           <article class="tool-card">
             <h4><a href="cpp/index.html">pdp11-cpp</a></h4>
             <p class="tool-card__tagline">The C preprocessor</p>
             <p>The pristine 2.9BSD cpp (Reiser lineage) — the one the PDP-11 cc was built against, and where an era&#x27;s #ifdefs are dated.</p>
-
+            <p class="tool-card__links"><a href="cpp-design/index.html">Design</a> · <a href="cpp-guide/index.html">User guide</a></p>
           </article>
           <article class="tool-card">
             <h4><a href="c0/index.html">pdp11-c0</a></h4>
             <p class="tool-card__tagline">cc pass 1 — the parser</p>
             <p>Ritchie cc&#x27;s front end: reads preprocessed C and writes the intermediate form the code generator consumes.</p>
-
+            <p class="tool-card__links"><a href="c0-design/index.html">Design</a> · <a href="c0-guide/index.html">User guide</a></p>
           </article>
           <article class="tool-card">
             <h4><a href="c1/index.html">pdp11-c1</a></h4>
             <p class="tool-card__tagline">cc pass 2 — code generator</p>
             <p>Ritchie cc&#x27;s PDP-11 code generator: turns c0&#x27;s intermediate form into assembly.</p>
-
+            <p class="tool-card__links"><a href="c1-design/index.html">Design</a> · <a href="c1-guide/index.html">User guide</a></p>
           </article>
           <article class="tool-card">
             <h4><a href="c2/index.html">pdp11-c2</a></h4>
             <p class="tool-card__tagline">The peephole optimizer</p>
             <p>Ritchie cc&#x27;s object-code improver, run over c1&#x27;s assembly under -O.</p>
-
+            <p class="tool-card__links"><a href="c2-design/index.html">Design</a> · <a href="c2-guide/index.html">User guide</a></p>
           </article>
           <article class="tool-card">
             <h4><a href="as/index.html">pdp11-as</a></h4>
             <p class="tool-card__tagline">The assembler</p>
             <p>A C reimplementation of the 2BSD as, with historical --isa and --aout axes. It owns the operand tables das and apsim read, so all three agree about the machine.</p>
-
+            <p class="tool-card__links"><a href="as-design/index.html">Design</a> · <a href="as-guide/index.html">User guide</a></p>
           </article>
           <article class="tool-card">
             <h4><a href="ld/index.html">pdp11-ld</a></h4>
             <p class="tool-card__tagline">The link editor</p>
             <p>The authentic 2.9BSD ld on an LP64 host: resolves, lays out and relocates into the era&#x27;s native a.out — including the 0430/0431 auto-overlay formats.</p>
-
+            <p class="tool-card__links"><a href="ld-design/index.html">Design</a> · <a href="ld-guide/index.html">User guide</a></p>
           </article>
           <article class="tool-card">
             <h4><a href="xstr/index.html">pdp11-xstr</a></h4>
             <p class="tool-card__tagline">Extract string literals</p>
             <p>Bill Joy&#x27;s 1978 xstr: pulls a C program&#x27;s string literals into one shared strings file and hashes them.</p>
-
+            <p class="tool-card__links"><a href="xstr-design/index.html">Design</a> · <a href="xstr-guide/index.html">User guide</a></p>
           </article>
         </div>
       </section>
@@ -139,19 +139,19 @@
             <h4><a href="nm/index.html">pdp11-nm</a></h4>
             <p class="tool-card__tagline">List symbols</p>
             <p>The symbol table of a.out objects, executables and archives.</p>
-
+            <p class="tool-card__links"><a href="nm-design/index.html">Design</a> · <a href="nm-guide/index.html">User guide</a></p>
           </article>
           <article class="tool-card">
             <h4><a href="size/index.html">pdp11-size</a></h4>
             <p class="tool-card__tagline">Segment sizes</p>
             <p>Text, data and bss sizes, and their sum, of a.out files.</p>
-
+            <p class="tool-card__links"><a href="size-design/index.html">Design</a> · <a href="size-guide/index.html">User guide</a></p>
           </article>
           <article class="tool-card">
             <h4><a href="das/index.html">pdp11-das</a></h4>
             <p class="tool-card__tagline">The disassembler</p>
             <p>The inverse of as, covering every era the assembler does; it splits a symboled a.out into per-object listings and goes linear on a stripped one.</p>
-
+            <p class="tool-card__links"><a href="das-design/index.html">Design</a> · <a href="das-guide/index.html">User guide</a></p>
           </article>
         </div>
       </section>
@@ -162,13 +162,13 @@
             <h4><a href="strip/index.html">pdp11-strip</a></h4>
             <p class="tool-card__tagline">Remove symbols</p>
             <p>Removes the symbol table and relocation from an a.out — the 2.9BSD strip.</p>
-
+            <p class="tool-card__links"><a href="strip-design/index.html">Design</a> · <a href="strip-guide/index.html">User guide</a></p>
           </article>
           <article class="tool-card">
             <h4><a href="objcopy/index.html">pdp11-objcopy</a></h4>
             <p class="tool-card__tagline">Copy / extract</p>
             <p>Copies an a.out, or extracts its loadable image (-O binary) or a single text/data segment (-j) — the a.out-only analogue of objcopy.</p>
-
+            <p class="tool-card__links"><a href="objcopy-design/index.html">Design</a> · <a href="objcopy-guide/index.html">User guide</a></p>
           </article>
         </div>
       </section>
@@ -179,13 +179,13 @@
             <h4><a href="ar/index.html">pdp11-ar</a></h4>
             <p class="tool-card__tagline">The archiver</p>
             <p>Authentic 2BSD ar, producing archives byte-identical to the originals.</p>
-
+            <p class="tool-card__links"><a href="ar-design/index.html">Design</a> · <a href="ar-guide/index.html">User guide</a></p>
           </article>
           <article class="tool-card">
             <h4><a href="ranlib/index.html">pdp11-ranlib</a></h4>
             <p class="tool-card__tagline">The archive index</p>
             <p>Builds the __.SYMDEF table of contents in an archive, so ld resolves it in one pass.</p>
-
+            <p class="tool-card__links"><a href="ranlib-design/index.html">Design</a> · <a href="ranlib-guide/index.html">User guide</a></p>
           </article>
         </div>
       </section>
@@ -196,7 +196,7 @@
             <h4><a href="apsim/index.html">pdp11-apsim</a></h4>
             <p class="tool-card__tagline">The PDP-11 UNIX simulator</p>
             <p>Interprets PDP-11 instructions and translates the guest&#x27;s sys traps into host ones, in one process. Runs unmodified binaries across the whole lineage — First Edition through 2.11BSD — with auto-overlays, job control, sockets, a bit-exact FP11 softfloat and a real adb debug channel.</p>
-
+            <p class="tool-card__links"><a href="apsim-design/index.html">Design</a> · <a href="apsim-guide/index.html">User guide</a></p>
           </article>
         </div>
       </section>

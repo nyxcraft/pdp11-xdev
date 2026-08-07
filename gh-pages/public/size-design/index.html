@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-size — design | pdp11-xdev</title>
+  <meta name="description" content="This document describes how pdp11-size reports the segment sizes of a PDP-11 a.out file: the 16-bit header it reads, how it turns three segment words into the text data bss dec oct line, the two special cases (First Edit…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-size — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-one-struct-one-pass">1. One struct, one pass</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-the-header-and-the-magic-check">2. The header and the magic check</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-the-size-report">3. The size report</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-first-edition-0405-the-counted-in-header">4. First Edition (`0405`) — the counted-in header</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-overlays-0430-0431">5. Overlays (`0430`/`0431`)</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-reading-16-bit-structs-on-a-64-bit-host">6. Reading 16-bit structs on a 64-bit host</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#testing">Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#for-a-maintainer">For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-size — design</h1>
+          <p class="docs-article__summary">This document describes how pdp11-size reports the segment sizes of a PDP-11 a.out file: the 16-bit header it reads, how it turns three segment words into the text data bss dec oct line, the two special cases (First Edit…</p>
+          <p class="docs-article__source">pdp11-size — design</p>
+        </header>
+        <div class="prose">
+<p>This document describes how <code>pdp11-size</code> reports the segment sizes of a PDP-11
+a.out file: the 16-bit header it reads, how it turns three segment words into the
+<code>text data bss dec oct</code> line, the two special cases (First Edition and
+auto-overlays), and what makes it safe on a 64-bit host. For how to <em>use</em> it, see
+the <a href="../size-guide/index.html">user guide</a>.</p>
+<p>The tool is one small file, <code>size.c</code> (~80 lines, revision 2.5). It is a <strong>host</strong>
+program — built by the modern host <code>cc</code>, run on LP64 Linux — that reads
+little-endian 16-bit PDP-11 objects. It reads only the header (and, for overlay
+images, the overlay header that follows it); it never touches the text, data, or
+symbol table. The width-corrected <code>struct exec</code> and <code>struct ovlhdr</code> come from
+<code>../../common/cross/a.out.h</code>, pulled in with <code>-Icross</code> (§6).</p>
+<hr />
+<h2 id="1-one-struct-one-pass">1. One struct, one pass</h2>
+<p><code>size</code> reads a single <code>struct exec</code> — 8 words / <strong>16 bytes</strong> — from the front of
+each file, and that is nearly all it needs. From the magic number it decides
+which of three interpretations of the header applies, adds up the segments, and
+prints one line. There is no symbol-table walk and no seeking (except to read the
+overlay header of an auto-overlay image), so the whole tool is a <code>fread</code>, a
+<code>switch</code> on the magic, and two <code>printf</code>s.</p>
+<p>The column header is printed once, before the file loop:</p>
+<pre><code>text	data	bss	dec	oct
+</code></pre>
+<p>and each object adds a tab-separated line whose separators are literal <code>+</code> and
+<code>=</code> signs, ending in the file name.</p>
+<hr />
+<h2 id="2-the-header-and-the-magic-check">2. The header and the magic check</h2>
+<p>Before trusting any field, <code>size</code> validates the magic number with <code>N_BADMAG</code>
+(from <code>a.out.h</code>), which accepts exactly the six PDP-11 magics and rejects
+everything else as <code>not in object file format</code>:</p>
+<table>
+<thead>
+<tr>
+<th>macro</th>
+<th>octal</th>
+<th>meaning</th>
+<th>size path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>A_MAGIC1</code></td>
+<td><code>0407</code></td>
+<td>normal (writable text)</td>
+<td>normal columns (§3)</td>
+</tr>
+<tr>
+<td><code>A_MAGIC2</code></td>
+<td><code>0410</code></td>
+<td>read-only (pure) text</td>
+<td>normal columns</td>
+</tr>
+<tr>
+<td><code>A_MAGIC3</code></td>
+<td><code>0411</code></td>
+<td>separated I&amp;D</td>
+<td>normal columns</td>
+</tr>
+<tr>
+<td><code>A_MAGIC4</code></td>
+<td><code>0405</code></td>
+<td>First Edition a.out(V)</td>
+<td>counted-in header (§4)</td>
+</tr>
+<tr>
+<td><code>A_MAGIC5</code></td>
+<td><code>0430</code></td>
+<td>auto-overlay, non-separate</td>
+<td>normal columns + overlay line (§5)</td>
+</tr>
+<tr>
+<td><code>A_MAGIC6</code></td>
+<td><code>0431</code></td>
+<td>auto-overlay, separate</td>
+<td>normal columns + overlay line</td>
+</tr>
+</tbody>
+</table>
+<p>A short read (fewer than 16 bytes) is treated the same as a bad magic: <code>not in object file format</code>, then on to the next file.</p>
+<hr />
+<h2 id="3-the-size-report">3. The size report</h2>
+<p>For the normal magics the three segment words are printed as they stand and
+summed:</p>
+<pre><code class="language-c">printf(&quot;%u +\t%u +\t%u =\t&quot;, buf.a_text, buf.a_data, buf.a_bss);
+sum = (long)buf.a_text + (long)buf.a_data + (long)buf.a_bss;
+printf(&quot;%ld =\t%lo&quot;, sum, sum);        /* decimal sum, then octal sum */
+printf(&quot;\t%s\n&quot;, *argv);
+</code></pre>
+<p>So the five columns are <strong>text</strong>, <strong>data</strong>, <strong>bss</strong>, the <strong>decimal</strong> total
+(<code>dec</code>), and the <strong>octal</strong> total (<code>oct</code>) — the octal column is why the header
+names it <code>oct</code>. The sum is accumulated in a host <code>long</code> (<code>a_text + a_data + a_bss</code> cannot overflow 16 bits collectively, but the <code>long</code> keeps the <code>dec</code>/<code>oct</code>
+formatting honest).</p>
+<hr />
+<h2 id="4-first-edition-0405-the-counted-in-header">4. First Edition (<code>0405</code>) — the counted-in header</h2>
+<p>The Research V1 <code>a.out(V)</code> header is laid out differently, and <code>size</code> handles it
+as a distinct case rather than misreading its fields:</p>
+<ul>
+<li>the 6-word (12-byte) header is <strong>included in</strong> <code>a_text</code>, so the real text size
+is <code>a_text - 12</code>;</li>
+<li>there is <strong>no data segment</strong> (the printed data column is <code>0</code>);</li>
+<li>the word in the <code>a_syms</code> slot is the data area — the era's <strong>bss</strong>.</li>
+</ul>
+<pre><code class="language-c">unsigned t = buf.a_text - 12, b = buf.a_syms;   /* text sans header; bss */
+printf(&quot;%u +\t%u +\t%u =\t&quot;, t, 0, b);
+sum = (long)t + (long)b;
+</code></pre>
+<p>This keeps a V1 binary from being reported with a 12-byte-too-large text and a
+zero bss.</p>
+<hr />
+<h2 id="5-overlays-0430-0431">5. Overlays (<code>0430</code>/<code>0431</code>)</h2>
+<p><code>size.c</code> includes <code>&lt;whoami.h&gt;</code>, which pulls in <code>&lt;sys/localopts.h&gt;</code>, which defines
+<code>MENLO_OVLY</code>. So — unlike <code>pdp11-nm</code>, whose default build leaves that macro
+undefined — the overlay-reporting code <strong>is</strong> compiled into the shipped
+<code>pdp11-size</code>. For an auto-overlay image it reads the <code>struct ovlhdr</code> that follows
+the exec header, sums the non-zero overlay sizes into the base text to get the
+true core footprint, and prints a second line:</p>
+<pre><code class="language-c">coresize = buf.a_text;
+for (i = 0; i &lt; NOVL; i++)
+    if (ovlbuf.ov_siz[i]) coresize += ovlbuf.ov_siz[i];
+printf(&quot;%ld total text, overlays: (&quot;, coresize);
+/* ... comma-separated non-zero ov_siz[] ... */
+</code></pre>
+<p><code>struct ovlhdr</code> is <code>int16_t max_ovl</code> + <code>uint16_t ov_siz[NOVL]</code> (<code>NOVL</code> = 7),
+16 bytes, read straight after the 16-byte exec. Only overlays with a non-zero
+size are listed.</p>
+<hr />
+<h2 id="6-reading-16-bit-structs-on-a-64-bit-host">6. Reading 16-bit structs on a 64-bit host</h2>
+<p><code>size</code> reads objects written for a 16-bit machine while running on an LP64 one.
+Two things make that correct:</p>
+<ul>
+<li><strong>Fixed widths.</strong> <code>cross/a.out.h</code> spells every header field with
+<code>int16_t</code>/<code>uint16_t</code>, so <code>struct exec</code> is 16 bytes and <code>struct ovlhdr</code> is
+16 bytes on the host, exactly as on the PDP-11 — no field silently widens to
+the host's 4-byte <code>int</code>.</li>
+<li><strong>No byte swap.</strong> PDP-11 and x86-64 are both little-endian, so the 16-bit
+fields need only the right width. (<code>size</code> reads no <code>long</code> from disk, so the
+middle-endian <code>PDPL</code> swap that <code>ar</code>/<code>nm</code> need does not arise here.)</li>
+</ul>
+<p>It is built <code>-std=c99 -D_POSIX_C_SOURCE=200809L</code> with the tree's correctness
+flags (<code>-fno-strict-aliasing</code>, <code>-fwrapv</code>, <code>-fcommon</code>) and compiles warning-free
+with no <code>-Wno-*</code> suppressions.</p>
+<hr />
+<h2 id="testing">Testing</h2>
+<p><code>tests/binutils/size_nm_strip.sh</code> (run from the repo root) checks <code>size</code> against
+a committed real 2.9BSD kernel object, <code>tests/fixtures/dsort.o</code> (a pure-text
+object): text <code>158</code>, data <code>0</code>, bss <code>0</code>. Those numbers are cross-checked against
+the GNU oracle <code>pdp11-aout-size</code>, which <code>size</code> is required to match exactly — see
+<code>docs/binutils-porting.md</code>.</p>
+<hr />
+<h2 id="for-a-maintainer">For a maintainer</h2>
+<ul>
+<li><strong>The magic table and <code>N_BADMAG</code> live in <code>cross/a.out.h</code>.</strong> Add or reject a
+format there; <code>size.c</code> only branches on <code>a_magic</code> for the two special layouts.</li>
+<li><strong><code>0405</code> is the odd one out</strong> — its header is counted inside <code>a_text</code> and it
+has no data segment. Do not &quot;simplify&quot; it back into the normal three-word path.</li>
+<li><strong>Overlay reporting is real in this build</strong>, because <code>&lt;whoami.h&gt;</code> defines
+<code>MENLO_OVLY</code>. If that include or that macro goes away, the second <code>total text, overlays:</code> line silently disappears — the tests only assert the first line, so
+watch for it.</li>
+<li><strong><code>size</code> reads only the header</strong> (plus <code>ovlhdr</code>). Keep it that way; segment
+sizes are a header fact, and reading further is how a size tool grows bugs.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>

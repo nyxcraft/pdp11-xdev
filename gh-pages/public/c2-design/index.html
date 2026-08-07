@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdp11-c2 — design | pdp11-xdev</title>
+  <meta name="description" content="This document explains what pdp11-c2 is, how it reads c1&#x27;s assembly into an instruction list, the peephole transformations it iterates over that list, the register tracking that keeps them honest, and the LP64/host porti…">
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body class="site-doc">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="page-shell">
+    <header class="site-header site-header--compact">
+      <a class="brand" href="../index.html">
+        <img class="brand__icon" src="../assets/logo-pdp11.svg" alt="" aria-hidden="true">
+        <span class="brand__name">pdp11-xdev</span><span class="brand__badge">alpha</span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="../overview/index.html">Overview</a>
+        <a href="../design/index.html">Design</a>
+        <a href="../user-guide/index.html">User guide</a>
+        <a href="https://github.com/nyxcraft/pdp11-xdev">GitHub</a>
+      </nav>
+    </header>
+
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <a href="../index.html">Home</a>
+      <span class="breadcrumbs__sep" aria-hidden="true">›</span>
+      <span aria-current="page">pdp11-c2 — design</span>
+    </nav>
+
+    <main id="main-content" class="docs-layout" tabindex="-1">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar__eyebrow">On this page</p>
+        <nav class="section-nav" aria-label="On this page">
+<ul class="section-nav__list">
+<li><a class="section-nav__link section-nav__link--l2" href="#1-what-it-is">1. What it is</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#2-reading-assembly-into-a-list">2. Reading assembly into a list</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#3-the-iteration-driver">3. The iteration driver</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#4-jump-and-branch-transforms">4. Jump and branch transforms</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#5-register-and-redundant-instruction-tracking">5. Register and redundant-instruction tracking</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#6-branch-reversal-and-the-sob-loop-instruction">6. Branch reversal and the `sob` loop instruction</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#7-data-motion">7. Data motion</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#8-lp64-and-host-porting-fixes">8. LP64 and host porting fixes</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#testing">Testing</a></li>
+<li><a class="section-nav__link section-nav__link--l2" href="#for-a-maintainer">For a maintainer</a></li>
+</ul>
+        </nav>
+      </aside>
+
+      <article class="docs-article">
+        <header class="docs-article__header">
+          <p class="eyebrow">Documentation</p>
+          <h1>pdp11-c2 — design</h1>
+          <p class="docs-article__summary">This document explains what pdp11-c2 is, how it reads c1&#x27;s assembly into an instruction list, the peephole transformations it iterates over that list, the register tracking that keeps them honest, and the LP64/host porti…</p>
+          <p class="docs-article__source">pdp11-c2 — design</p>
+        </header>
+        <div class="prose">
+<p>This document explains what <code>pdp11-c2</code> is, how it reads c1's assembly into an
+instruction list, the peephole transformations it iterates over that list, the
+register tracking that keeps them honest, and the LP64/host porting fixes it
+carries. For how it is <em>invoked</em> (it is the <code>cc -O</code> pass, not a command you run
+by hand), see the <a href="../c2-guide/index.html">user guide</a>.</p>
+<p>The sources are <code>c20.c</code> (the driver: read the assembly in, iterate, write it
+out — plus the opcode table and hashing), <code>c21.c</code> (the improver proper — the
+transformations and the register tracking), and <code>c2.h</code> (the node and opcode-table
+declarations). It is newer code than <code>c0</code>/<code>c1</code>, so the source changes are small.</p>
+<hr />
+<h2 id="1-what-it-is">1. What it is</h2>
+<p><code>pdp11-c2</code> is Ritchie's <strong><code>c2</code></strong>, the C object-code improver — the compiler's
+optional peephole optimiser. <code>cc</code> runs it as the <code>-O</code> pass, between the code
+generator and the assembler:</p>
+<pre><code>cpp → c0 → c1 → c2 → as → ld        (only when -O is given)
+</code></pre>
+<p>It reads the assembly <code>c1</code> produced and writes tighter assembly. It is <strong>not</strong> a
+code generator: it only rewrites what is already there — shortening branches,
+threading jumps, deleting redundant instructions, tracking registers — so the
+one thing that must hold is that the code still <strong>computes the same answer</strong>. The
+2.8 and 2.9 trees shipped the same c2; this is that one program.</p>
+<hr />
+<h2 id="2-reading-assembly-into-a-list">2. Reading assembly into a list</h2>
+<p><code>input()</code> (c20.c) reads the assembler text line by line (<code>getlin</code>) and builds a
+doubly-linked list of <code>struct node</code>, each carrying an opcode (<code>op</code>), a sub-opcode
+(<code>subop</code> — the condition-branch flavour, or the <code>BYTE</code> marker for a <code>.b</code>
+instruction), a numeric label (<code>labno</code>), and the operand text (<code>code</code>).
+<code>oplook()</code> classifies each mnemonic through <code>optab[]</code>, a table hashed into
+<code>ophash[OPHS]</code> by the first three characters (<code>opsetup</code> builds the open-addressed
+hash once at start-up); a <code>Lnnn</code>-form line is a numeric-label switch entry
+(<code>JSW</code>). <code>output()</code> walks the finished list and prints it back, reattaching the
+<code>b</code> byte suffix and turning label nodes back into <code>L%d:</code>.</p>
+<hr />
+<h2 id="3-the-iteration-driver">3. The iteration driver</h2>
+<p><code>main</code> runs a fixpoint. Per input segment:</p>
+<pre><code>input → movedat →
+  { refcount →
+      { iterate → clearreg } while nchange →
+    comjump → rmove }
+  while (nchange || jumpsw)
+  → addsob → output
+</code></pre>
+<p><code>refcount()</code> rebuilds label reference counts (through a <code>labhash</code>) so a label
+that falls to zero references can be dropped (<code>decref</code>); <code>iterate()</code> runs the
+jump/branch transforms; <code>rmove()</code> runs the register-and-redundant-instruction
+transforms; <code>comjump()</code> factors common code before shared jumps; <code>jumpsw()</code>
+reverses branches to shorten spans; <code>addsob()</code> forms loop instructions. Each pass
+counts its rewrites in <code>nchange</code>, and the loops re-run until nothing changes.</p>
+<hr />
+<h2 id="4-jump-and-branch-transforms">4. Jump and branch transforms</h2>
+<p><code>iterate()</code> (c20.c) and its helpers do the control-flow tidying:</p>
+<ul>
+<li><strong>jump-to-jump threading</strong> — a branch whose target is itself a <code>jbr</code> is
+repointed at the final target;</li>
+<li><strong>skip-over-jump</strong> — a conditional branch over an unconditional one is inverted
+(<code>revbr</code>) so the fall-through is taken;</li>
+<li><strong>dead code after a jump</strong> — instructions between an unconditional jump and the
+next label are unlinked, and a jump to the very next label is deleted;</li>
+<li><strong>cross-jumping</strong> (<code>xjump</code>) — identical instructions ahead of two paths that
+merge are hoisted behind a shared label (<code>insertl</code>, <code>equop</code>);</li>
+<li><strong>code motion and loop inversion</strong> (<code>codemove</code>) — a jump into a loop is turned
+into the fall-into-body / test-at-bottom shape when it is shorter;</li>
+<li><strong>common tails before a shared jump</strong> (<code>comjump</code>/<code>backjmp</code>).</li>
+</ul>
+<p><code>redunbr()</code> and the <code>CBR</code> handling in <code>rmove</code> also delete a <code>tst</code>/<code>cmp</code> against a
+constant plus a conditional branch that can be decided at compile time — with the
+7th-edition addendum correction that keeps the test when a following instruction
+still needs the condition codes.</p>
+<hr />
+<h2 id="5-register-and-redundant-instruction-tracking">5. Register and redundant-instruction tracking</h2>
+<p>The transformations in <code>c21.c</code>'s <code>rmove()</code> are only safe because c2 tracks what
+each register and location holds. <code>regs[12][20]</code>, <code>conloc</code>/<code>conval</code>, and <code>ccloc</code>
+model the register contents, the last stored constant, and which location last
+set the condition codes; <code>savereg</code>/<code>setcon</code>/<code>setcc</code> record, <code>dest</code>/<code>source</code>
+invalidate on write and on auto-increment/decrement side effects, and
+<code>clearreg()</code> wipes the model at any label or unknown control transfer. With that
+model, <code>rmove</code> deletes a <code>mov</code> that reloads a value already in place
+(<code>findrand</code>), rewrites a memory operand to a register that already holds it
+(<code>repladdr</code>, <code>nsaddr</code>), turns <code>mov $0</code> into <code>clr</code> and <code>bic $-1</code> / <code>bit $0</code> into
+their simpler forms, and drops a <code>tst</code> whose operand already set the codes
+(<code>nrtst</code>). <code>check()</code> is the list-integrity assertion used while debugging.</p>
+<hr />
+<h2 id="6-branch-reversal-and-the-sob-loop-instruction">6. Branch reversal and the <code>sob</code> loop instruction</h2>
+<p><code>jumpsw()</code> (c21.c) reverses a conditional branch and its following <code>jbr</code> when
+that brings both targets nearer (via <code>revbr</code>, the reversal table in c20.c),
+shrinking span-dependent branches. <code>addsob()</code> turns a <code>dec reg</code> + <code>jne</code> into the
+PDP-11's single <code>sob</code> (subtract-one-and-branch) — <strong>guarded by <code>toofar()</code></strong>,
+which sums <code>ilen()</code> over the branch span and declines the transform when the
+target is 128 bytes or more away, because <code>sob</code> carries only a short backward
+displacement. This guard is unconditional here (c2 has no command-line knob for
+it); <code>as</code> then resolves the remaining span-dependent branches.</p>
+<hr />
+<h2 id="7-data-motion">7. Data motion</h2>
+<p><code>movedat()</code> (c21.c) gathers the <code>.data</code> fragments c1 scattered between <code>.text</code>
+runs into one place and collapses redundant segment-directive switches, so the
+assembler sees fewer <code>.text</code>/<code>.data</code> flips. It must initialise its local
+<code>struct node data</code> (<code>data.forw = 0</code>) before the no-DATA-segment path reads it —
+a real bug the port fixed (§8).</p>
+<hr />
+<h2 id="8-lp64-and-host-porting-fixes">8. LP64 and host porting fixes</h2>
+<p>c2 is newer than c0/c1, so the changes are few but each was load-bearing:</p>
+<ul>
+<li><strong><code>copy()</code> varargs.</strong> The 2BSD <code>copy()</code> read its optional second string with
+<code>(&amp;ap)[1]</code>, walking the stack past the first parameter — valid on the PDP-11's
+contiguous-arg stack, garbage on the x86-64 register ABI. Rewritten with
+<code>&lt;stdarg.h&gt;</code>.</li>
+<li><strong>The node arena.</strong> <code>alloc()</code> grew its arena with raw <code>sbrk</code>, which corrupts
+the host libc heap c2's own stdio uses; it now grabs <code>malloc</code> chunks (nodes
+reference each other by absolute address, so chunks need not be contiguous).</li>
+<li><strong>Embedded NULs.</strong> <code>c1</code> runs on the host, where glibc's <code>printf(&quot;%c&quot;,0)</code> writes
+a NUL byte the PDP-11's <code>_doprnt</code> emitted as nothing; <code>getlin()</code> drops embedded
+NULs so the opcode/operand split is not truncated, exactly as <code>as</code> already did.</li>
+<li><strong><code>dualop</code> NULL guard.</strong> A jump to a numeric label leaves <code>code == 0</code>; the
+<code>sob</code> length walk dereferenced it. The PDP-11 read address 0 as an empty
+operand; <code>*0</code> faults on the host, so <code>dualop</code> guards the deref, matching the
+output path's own <code>if (t-&gt;code)</code>.</li>
+<li><strong><code>movedat</code> init</strong> (§7), and a local <strong><code>iabs()</code></strong> renamed from <code>abs()</code> —
+defining the reserved <code>&lt;stdlib.h&gt;</code> name <code>abs</code> ourselves is undefined behaviour.</li>
+</ul>
+<hr />
+<h2 id="testing">Testing</h2>
+<p><code>tests/cc/optimizer.sh</code> compiles each program twice — plain <code>cc</code> and <code>cc -O</code> —
+runs both under <code>pdp11-apsim</code>, and requires the <code>-O</code> build to give the <strong>same
+answer</strong> (an optimiser that deleted the program would fail where a &quot;did it get
+smaller&quot; check would pass) while its text segment is no larger. It exercises
+loops, recursion, nested calls, arrays, and the buffered-<code>printf</code> path — the
+cases that flushed out the varargs <code>copy()</code>, the arena, and the NUL bugs — and
+invokes c2 directly on a recursive function (whose call-return <code>mov%c</code> NUL once
+crashed it), because <code>cc</code> silently falls back to the unoptimised c1 output when
+c2 fails.</p>
+<p>The strong check is the oracle. Building libc with <code>-O</code> reproduces native 2.x
+libc members <strong>byte-for-byte</strong> (the <code>oracle/cc-corpus.sh</code> CC check assembles our
+<code>c0/c1/c2</code> output and the native passes' output and byte-compares the <code>.o</code>), so
+c2's optimisation decisions match the authentic tool's; the whole
+<code>cpp→c0→c1→c2</code> chain is byte-identical to native 2.9 across every file the
+oracle can run (91/91 CC).</p>
+<hr />
+<h2 id="for-a-maintainer">For a maintainer</h2>
+<ul>
+<li><strong>It only rewrites; correctness is &quot;same answer&quot;, proven by running it.</strong> The
+optimiser test executes the <code>-O</code> build and compares its result, not its size.</li>
+<li><strong>The <code>sob</code> distance guard (<code>toofar</code>) stays.</strong> <code>sob</code> has a short backward
+reach; forming one to a far target would be a &quot;Branch too far&quot; from <code>as</code>. It is
+unconditional here — there is no relax flag.</li>
+<li><strong>Register tracking is what makes the deletions safe.</strong> A new transform that
+moves or deletes an instruction must respect (and update) <code>regs</code>/<code>conloc</code>/
+<code>ccloc</code> through <code>savereg</code>/<code>setcon</code>/<code>setcc</code>/<code>dest</code>/<code>source</code>; skipping that is how
+you clobber a live value.</li>
+<li><strong>c2 reads no universe and has no era knobs.</strong> Its output is PDP-11 assembly in,
+PDP-11 assembly out, using only base instructions; the target era is <code>as</code>'s and
+<code>ld</code>'s downstream. The only positional/prefix arguments are the two files and
+the <code>+</code>/<code>-</code> debug/stats prefixes.</li>
+</ul>
+
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <p>© 2026 Nicholas J. Kisseberth · <a href="../index.html">pdp11-xdev</a> · <a href="https://github.com/nyxcraft/pdp11-xdev">License</a></p>
+      <p class="site-footer__attr">Software Architecture, Design &amp; Engineering by Nicholas J. Kisseberth.</p>
+    </footer>
+  </div>
+
+  <script>
+  // Section viewer: split the page into one panel per H2 and show one at a time, driven by the
+  // left-rail "On this page" links (and any in-prose # link). Degrades to the full page when
+  // JavaScript is off -- the panels are only hidden once .js-sections is set here.
+  (function () {
+    var prose = document.querySelector('.prose');
+    if (!prose) return;
+    var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a[href^="#"]'));
+
+    var kids = Array.prototype.slice.call(prose.childNodes);
+    var groups = [], preface = [], cur = null;
+    kids.forEach(function (n) {
+      if (n.nodeType === 1 && n.tagName === 'H2') { cur = { id: n.id, nodes: [n] }; groups.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preface.push(n); }
+    });
+    if (!groups.length) return;                 // no H2s -> leave the page as one scroll
+    groups[0].nodes = preface.concat(groups[0].nodes);
+
+    prose.innerHTML = '';
+    prose.classList.add('js-sections');
+    var anchorToSection = {};
+    var sections = groups.map(function (g) {
+      var s = document.createElement('section');
+      s.className = 'doc-section';
+      g.nodes.forEach(function (n) { s.appendChild(n); });
+      prose.appendChild(s);
+      Array.prototype.forEach.call(s.querySelectorAll('[id]'), function (el) { anchorToSection[el.id] = s; });
+      if (g.id) anchorToSection[g.id] = s;
+      return s;
+    });
+
+    function activate(anchor, scroll) {
+      var target = anchorToSection[anchor] || sections[0];
+      sections.forEach(function (s) { s.classList.toggle('is-active', s === target); });
+      navLinks.forEach(function (a) {
+        var id = decodeURIComponent(a.getAttribute('href').slice(1));
+        a.classList.toggle('is-active', anchorToSection[id] === target);
+      });
+      if (scroll) {
+        var el = (anchor && document.getElementById(anchor)) || target;
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
+    function fromHash(scroll) { activate(decodeURIComponent((location.hash || '').slice(1)), scroll); }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = decodeURIComponent(a.getAttribute('href').slice(1));
+      if (anchorToSection[id]) activate(id, true);
+    });
+    window.addEventListener('hashchange', function () { fromHash(true); });
+    fromHash(false);
+  })();
+  </script>
+</body>
+</html>
