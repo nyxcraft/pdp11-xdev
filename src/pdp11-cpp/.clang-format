@@ -6,7 +6,7 @@
 #  - a blank line between every top-level definition (SeparateDefinitionBlocks)
 # Hand-laid tables (instruction/opcode tables, character-class tables, the
 # codegen fragments) opt out via /* clang-format off */: their column layout is
-# the documentation.  Generated files (c1/table.c, cpp/cpy.c) are not formatted.
+# the documentation.  Generated files (c1/table.c, cpp/cpy.c, common/universe.h) are not formatted.
 Language: Cpp
 BasedOnStyle: LLVM
 UseTab: Always

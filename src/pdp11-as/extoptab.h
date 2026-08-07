@@ -22,7 +22,9 @@
    complete the DCJ11: every entry below is a J-11 instruction,
    and the set stops exactly at the J-11's edge -- FIS/CIS/MED/XFC,
    which it lacks, live in extoptab (--isa=extended) instead. */
-/* clang-format off -- the tab columns are the documentation */
+/* The tab columns below are the documentation; keep them hand-aligned.  The
+ * marker must be exactly "clang-format off" -- trailing text is NOT honored. */
+/* clang-format off */
 struct op tab211[] = {
 	{"mfpt",	01,	07},
 	{"spl",		011,	0230},

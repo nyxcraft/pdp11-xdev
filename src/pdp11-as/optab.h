@@ -1,6 +1,8 @@
 /* PDP-11 opcode/keyword table, extracted from the authentic 2.8BSD
    as19.s.  Each entry: mnemonic, type class (see as.c), base opcode. */
-/* clang-format off -- the tab columns are the documentation */
+/* The tab columns below are the documentation; keep them hand-aligned.  The
+ * marker must be exactly "clang-format off" -- trailing text is NOT honored. */
+/* clang-format off */
 struct op optab[] = {
 	{"r0",	024,	0},
 	{"r1",	024,	01},

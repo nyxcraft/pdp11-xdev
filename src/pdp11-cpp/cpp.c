@@ -846,7 +846,7 @@ unfill(register char *p)
 			;
 		if (eob(op))
 			break;
-	}		       /* out with old */
+	} /* out with old */
 	endbuf[mactop++] = np; /* mark end of saved text */
 	np = pbuf + BUFSIZ;
 	op = pend - BUFSIZ;

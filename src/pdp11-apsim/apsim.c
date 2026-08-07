@@ -2131,7 +2131,7 @@ do_syscall(int num, int argaddr)
 			if (ptr >= 3) {
 				off *= 512;
 				ptr -= 3;
-			}	 /* block modes */
+			} /* block modes */
 			if (g) { /* directory snapshot position */
 				g->pos = (ptr == 0) ? off : (ptr == 1) ? g->pos + off
 								       : g->len + off;
@@ -2309,7 +2309,7 @@ do_syscall(int num, int argaddr)
 			guest_lmode |= ld2(argp);
 			r = 0;
 			break;
-		}				 /* TIOCLBIS */
+		} /* TIOCLBIS */
 		if (req == (('t' << 8) | 104)) { /* TIOCGWINSZ: rows/cols/x/y --
 						  * answer 24x80; leaving it unanswered gives
 						  * column-layout code a 0-width loop (2.11 ls) */
@@ -2675,7 +2675,7 @@ do_syscall(int num, int argaddr)
 		if (pt_traced) {
 			pt_listen();
 			pt_pending = 5;
-		}	/* traced exec -> SIGTRAP stop */
+		} /* traced exec -> SIGTRAP stop */
 		return; /* success: run the new program */
 	}
 	case 58: { /* local(sub): 2.8's site-syscall dispatcher.
@@ -4885,7 +4885,7 @@ step(void)
 	if ((instr & 0177400) == 0104400) {
 		do_sys(instr);
 		return;
-	}				    /* sys/trap (0104400|n) */
+	} /* sys/trap (0104400|n) */
 	if ((instr & 0177400) == 0104000) { /* EMT (0104000|n) */
 		if (v1sys) {		    /* V1's rtssym: `emt n' is a kernel-VALIDATED
 					     * `rts rn' -- the 1971 trap handler checks the
