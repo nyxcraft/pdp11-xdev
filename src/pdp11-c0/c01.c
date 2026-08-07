@@ -16,7 +16,8 @@
  * Essentially all the work is in inserting
  * appropriate conversions.
  */
-void build(int op)
+void
+build(int op)
 {
 	register int t1;
 	int t2, t;
@@ -27,21 +28,21 @@ void build(int op)
 	/*
 	 * a[i] => *(a+i)
 	 */
-	if (op==LBRACK) {
+	if (op == LBRACK) {
 		build(PLUS);
 		op = STAR;
 	}
 	dope = opdope[op];
-	if ((dope&BINARY)!=0) {
+	if ((dope & BINARY) != 0) {
 		p2 = chkfun(disarray(*--cp));
-		t2 = p2 ? p2->type : 0;		/* p2 is NULL for a no-arg call's
-						 * empty arglist (t2 unused there) */
+		t2 = p2 ? p2->type : 0; /* p2 is NULL for a no-arg call's
+					 * empty arglist (t2 unused there) */
 	}
 	p1 = *--cp;
 	/*
 	 * sizeof gets turned into a number here.
 	 */
-	if (op==SIZEOF) {
+	if (op == SIZEOF) {
 		/* t1 is an int here; cblock() returns a node pointer, which
 		 * would be truncated by t1 on LP64 -- use the spare p3 */
 		p3 = (struct tnode *)cblock(length(p1));
@@ -49,22 +50,21 @@ void build(int op)
 		*cp++ = p3;
 		return;
 	}
-	if (op!=AMPER) {
+	if (op != AMPER) {
 		p1 = disarray(p1);
-		if (op!=CALL)
+		if (op != CALL)
 			p1 = chkfun(p1);
 	}
 	t1 = p1->type;
 	pcvn = 0;
 	t = INT;
 	switch (op) {
-
 	case CAST:
-		if ((t1&XTYPE)==FUNC || (t1&XTYPE)==ARRAY)
+		if ((t1 & XTYPE) == FUNC || (t1 & XTYPE) == ARRAY)
 			error("Disallowed conversion");
-		if (t1==UNSIGN && t2==CHAR) {
+		if (t1 == UNSIGN && t2 == CHAR) {
 			t2 = INT;
-			p2 = block(AND,INT,NULL,NULL,p2,(struct tnode *)cblock(0377));
+			p2 = block(AND, INT, NULL, NULL, p2, (struct tnode *)cblock(0377));
 		}
 		break;
 
@@ -75,11 +75,10 @@ void build(int op)
 
 	/* no-conversion operators */
 	case QUEST:
-		if (p2->op!=COLON)
+		if (p2->op != COLON)
 			error("Illegal conditional");
-		else
-			if (fold(QUEST, p1, p2))
-				return;
+		else if (fold(QUEST, p1, p2))
+			return;
 
 	case SEQNC:
 		/* result takes the right operand's type, so it must also carry
@@ -101,20 +100,20 @@ void build(int op)
 		break;
 
 	case CALL:
-		if ((t1&XTYPE) != FUNC)
+		if ((t1 & XTYPE) != FUNC)
 			error("Call of non-function");
-		*cp++ = block(CALL,decref(t1),p1->subsp,p1->strp,p1,p2);
+		*cp++ = block(CALL, decref(t1), p1->subsp, p1->strp, p1, p2);
 		return;
 
 	case STAR:
-		if ((t1&XTYPE) == FUNC)
+		if ((t1 & XTYPE) == FUNC)
 			error("Illegal indirection");
 		*cp++ = block(STAR, decref(t1), p1->subsp, p1->strp, p1, NULL);
 		return;
 
 	case AMPER:
-		if (p1->op==NAME || p1->op==STAR) {
-			*cp++ = block(op,incref(t1),p1->subsp,p1->strp,p1, NULL);
+		if (p1->op == NAME || p1->op == STAR) {
+			*cp++ = block(op, incref(t1), p1->subsp, p1->strp, p1, NULL);
 			return;
 		}
 		error("Illegal lvalue");
@@ -124,10 +123,11 @@ void build(int op)
 	 * a.b goes to (&a)->b
 	 */
 	case DOT:
-		if (p1->op==CALL && t1==STRUCT) {
+		if (p1->op == CALL && t1 == STRUCT) {
 			t1 = incref(t1);
 			setype(p1, t1, p1);
-		} else {
+		}
+		else {
 			*cp++ = p1;
 			build(AMPER);
 			p1 = *--cp;
@@ -139,56 +139,57 @@ void build(int op)
 	 * then * is tacked on to access the member.
 	 */
 	case ARROW:
-		if (p2->op!=NAME || ((struct hshtab *)p2->tr1)->hclass!=MOS) {
+		if (p2->op != NAME || ((struct hshtab *)p2->tr1)->hclass != MOS) {
 			error("Illegal structure ref");
 			*cp++ = p1;
 			return;
 		}
-		if (t2==INT && ((struct hshtab *)p2->tr1)->hflag&FFIELD)
+		if (t2 == INT && ((struct hshtab *)p2->tr1)->hflag & FFIELD)
 			t2 = UNSIGN;
 		t = incref(t2);
 		chkw(p1, -1);
 		setype(p1, t, p2);
-		*cp++ = block(PLUS,t,p2->subsp,p2->strp,p1,(struct tnode *)cblock(((struct hshtab *)p2->tr1)->hoffset));
+		*cp++ = block(PLUS, t, p2->subsp, p2->strp, p1, (struct tnode *)cblock(((struct hshtab *)p2->tr1)->hoffset));
 		build(STAR);
-		if (((struct hshtab *)p2->tr1)->hflag&FFIELD)
-			*cp++ = block(FSEL,UNSIGN,NULL,NULL,*--cp,(struct tnode *)((struct hshtab *)p2->tr1)->hstrp);
+		if (((struct hshtab *)p2->tr1)->hflag & FFIELD)
+			*cp++ = block(FSEL, UNSIGN, NULL, NULL, *--cp, (struct tnode *)((struct hshtab *)p2->tr1)->hstrp);
 		return;
 	}
-	if ((dope&LVALUE)!=0)
+	if ((dope & LVALUE) != 0)
 		chklval(p1);
-	if ((dope&LWORD)!=0)
+	if ((dope & LWORD) != 0)
 		chkw(p1, LONG);
-	if ((dope&RWORD)!=0)
+	if ((dope & RWORD) != 0)
 		chkw(p2, LONG);
-	if ((dope&BINARY)==0) {
-		if (op==ITOF)
+	if ((dope & BINARY) == 0) {
+		if (op == ITOF)
 			t1 = DOUBLE;
-		else if (op==FTOI)
+		else if (op == FTOI)
 			t1 = INT;
 		if (!fold(op, p1, 0))
-			*cp++ = block(op,t1,p1->subsp,p1->strp,p1, NULL);
+			*cp++ = block(op, t1, p1->subsp, p1->strp, p1, NULL);
 		return;
 	}
 	cvn = 0;
-	if (t1==STRUCT || t2==STRUCT) {
-		if (t1!=t2 || p1->strp != p2->strp)
+	if (t1 == STRUCT || t2 == STRUCT) {
+		if (t1 != t2 || p1->strp != p2->strp)
 			error("Incompatible structures");
 		cvn = 0;
-	} else
+	}
+	else
 		cvn = cvtab[lintyp(t1)][lintyp(t2)];
-	leftc = (cvn>>4)&017;
+	leftc = (cvn >> 4) & 017;
 	cvn &= 017;
-	t = leftc? t2:t1;
-	if ((t==INT||t==CHAR) && (t1==UNSIGN||t2==UNSIGN))
+	t = leftc ? t2 : t1;
+	if ((t == INT || t == CHAR) && (t1 == UNSIGN || t2 == UNSIGN))
 		t = UNSIGN;
-	if (dope&ASSGOP || op==CAST) {
+	if (dope & ASSGOP || op == CAST) {
 		t = t1;
-		if (op==ASSIGN || op==CAST) {
-			if (cvn==ITP||cvn==PTI)
+		if (op == ASSIGN || op == CAST) {
+			if (cvn == ITP || cvn == PTI)
 				cvn = leftc = 0;
-			else if (cvn==LTP) {
-				if (leftc==0)
+			else if (cvn == LTP) {
+				if (leftc == 0)
 					cvn = LTI;
 				else {
 					cvn = ITL;
@@ -199,60 +200,62 @@ void build(int op)
 		if (leftc)
 			cvn = leftc;
 		leftc = 0;
-	} else if (op==COLON || op==MAX || op==MIN) {
-		if (t1>=PTR && t1==t2)
+	}
+	else if (op == COLON || op == MAX || op == MIN) {
+		if (t1 >= PTR && t1 == t2)
 			cvn = 0;
-		if (op!=COLON && (t1>=PTR || t2>=PTR))
-			op += MAXP-MAX;
-	} else if (dope&RELAT) {
-		if (op>=LESSEQ && (t1>=PTR||t2>=PTR||(t1==UNSIGN||t2==UNSIGN)
-		 && (t==INT||t==CHAR||t==UNSIGN)))
-			op += LESSEQP-LESSEQ;
-		if (cvn==ITP || cvn==PTI)
+		if (op != COLON && (t1 >= PTR || t2 >= PTR))
+			op += MAXP - MAX;
+	}
+	else if (dope & RELAT) {
+		if (op >= LESSEQ && (t1 >= PTR || t2 >= PTR || (t1 == UNSIGN || t2 == UNSIGN) && (t == INT || t == CHAR || t == UNSIGN)))
+			op += LESSEQP - LESSEQ;
+		if (cvn == ITP || cvn == PTI)
 			cvn = 0;
 	}
-	if (cvn==PTI) {
+	if (cvn == PTI) {
 		cvn = 0;
-		if (op==MINUS) {
+		if (op == MINUS) {
 			t = INT;
 			pcvn++;
-		} else {
-			if (t1!=t2 || t1!=(PTR+CHAR))
+		}
+		else {
+			if (t1 != t2 || t1 != (PTR + CHAR))
 				cvn = XX;
 		}
 	}
 	if (cvn) {
 		t1 = plength(p1);
 		t2 = plength(p2);
-		if (cvn==XX || (cvn==PTI&&t1!=t2))
+		if (cvn == XX || (cvn == PTI && t1 != t2))
 			error("Illegal conversion");
 		else if (leftc)
 			p1 = convert(p1, t, cvn, t2);
 		else
 			p2 = convert(p2, t, cvn, t1);
 	}
-	if (dope&RELAT)
+	if (dope & RELAT)
 		t = INT;
-	if (t==FLOAT)
+	if (t == FLOAT)
 		t = DOUBLE;
-	if (t==CHAR)
+	if (t == CHAR)
 		t = INT;
-	if (op==CAST) {
-		if (t!=DOUBLE && (t!=INT || p2->type!=CHAR)) {
+	if (op == CAST) {
+		if (t != DOUBLE && (t != INT || p2->type != CHAR)) {
 			p2->type = t;
 			p2->subsp = p1->subsp;
 			p2->strp = p1->strp;
 		}
-		if (t==INT && p1->type==CHAR)
+		if (t == INT && p1->type == CHAR)
 			p2 = block(ITOC, INT, NULL, NULL, p2, NULL);
 		*cp++ = p2;
 		return;
 	}
-	if (fold(op, p1, p2)==0) {
-		p3 = leftc?p2:p1;
+	if (fold(op, p1, p2) == 0) {
+		p3 = leftc ? p2 : p1;
 		*cp++ = block(op, t, p3->subsp, p3->strp, p1, p2);
 	}
-	if (pcvn && t1!=(PTR+CHAR)) {
+	if (pcvn && t1 != (PTR + CHAR)) {
 		p1 = *--cp;
 		*cp++ = convert(p1, 0, PTI, plength(p1->tr1));
 	}
@@ -267,12 +270,12 @@ convert(struct tnode *p, int t, int cvn, int len)
 	register int op;
 
 	op = cvntab[cvn];
-	if (opdope[op]&BINARY) {
-		if (len==0)
+	if (opdope[op] & BINARY) {
+		if (len == 0)
 			error("Illegal conversion");
-		return(block(op, t, NULL, NULL, p, (struct tnode *)cblock(len)));
+		return (block(op, t, NULL, NULL, p, (struct tnode *)cblock(len)));
 	}
-	return(block(op, t, NULL, NULL, p, NULL));
+	return (block(op, t, NULL, NULL, p, NULL));
 }
 
 /*
@@ -282,7 +285,8 @@ convert(struct tnode *p, int t, int cvn, int len)
  * type at.
  * Used with structure references.
  */
-void setype(struct tnode *ap, int at, struct tnode *anewp)
+void
+setype(struct tnode *ap, int at, struct tnode *anewp)
 {
 	register struct tnode *p, *newp;
 	register int t;
@@ -294,11 +298,11 @@ void setype(struct tnode *ap, int at, struct tnode *anewp)
 		p->subsp = newp->subsp;
 		p->strp = newp->strp;
 		p->type = t;
-		if (p->op==AMPER)
+		if (p->op == AMPER)
 			t = decref(t);
-		else if (p->op==STAR)
+		else if (p->op == STAR)
 			t = incref(t);
-		else if (p->op!=PLUS)
+		else if (p->op != PLUS)
 			break;
 	}
 }
@@ -313,14 +317,14 @@ chkfun(struct tnode *ap)
 	register struct tnode *p;
 	register int t;
 
-	if (ap == 0)		/* empty arglist of a no-arg call g(): NULL flows
-				 * through here.  Benign on the PDP-11 (address 0
-				 * reads as 0), a segfault on the host. */
-		return(0);
+	if (ap == 0) /* empty arglist of a no-arg call g(): NULL flows
+		      * through here.  Benign on the PDP-11 (address 0
+		      * reads as 0), a segfault on the host. */
+		return (0);
 	p = ap;
-	if (((t = p->type)&XTYPE)==FUNC && p->op!=ETYPE)
-		return(block(AMPER,incref(t),p->subsp,p->strp,p, NULL));
-	return(p);
+	if (((t = p->type) & XTYPE) == FUNC && p->op != ETYPE)
+		return (block(AMPER, incref(t), p->subsp, p->strp, p, NULL));
+	return (p);
 }
 
 /*
@@ -333,18 +337,17 @@ disarray(struct tnode *ap)
 	register int t;
 	register struct tnode *p;
 
-	if (ap == 0)		/* NULL (empty arglist) -- see chkfun above */
-		return(0);
+	if (ap == 0) /* NULL (empty arglist) -- see chkfun above */
+		return (0);
 	p = ap;
 	/* check array & not MOS and not typer */
-	if (((t = p->type)&XTYPE)!=ARRAY || p->op==NAME&&((struct hshtab *)p->tr1)->hclass==MOS
-	 || p->op==ETYPE)
-		return(p);
+	if (((t = p->type) & XTYPE) != ARRAY || p->op == NAME && ((struct hshtab *)p->tr1)->hclass == MOS || p->op == ETYPE)
+		return (p);
 	p->subsp++;
 	*cp++ = p;
 	setype(p, decref(t), p);
 	build(AMPER);
-	return(*--cp);
+	return (*--cp);
 }
 
 /*
@@ -353,11 +356,12 @@ disarray(struct tnode *ap)
  * okt might be nonexistent or 'long'
  * (e.g. for <<).
  */
-void chkw(struct tnode *p, int okt)
+void
+chkw(struct tnode *p, int okt)
 {
 	register int t;
 
-	if ((t=p->type)!=INT && t<PTR && t!=CHAR && t!=UNSIGN && t!=okt)
+	if ((t = p->type) != INT && t < PTR && t != CHAR && t != UNSIGN && t != okt)
 		error("Illegal type of operand");
 	return;
 }
@@ -366,24 +370,24 @@ void chkw(struct tnode *p, int okt)
  *'linearize' a type for looking up in the
  * conversion table
  */
-int lintyp(int t)
+int
+lintyp(int t)
 {
-	switch(t) {
-
+	switch (t) {
 	case INT:
 	case CHAR:
 	case UNSIGN:
-		return(0);
+		return (0);
 
 	case FLOAT:
 	case DOUBLE:
-		return(1);
+		return (1);
 
 	case LONG:
-		return(2);
+		return (2);
 
 	default:
-		return(3);
+		return (3);
 	}
 }
 
@@ -391,7 +395,8 @@ int lintyp(int t)
  * Report an error.
  */
 /* variadic so char* arguments are not truncated to int on LP64 */
-void error(char *s, ...)
+void
+error(char *s, ...)
 {
 	va_list ap;
 	nerror++;
@@ -420,11 +425,11 @@ block(int op, int t, int *subs, struct str *str, struct tnode *p1, struct tnode 
 	p->subsp = subs;
 	p->strp = str;
 	p->tr1 = p1;
-	if (opdope[op]&BINARY)
+	if (opdope[op] & BINARY)
 		p->tr2 = p2;
 	else
 		p->tr2 = NULL;
-	return(p);
+	return (p);
 }
 
 struct tnode *
@@ -433,7 +438,7 @@ nblock(struct hshtab *ads)
 	register struct hshtab *ds;
 
 	ds = ads;
-	return(block(NAME, ds->htype, ds->hsubsp, ds->hstrp, (struct tnode *)ds, NULL));
+	return (block(NAME, ds->htype, ds->hsubsp, ds->hstrp, (struct tnode *)ds, NULL));
 }
 
 /*
@@ -450,7 +455,7 @@ cblock(int v)
 	p->subsp = NULL;
 	p->strp = NULL;
 	p->value = v;
-	return(p);
+	return (p);
 }
 
 /*
@@ -467,7 +472,7 @@ fblock(int t, char *string)
 	p->subsp = NULL;
 	p->strp = NULL;
 	p->cstr = string;
-	return(p);
+	return (p);
 }
 
 /*
@@ -493,21 +498,26 @@ gblock(int n)
 		exit(1);
 		coremax += 1024;
 	}
-	{ register char *q; for (q = p; q < curbase; q++) *q = 0; }
-	return(p);
+	{
+		register char *q;
+		for (q = p; q < curbase; q++)
+			*q = 0;
+	}
+	return (p);
 }
 
 /*
  * Check that a tree can be used as an lvalue.
  */
-void chklval(struct tnode *ap)
+void
+chklval(struct tnode *ap)
 {
 	register struct tnode *p;
 
 	p = ap;
-	if (p->op==FSEL)
+	if (p->op == FSEL)
 		p = p->tr1;
-	if (p->op!=NAME && p->op!=STAR)
+	if (p->op != NAME && p->op != STAR)
 		error("Lvalue required");
 }
 
@@ -517,33 +527,33 @@ void chklval(struct tnode *ap)
  * but this is used to allow constant expressions
  * to be used in switches and array bounds.
  */
-int fold(int op, struct tnode *ap1, struct tnode *ap2)
+int
+fold(int op, struct tnode *ap1, struct tnode *ap2)
 {
 	register struct tnode *p1;
 	register int v1, v2;
 	int unsignf;
 
 	p1 = ap1;
-	if (p1->op!=CON)
-		return(0);
-	unsignf = p1->type==UNSIGN;
-	if (op==QUEST) {
-		if (ap2->tr1->op==CON && ap2->tr2->op==CON) {
-			p1->value = p1->value? ap2->tr1->value: ap2->tr2->value;
+	if (p1->op != CON)
+		return (0);
+	unsignf = p1->type == UNSIGN;
+	if (op == QUEST) {
+		if (ap2->tr1->op == CON && ap2->tr2->op == CON) {
+			p1->value = p1->value ? ap2->tr1->value : ap2->tr2->value;
 			*cp++ = p1;
-			return(1);
+			return (1);
 		}
-		return(0);
+		return (0);
 	}
 	if (ap2) {
-		if (ap2->op!=CON)
-			return(0);
+		if (ap2->op != CON)
+			return (0);
 		v2 = ap2->value;
-		unsignf |= ap2->type==UNSIGN;
+		unsignf |= ap2->type == UNSIGN;
 	}
 	v1 = p1->value;
 	switch (op) {
-
 	case PLUS:
 		v1 += v2;
 		break;
@@ -557,7 +567,7 @@ int fold(int op, struct tnode *ap1, struct tnode *ap2)
 		break;
 
 	case DIVIDE:
-		if (v2==0)
+		if (v2 == 0)
 			goto divchk;
 		if (unsignf) {
 			v1 = (unsigned)v1 / v2;
@@ -567,7 +577,7 @@ int fold(int op, struct tnode *ap1, struct tnode *ap2)
 		break;
 
 	case MOD:
-		if (v2==0)
+		if (v2 == 0)
 			goto divchk;
 		if (unsignf) {
 			v1 = (unsigned)v1 % v2;
@@ -589,11 +599,11 @@ int fold(int op, struct tnode *ap1, struct tnode *ap2)
 		break;
 
 	case NEG:
-		v1 = - v1;
+		v1 = -v1;
 		break;
 
 	case COMPL:
-		v1 = ~ v1;
+		v1 = ~v1;
 		break;
 
 	case LSHIFT:
@@ -609,44 +619,45 @@ int fold(int op, struct tnode *ap1, struct tnode *ap2)
 		break;
 
 	case EQUAL:
-		v1 = v1==v2;
+		v1 = v1 == v2;
 		break;
 
 	case NEQUAL:
-		v1 = v1!=v2;
+		v1 = v1 != v2;
 		break;
 
 	case LESS:
-		v1 = v1<v2;
+		v1 = v1 < v2;
 		break;
 
 	case GREAT:
-		v1 = v1>v2;
+		v1 = v1 > v2;
 		break;
 
 	case LESSEQ:
-		v1 = v1<=v2;
+		v1 = v1 <= v2;
 		break;
 
 	case GREATEQ:
-		v1 = v1>=v2;
+		v1 = v1 >= v2;
 		break;
 
 	divchk:
 		error("Divide check");
 	default:
-		return(0);
+		return (0);
 	}
 	p1->value = v1;
 	*cp++ = p1;
-	return(1);
+	return (1);
 }
 
 /*
  * Compile an expression expected to have constant value,
  * for example an array bound or a case value.
  */
-int conexp(void)
+int
+conexp(void)
 {
 	register struct tnode *t;
 
@@ -656,5 +667,5 @@ int conexp(void)
 			error("Constant required");
 	initflg--;
 	curbase = funcbase;
-	return(t->value);
+	return (t->value);
 }

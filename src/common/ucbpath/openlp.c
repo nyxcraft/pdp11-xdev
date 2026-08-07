@@ -36,12 +36,12 @@ openlp(char *buffer, int mode, ...)
 	while (p = makefp(bestpath, buffer, argv)) {
 		fd = open(buffer, mode);
 		if (fd >= 0)
-			return(fd);
+			return (fd);
 		if (errno != ENOENT && besterr == ENOENT) {
 			besterr = errno;
 			bestpath = p;
 		}
 	}
 	errno = besterr;
-	return(-1);
+	return (-1);
 }

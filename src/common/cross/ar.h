@@ -11,7 +11,7 @@
  */
 #include <stdint.h>
 
-#define	ARMAG	0177545
+#define ARMAG 0177545
 
 /*
  * First Edition archives (Research V1..V4, magic 0177555) predate this format:
@@ -20,15 +20,15 @@
  * layout (our archives are modern build-time containers), but the a.out readers
  * decode every era, so ar reads it too: t/tv/p/x on a native V1/V2 library.
  */
-#define	OARMAG	0177555
+#define OARMAG 0177555
 
-struct	ar_hdr {
-	char	 ar_name[14];
-	int32_t	 ar_date;
-	char	 ar_uid;
-	char	 ar_gid;
-	int16_t	 ar_mode;
-	int32_t	 ar_size;
+struct ar_hdr {
+	char ar_name[14];
+	int32_t ar_date;
+	char ar_uid;
+	char ar_gid;
+	int16_t ar_mode;
+	int32_t ar_size;
 } __attribute__((packed));
 
 /*
@@ -39,5 +39,5 @@ struct	ar_hdr {
  * what makes our archives byte-identical in layout to authentic 2BSD ar.  The
  * swap is its own inverse, so read and write use the same macro.
  */
-#define	PDPL(x)	((int32_t)((((uint32_t)(x) & 0xffffU) << 16) | \
+#define PDPL(x) ((int32_t)((((uint32_t)(x) & 0xffffU) << 16) | \
 			   (((uint32_t)(x) >> 16) & 0xffffU)))

@@ -6,15 +6,15 @@
 #include <stdio.h>
 #include <whoami.h>
 
-#define	LTYPE	long	/* change to int for no long consts */
-#define	NCPS	8
-#undef	NULL		/* <stdio.h> defines NULL as ((void*)0); the code below
-			 * and the pass rely on the historical integer 0 */
-#define	NULL	0
+#define LTYPE long /* change to int for no long consts */
+#define NCPS 8
+#undef NULL /* <stdio.h> defines NULL as ((void*)0); the code below \
+	     * and the pass rely on the historical integer 0 */
+#define NULL 0
 /* Target (PDP-11) scalar sizes in bytes.  c1 runs on the LP64 HOST, where
  * sizeof(int)==4, so target-size arithmetic must use these constants, never
  * the host sizeof. */
-#define	SZINT	2
+#define SZINT 2
 
 /*
  *  Tree node for unary and binary.
@@ -26,113 +26,118 @@
  * tail, all sharing the {op,type} prefix.  The separate structs are kept
  * for the typed allocators; their members alias the union branches here.
  */
-struct	tnode {
-	int	op;
-	int	type;
+struct tnode {
+	int op;
+	int type;
+
 	union {
-		struct {		/* operator node / field assignment */
-			int	degree;
-			struct	tnode *tr1, *tr2;
-			int	mask;		/* fasgn */
+		struct { /* operator node / field assignment */
+			int degree;
+			struct tnode *tr1, *tr2;
+			int mask; /* fasgn */
 		};
-		struct {		/* local / external name */
-			char	class;
-			char	regno;
-			int	offset;
+
+		struct { /* local / external name */
+			char class;
+			char regno;
+			int offset;
+
 			union {
-				int	nloc;		/* tname */
-				char	name[NCPS];	/* xtname */
+				int nloc;	 /* tname */
+				char name[NCPS]; /* xtname */
 			};
 		};
-		struct {		/* integer / float constant */
-			int	value;
-			double	fvalue;		/* ftconst */
-			unsigned short	fwords[4];	/* PDP-11 D-format words (softfp) */
+
+		struct { /* integer / float constant */
+			int value;
+			double fvalue;		  /* ftconst */
+			unsigned short fwords[4]; /* PDP-11 D-format words (softfp) */
 		};
-		LTYPE	lvalue;		/* long constant */
+
+		LTYPE lvalue; /* long constant */
 	};
 };
 
 /*
  * tree names for locals
  */
-struct	tname {
-	int	op;
-	int	type;
-	char	class;
-	char	regno;
-	int	offset;
-	int	nloc;
+struct tname {
+	int op;
+	int type;
+	char class;
+	char regno;
+	int offset;
+	int nloc;
 };
 
 /*
  * tree names for externals
  */
-struct	xtname {
-	int	op;
-	int	type;
-	char	class;
-	char	regno;
-	int	offset;
-	char	name[NCPS];
+struct xtname {
+	int op;
+	int type;
+	char class;
+	char regno;
+	int offset;
+	char name[NCPS];
 };
 
-struct	tconst {
-	int	op;
-	int	type;
-	int	value;
+struct tconst {
+	int op;
+	int type;
+	int value;
 };
 
 /*
  * long constants
  */
-struct	lconst {
-	int	op;
-	int	type;
-	LTYPE	lvalue;
+struct lconst {
+	int op;
+	int type;
+	LTYPE lvalue;
 };
 
-struct	ftconst {
-	int	op;
-	int	type;
-	int	value;
-	double	fvalue;
-	unsigned short	fwords[4];	/* PDP-11 D-format words (softfp) */
+struct ftconst {
+	int op;
+	int type;
+	int value;
+	double fvalue;
+	unsigned short fwords[4]; /* PDP-11 D-format words (softfp) */
 };
 
 /*
  * Node used for field assignemnts
  */
-struct	fasgn {
-	int	op;
-	int	type;
-	int	degree;
-	struct	tnode *tr1, *tr2;
-	int	mask;
+struct fasgn {
+	int op;
+	int type;
+	int degree;
+	struct tnode *tr1, *tr2;
+	int mask;
 };
 
-struct	optab {
-	char	tabdeg1;
-	char	tabtyp1;
-	char	tabdeg2;
-	char	tabtyp2;
-	char	*tabstring;
+struct optab {
+	char tabdeg1;
+	char tabtyp1;
+	char tabdeg2;
+	char tabtyp2;
+	char *tabstring;
 };
 
-struct	table {
-	int	tabop;
-	struct	optab *tabp;
+struct table {
+	int tabop;
+	struct optab *tabp;
 };
 
-struct	instab {
-	int	iop;
-	char	*str1;
-	char	*str2;
+struct instab {
+	int iop;
+	char *str1;
+	char *str2;
 };
 
-struct	swtab {
-	int	swlab;
-	int	swval;
+struct swtab {
+	int swlab;
+	int swval;
 };
 
 /* Pass-2 (code generator) function prototypes.  Converted from the original
@@ -142,290 +147,290 @@ struct	swtab {
  * tnode() (unary vs binary node) and error() (printf-style) are genuinely
  * variable-arity and keep a variadic prototype, exactly matching the original
  * K&R call sites that passed a varying number of arguments. */
-struct	tnode	*strfunc(struct tnode *atp);
-struct	tnode	*lconst(int op, struct tnode *lp, struct tnode *rp);
-struct	tnode	*optim(struct tnode *atree);
-struct	tnode	*tnode(int op, int type, struct tnode *tr1, ...);
-struct	tnode	*getblk(int size);
-struct	tnode	*tconst(int val, int type);
-struct	tnode	*unoptim(struct tnode *atree);
-struct	tnode	*lvfield(struct tnode *at);
-struct	tnode	*acommute(struct tnode *atree);
-struct	tnode	*isconstant(struct tnode *at);
-struct	tnode	*hardlongs(struct tnode *at);
-struct	tnode	*sdelay(struct tnode **ap);
-struct	tnode	*ncopy(struct tname *ap);
-struct	tnode	*pow2(struct tnode *atree);
-char	*outname(char *s);
-struct	optab	*match(struct tnode *atree, struct table *table, int nrleft, int nocvt);
-void	error(char *, ...);	/* variadic: needs a prototype on LP64 */
+struct tnode *strfunc(struct tnode *atp);
+struct tnode *lconst(int op, struct tnode *lp, struct tnode *rp);
+struct tnode *optim(struct tnode *atree);
+struct tnode *tnode(int op, int type, struct tnode *tr1, ...);
+struct tnode *getblk(int size);
+struct tnode *tconst(int val, int type);
+struct tnode *unoptim(struct tnode *atree);
+struct tnode *lvfield(struct tnode *at);
+struct tnode *acommute(struct tnode *atree);
+struct tnode *isconstant(struct tnode *at);
+struct tnode *hardlongs(struct tnode *at);
+struct tnode *sdelay(struct tnode **ap);
+struct tnode *ncopy(struct tname *ap);
+struct tnode *pow2(struct tnode *atree);
+char *outname(char *s);
+struct optab *match(struct tnode *atree, struct table *table, int nrleft, int nocvt);
+void error(char *, ...); /* variadic: needs a prototype on LP64 */
 
-int	rcexpr(struct tnode *atree, struct table *atable, int reg);
-int	cexpr(struct tnode *atree, struct table *table, int areg);
-int	reorder(struct tnode **treep, struct table *table, int reg);
-int	sreorder(struct tnode **treep, struct table *table, int reg, int recurf);
-int	delay(struct tnode **treep, struct table *table, int reg);
-int	chkleaf(struct tnode *atree, struct table *table, int reg);
-int	comarg(struct tnode *atree, int *flagp);
-void	doinit(int atype, struct tnode *atree);
-void	movreg(int r0, int r1, struct tnode *tree);
-int	max(int a, int b);
-int	degree(struct tnode *at);
-void	pname(struct tnode *ap, int flag);
-void	regerr(void);
-void	pbase(struct tnode *ap);
-int	xdcalc(struct tnode *ap, int nrleft);
-int	dcalc(struct tnode *ap, int nrleft);
-int	notcompat(struct tnode *ap, int ast, int op);
-void	prins(int op, int c, struct instab *itable);
-int	collcon(struct tnode *ap);
-int	isfloat(struct tnode *at);
-int	oddreg(struct tnode *t, int areg);
-int	arlength(int t);
-void	pswitch(struct swtab *afp, struct swtab *alp, int deflab);
-void	breq(int v, int l);
-int	sort(struct swtab *afp, struct swtab *alp);
-int	ispow2(struct tnode *atree);
-void	cbranch(struct tnode *atree, int albl, int cond, int areg);
-void	branch(int lbl, int aop, ...);
-void	longrel(struct tnode *atree, int lbl, int cond, int reg);
-int	xlongrel(int f);
-void	label(int l);
-void	popstk(int a);
-void	psoct(int an);
-void	getree(void);
-int	geti(void);
-void	strasg(struct fasgn *atp);
-void	setype(struct tnode *p, int t);
-int	decref(int at);
-int	incref(int t);
-int	islong(int t);
-extern char	maprel[];
-extern char	notrel[];
-int	nreg;
-int	isn;
-int	namsiz;
-int	line;
-int	nerror;
-extern struct	table	cctab[];
-extern struct	table	efftab[];
-extern struct	table	regtab[];
-extern struct	table	sptab[];
-struct	table	lsptab[1];
-extern struct	instab	instab[];
-extern struct	instab	branchtab[];
-extern int	opdope[];
-extern char	*opntab[];
-int	nstack;
-int	nfloat;
-struct	tnode	sfuncr;
-char	*funcbase;
-char	*curbase;
-char	*coremax;
-struct tnode czero, cone;	/* full tnode: undersized tconst overran when read as a node */
-struct	tnode	fczero;	/* full tnode (was undersized ftconst) */
-long	totspace;
+int rcexpr(struct tnode *atree, struct table *atable, int reg);
+int cexpr(struct tnode *atree, struct table *table, int areg);
+int reorder(struct tnode **treep, struct table *table, int reg);
+int sreorder(struct tnode **treep, struct table *table, int reg, int recurf);
+int delay(struct tnode **treep, struct table *table, int reg);
+int chkleaf(struct tnode *atree, struct table *table, int reg);
+int comarg(struct tnode *atree, int *flagp);
+void doinit(int atype, struct tnode *atree);
+void movreg(int r0, int r1, struct tnode *tree);
+int max(int a, int b);
+int degree(struct tnode *at);
+void pname(struct tnode *ap, int flag);
+void regerr(void);
+void pbase(struct tnode *ap);
+int xdcalc(struct tnode *ap, int nrleft);
+int dcalc(struct tnode *ap, int nrleft);
+int notcompat(struct tnode *ap, int ast, int op);
+void prins(int op, int c, struct instab *itable);
+int collcon(struct tnode *ap);
+int isfloat(struct tnode *at);
+int oddreg(struct tnode *t, int areg);
+int arlength(int t);
+void pswitch(struct swtab *afp, struct swtab *alp, int deflab);
+void breq(int v, int l);
+int sort(struct swtab *afp, struct swtab *alp);
+int ispow2(struct tnode *atree);
+void cbranch(struct tnode *atree, int albl, int cond, int areg);
+void branch(int lbl, int aop, ...);
+void longrel(struct tnode *atree, int lbl, int cond, int reg);
+int xlongrel(int f);
+void label(int l);
+void popstk(int a);
+void psoct(int an);
+void getree(void);
+int geti(void);
+void strasg(struct fasgn *atp);
+void setype(struct tnode *p, int t);
+int decref(int at);
+int incref(int t);
+int islong(int t);
+extern char maprel[];
+extern char notrel[];
+int nreg;
+int isn;
+int namsiz;
+int line;
+int nerror;
+extern struct table cctab[];
+extern struct table efftab[];
+extern struct table regtab[];
+extern struct table sptab[];
+struct table lsptab[1];
+extern struct instab instab[];
+extern struct instab branchtab[];
+extern int opdope[];
+extern char *opntab[];
+int nstack;
+int nfloat;
+struct tnode sfuncr;
+char *funcbase;
+char *curbase;
+char *coremax;
+struct tnode czero, cone; /* full tnode: undersized tconst overran when read as a node */
+struct tnode fczero;	  /* full tnode (was undersized ftconst) */
+long totspace;
 #ifdef MENLO_OVLY
-int	ovlyflag;
+int ovlyflag;
 #endif
 /*
  * Some special stuff for long comparisons
  */
-int	xlab1, xlab2, xop, xzero;
+int xlab1, xlab2, xop, xzero;
 
 /*
 	operators
 */
-#define	EOFC	0
-#define	SEMI	1
-#define	LBRACE	2
-#define	RBRACE	3
-#define	LBRACK	4
-#define	RBRACK	5
-#define	LPARN	6
-#define	RPARN	7
-#define	COLON	8
-#define	COMMA	9
-#define	FSEL	10
-#define	FSELR	11
-#define	FSELT	12
-#define	FSELA	16
-#define	ULSH	17
-#define	ASULSH	18
+#define EOFC 0
+#define SEMI 1
+#define LBRACE 2
+#define RBRACE 3
+#define LBRACK 4
+#define RBRACK 5
+#define LPARN 6
+#define RPARN 7
+#define COLON 8
+#define COMMA 9
+#define FSEL 10
+#define FSELR 11
+#define FSELT 12
+#define FSELA 16
+#define ULSH 17
+#define ASULSH 18
 
-#define	KEYW	19
-#define	NAME	20
-#define	CON	21
-#define	STRING	22
-#define	FCON	23
-#define	SFCON	24
-#define	LCON	25
-#define	SLCON	26
+#define KEYW 19
+#define NAME 20
+#define CON 21
+#define STRING 22
+#define FCON 23
+#define SFCON 24
+#define LCON 25
+#define SLCON 26
 
-#define	AUTOI	27
-#define	AUTOD	28
-#define	INCBEF	30
-#define	DECBEF	31
-#define	INCAFT	32
-#define	DECAFT	33
-#define	EXCLA	34
-#define	AMPER	35
-#define	STAR	36
-#define	NEG	37
-#define	COMPL	38
+#define AUTOI 27
+#define AUTOD 28
+#define INCBEF 30
+#define DECBEF 31
+#define INCAFT 32
+#define DECAFT 33
+#define EXCLA 34
+#define AMPER 35
+#define STAR 36
+#define NEG 37
+#define COMPL 38
 
-#define	DOT	39
-#define	PLUS	40
-#define	MINUS	41
-#define	TIMES	42
-#define	DIVIDE	43
-#define	MOD	44
-#define	RSHIFT	45
-#define	LSHIFT	46
-#define	AND	47
-#define	ANDN	55
-#define	OR	48
-#define	EXOR	49
-#define	ARROW	50
-#define	ITOF	51
-#define	FTOI	52
-#define	LOGAND	53
-#define	LOGOR	54
-#define	FTOL	56
-#define	LTOF	57
-#define	ITOL	58
-#define	LTOI	59
-#define	ITOP	13
-#define	PTOI	14
-#define	LTOP	15
+#define DOT 39
+#define PLUS 40
+#define MINUS 41
+#define TIMES 42
+#define DIVIDE 43
+#define MOD 44
+#define RSHIFT 45
+#define LSHIFT 46
+#define AND 47
+#define ANDN 55
+#define OR 48
+#define EXOR 49
+#define ARROW 50
+#define ITOF 51
+#define FTOI 52
+#define LOGAND 53
+#define LOGOR 54
+#define FTOL 56
+#define LTOF 57
+#define ITOL 58
+#define LTOI 59
+#define ITOP 13
+#define PTOI 14
+#define LTOP 15
 
-#define	EQUAL	60
-#define	NEQUAL	61
-#define	LESSEQ	62
-#define	LESS	63
-#define	GREATEQ	64
-#define	GREAT	65
-#define	LESSEQP	66
-#define	LESSP	67
-#define	GREATQP	68
-#define	GREATP	69
+#define EQUAL 60
+#define NEQUAL 61
+#define LESSEQ 62
+#define LESS 63
+#define GREATEQ 64
+#define GREAT 65
+#define LESSEQP 66
+#define LESSP 67
+#define GREATQP 68
+#define GREATP 69
 
-#define	ASPLUS	70
-#define	ASMINUS	71
-#define	ASTIMES	72
-#define	ASDIV	73
-#define	ASMOD	74
-#define	ASRSH	75
-#define	ASLSH	76
-#define	ASAND	77
-#define	ASOR	78
-#define	ASXOR	79
-#define	ASSIGN	80
-#define	TAND	81
-#define	LTIMES	82
-#define	LDIV	83
-#define	LMOD	84
-#define	ASANDN	85
-#define	LASTIMES 86
-#define	LASDIV	87
-#define	LASMOD	88
+#define ASPLUS 70
+#define ASMINUS 71
+#define ASTIMES 72
+#define ASDIV 73
+#define ASMOD 74
+#define ASRSH 75
+#define ASLSH 76
+#define ASAND 77
+#define ASOR 78
+#define ASXOR 79
+#define ASSIGN 80
+#define TAND 81
+#define LTIMES 82
+#define LDIV 83
+#define LMOD 84
+#define ASANDN 85
+#define LASTIMES 86
+#define LASDIV 87
+#define LASMOD 88
 
-#define	QUEST	90
-#define	MAX	93
-#define	MAXP	94
-#define	MIN	95
-#define	MINP	96
-#define	LLSHIFT	91
-#define	ASLSHL	92
-#define	SEQNC	97
-#define	CALL1	98
-#define	CALL2	99
-#define	CALL	100
-#define	MCALL	101
-#define	JUMP	102
-#define	CBRANCH	103
-#define	INIT	104
-#define	SETREG	105
-#define	LOAD	106
-#define	ITOC	109
-#define	RFORCE	110
+#define QUEST 90
+#define MAX 93
+#define MAXP 94
+#define MIN 95
+#define MINP 96
+#define LLSHIFT 91
+#define ASLSHL 92
+#define SEQNC 97
+#define CALL1 98
+#define CALL2 99
+#define CALL 100
+#define MCALL 101
+#define JUMP 102
+#define CBRANCH 103
+#define INIT 104
+#define SETREG 105
+#define LOAD 106
+#define ITOC 109
+#define RFORCE 110
 
 /*
  * Intermediate code operators
  */
-#define	BRANCH	111
-#define	LABEL	112
-#define	NLABEL	113
-#define	RLABEL	114
-#define	STRASG	115
-#define	STRSET	116
-#define	BDATA	200
-#define	PROG	202
-#define	DATA	203
-#define	BSS	204
-#define	CSPACE	205
-#define	SSPACE	206
-#define	SYMDEF	207
-#define	SAVE	208
-#define	RETRN	209
-#define	EVEN	210
-#define	PROFIL	212
-#define	SWIT	213
-#define	EXPR	214
-#define	SNAME	215
-#define	RNAME	216
-#define	ANAME	217
-#define	NULLOP	218
-#define	SETSTK	219
-#define	SINIT	220
-#define	GLOBAL	221
-#define	C3BRANCH	222
+#define BRANCH 111
+#define LABEL 112
+#define NLABEL 113
+#define RLABEL 114
+#define STRASG 115
+#define STRSET 116
+#define BDATA 200
+#define PROG 202
+#define DATA 203
+#define BSS 204
+#define CSPACE 205
+#define SSPACE 206
+#define SYMDEF 207
+#define SAVE 208
+#define RETRN 209
+#define EVEN 210
+#define PROFIL 212
+#define SWIT 213
+#define EXPR 214
+#define SNAME 215
+#define RNAME 216
+#define ANAME 217
+#define NULLOP 218
+#define SETSTK 219
+#define SINIT 220
+#define GLOBAL 221
+#define C3BRANCH 222
 
 /*
  *	types
  */
-#define	INT	0
-#define	CHAR	1
-#define	FLOAT	2
-#define	DOUBLE	3
-#define	STRUCT	4
-#define	RSTRUCT	5
-#define	LONG	6
-#define	UNSIGN	7
+#define INT 0
+#define CHAR 1
+#define FLOAT 2
+#define DOUBLE 3
+#define STRUCT 4
+#define RSTRUCT 5
+#define LONG 6
+#define UNSIGN 7
 
-#define	TYLEN	2
-#define	TYPE	07
-#define	XTYPE	(03<<3)
-#define	PTR	010
-#define	FUNC	020
-#define	ARRAY	030
+#define TYLEN 2
+#define TYPE 07
+#define XTYPE (03 << 3)
+#define PTR 010
+#define FUNC 020
+#define ARRAY 030
 
 /*
 	storage	classes
 */
-#define	KEYWC	1
-#define	MOS	10
-#define	AUTO	11
-#define	EXTERN	12
-#define	STATIC	13
-#define	REG	14
-#define	STRTAG	15
-#define	ARG	16
-#define	OFFS	20
-#define	XOFFS	21
-#define	SOFFS	22
+#define KEYWC 1
+#define MOS 10
+#define AUTO 11
+#define EXTERN 12
+#define STATIC 13
+#define REG 14
+#define STRTAG 15
+#define ARG 16
+#define OFFS 20
+#define XOFFS 21
+#define SOFFS 22
 
 /*
 	Flag	bits
 */
 
-#define	BINARY	01
-#define	LVALUE	02
-#define	RELAT	04
-#define	ASSGOP	010
-#define	LWORD	020
-#define	RWORD	040
-#define	COMMUTE	0100
-#define	RASSOC	0200
-#define	LEAF	0400
-#define	CNVRT	01000
+#define BINARY 01
+#define LVALUE 02
+#define RELAT 04
+#define ASSGOP 010
+#define LWORD 020
+#define RWORD 040
+#define COMMUTE 0100
+#define RASSOC 0200
+#define LEAF 0400
+#define CNVRT 01000

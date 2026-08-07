@@ -15,41 +15,42 @@
  */
 #include <stdint.h>
 
-struct	exec {	/* a.out header -- 8 words, 16 bytes */
-	int16_t  	a_magic;	/* magic number */
-	uint16_t	a_text; 	/* size of text segment */
-	uint16_t	a_data; 	/* size of initialized data */
-	uint16_t	a_bss;  	/* size of unitialized data */
-	uint16_t	a_syms; 	/* size of symbol table */
-	uint16_t	a_entry; 	/* entry point */
-	uint16_t	a_unused;	/* not used */
-	uint16_t	a_flag; 	/* relocation info stripped */
-};
-#define NOVL	7
-struct	ovlhdr { /* overlay size information (auto-overlays only) */
-	int16_t  	max_ovl;	/* maximum ovl size */
-	uint16_t	ov_siz[NOVL];	/* size of i'th overlay */
+struct exec {		   /* a.out header -- 8 words, 16 bytes */
+	int16_t a_magic;   /* magic number */
+	uint16_t a_text;   /* size of text segment */
+	uint16_t a_data;   /* size of initialized data */
+	uint16_t a_bss;	   /* size of unitialized data */
+	uint16_t a_syms;   /* size of symbol table */
+	uint16_t a_entry;  /* entry point */
+	uint16_t a_unused; /* not used */
+	uint16_t a_flag;   /* relocation info stripped */
 };
 
-#define	A_MAGIC1	0407       	/* normal */
-#define	A_MAGIC2	0410       	/* read-only text */
-#define	A_MAGIC3	0411       	/* separated I&D */
-#define	A_MAGIC4	0405       	/* overlay */
-#define	A_MAGIC5	0430       	/* auto-overlay (nonseparate) */
-#define	A_MAGIC6	0431       	/* auto-overlay (separate)  */
+#define NOVL 7
+
+struct ovlhdr {		       /* overlay size information (auto-overlays only) */
+	int16_t max_ovl;       /* maximum ovl size */
+	uint16_t ov_siz[NOVL]; /* size of i'th overlay */
+};
+
+#define A_MAGIC1 0407 /* normal */
+#define A_MAGIC2 0410 /* read-only text */
+#define A_MAGIC3 0411 /* separated I&D */
+#define A_MAGIC4 0405 /* overlay */
+#define A_MAGIC5 0430 /* auto-overlay (nonseparate) */
+#define A_MAGIC6 0431 /* auto-overlay (separate)  */
 
 /*
  * Macros which take exec structures as arguments and tell whether
  * the file has a reasonable magic number or offsets to text|symbols.
  */
-#define	N_BADMAG(x) \
-    (((x).a_magic)!=A_MAGIC1 && ((x).a_magic)!=A_MAGIC2 && \
-     ((x).a_magic)!=A_MAGIC3 && ((x).a_magic)!=A_MAGIC4 && \
-     ((x).a_magic)!=A_MAGIC5 && ((x).a_magic)!=A_MAGIC6)
+#define N_BADMAG(x)                                                \
+	(((x).a_magic) != A_MAGIC1 && ((x).a_magic) != A_MAGIC2 && \
+	 ((x).a_magic) != A_MAGIC3 && ((x).a_magic) != A_MAGIC4 && \
+	 ((x).a_magic) != A_MAGIC5 && ((x).a_magic) != A_MAGIC6)
 
-#define	N_TXTOFF(x) \
-	((x).a_magic==A_MAGIC5 || (x).a_magic==A_MAGIC6 ? \
-	 sizeof (struct ovlhdr) + sizeof (struct exec) : sizeof (struct exec))
+#define N_TXTOFF(x) \
+	((x).a_magic == A_MAGIC5 || (x).a_magic == A_MAGIC6 ? sizeof(struct ovlhdr) + sizeof(struct exec) : sizeof(struct exec))
 
 /*
  * 2.9BSD symbol table entry -- 12 bytes.  Unlike 2.8BSD (which split the
@@ -60,20 +61,20 @@ struct	ovlhdr { /* overlay size information (auto-overlays only) */
  * < 256 (2.8's n_ovly == 0 is the high byte of 2.9's 16-bit n_type), so
  * objects written by either are byte-compatible when no overlay is used.
  */
-struct	nlist {	/* symbol table entry -- 12 bytes */
-	char    	n_name[8];	/* symbol name */
-	int16_t 	n_type;		/* type flag (16-bit in 2.9BSD) */
-	uint16_t	n_value;	/* value */
+struct nlist {		  /* symbol table entry -- 12 bytes */
+	char n_name[8];	  /* symbol name */
+	int16_t n_type;	  /* type flag (16-bit in 2.9BSD) */
+	uint16_t n_value; /* value */
 };
 
-		/* values for type flag */
-#define	N_UNDF	0	/* undefined */
-#define	N_ABS	01	/* absolute */
-#define	N_TEXT	02	/* text symbol */
-#define	N_DATA	03	/* data symbol */
-#define	N_BSS	04	/* bss symbol */
-#define	N_TYPE	037
-#define	N_REG	024	/* register name */
-#define	N_FN	037	/* file name symbol */
-#define	N_EXT	040	/* external bit, or'ed in */
-#define	FORMAT	"%06o"	/* to print a value */
+/* values for type flag */
+#define N_UNDF 0  /* undefined */
+#define N_ABS 01  /* absolute */
+#define N_TEXT 02 /* text symbol */
+#define N_DATA 03 /* data symbol */
+#define N_BSS 04  /* bss symbol */
+#define N_TYPE 037
+#define N_REG 024     /* register name */
+#define N_FN 037      /* file name symbol */
+#define N_EXT 040     /* external bit, or'ed in */
+#define FORMAT "%06o" /* to print a value */

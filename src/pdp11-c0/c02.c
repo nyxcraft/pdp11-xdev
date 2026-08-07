@@ -10,67 +10,70 @@
 /*
  * Process a single external definition
  */
-void extdef(void)
+void
+extdef(void)
 {
 	register int o;
 	int sclass, scflag, *cb;
 	struct hshtab typer;
 	register struct hshtab *ds;
 
-	if(((o=symbol())==EOFC) || o==SEMI)
+	if (((o = symbol()) == EOFC) || o == SEMI)
 		return;
 	peeksym = o;
 	sclass = 0;
 	blklev = 0;
-	if (getkeywords(&sclass, &typer)==0) {
+	if (getkeywords(&sclass, &typer) == 0) {
 		sclass = EXTERN;
-		if (peeksym!=NAME)
+		if (peeksym != NAME)
 			goto syntax;
 	}
 	scflag = 0;
-	if (sclass==DEFXTRN) {
+	if (sclass == DEFXTRN) {
 		scflag++;
 		sclass = EXTERN;
 	}
-	if (sclass!=EXTERN && sclass!=STATIC && sclass!=TYPEDEF)
+	if (sclass != EXTERN && sclass != STATIC && sclass != TYPEDEF)
 		error("Illegal storage class");
 	do {
 		defsym = 0;
 		paraml = 0;
 		parame = 0;
-		if (sclass==TYPEDEF) {
+		if (sclass == TYPEDEF) {
 			decl1(TYPEDEF, &typer, 0, NULL);
 			continue;
 		}
 		decl1(EXTERN, &typer, 0, NULL);
-		if ((ds=defsym)==0)
+		if ((ds = defsym) == 0)
 			return;
 		funcsym = ds;
-		if ((ds->htype&XTYPE)==FUNC) {
-			if ((peeksym=symbol())==LBRACE || peeksym==KEYW
-			 || (peeksym==NAME && csym->hclass==TYPEDEF)) {
+		if ((ds->htype & XTYPE) == FUNC) {
+			if ((peeksym = symbol()) == LBRACE || peeksym == KEYW || (peeksym == NAME && csym->hclass == TYPEDEF)) {
 				funcblk.type = decref(ds->htype);
 				funcblk.strp = ds->hstrp;
 				setinit(ds);
-				outcode("BS", SYMDEF, sclass==EXTERN?ds->name:"");
+				outcode("BS", SYMDEF, sclass == EXTERN ? ds->name : "");
 				cfunc();
 				return;
 			}
 			if (paraml)
 				error("Inappropriate parameters");
-		} else if ((o=symbol())==COMMA || o==SEMI) {
+		}
+		else if ((o = symbol()) == COMMA || o == SEMI) {
 			peeksym = o;
-			o = (length((struct tnode *)ds)+ALIGN) & ~ALIGN;
-			if (sclass==STATIC) {
+			o = (length((struct tnode *)ds) + ALIGN) & ~ALIGN;
+			if (sclass == STATIC) {
 				setinit(ds);
 				outcode("BSBBSBN", SYMDEF, "", BSS, NLABEL, ds->name, SSPACE, o);
-			} else if (scflag)
+			}
+			else if (scflag)
 				outcode("BSN", CSPACE, ds->name, o);
-		} else {
-			if (o!=ASSIGN)
+		}
+		else {
+			if (o != ASSIGN)
 				peeksym = o;
 			setinit(ds);
-			if (sclass==EXTERN)
+			if (sclass == EXTERN)
 				outcode("BS", SYMDEF, ds->name);
 			outcode("BBS", DATA, NLABEL, ds->name);
 			cb = (int *)funcbase;
@@ -80,11 +83,12 @@ void extdef(void)
 				cb = (int *)maxdecl;
 			funcbase = (char *)cb;
 		}
-	} while ((o=symbol())==COMMA);
-	if (o==SEMI)
+	}
+	while ((o = symbol()) == COMMA);
+	if (o == SEMI)
 		return;
 syntax:
-	if (o==RBRACE) {
+	if (o == RBRACE) {
 		error("Too many }'s");
 		peeksym = 0;
 		return;
@@ -97,7 +101,8 @@ syntax:
 /*
  * Process a function definition.
  */
-void cfunc(void)
+void
+cfunc(void)
 {
 	register int *cb;
 	register int sloc;
@@ -116,7 +121,7 @@ void cfunc(void)
 	outcode("B", SAVE);
 	funchead();
 	branch(sloc);
-	label(sloc+1);
+	label(sloc + 1);
 	retlab = isn++;
 	blklev = 0;
 	if ((peeksym = symbol()) != LBRACE)
@@ -124,8 +129,8 @@ void cfunc(void)
 	statement();
 	outcode("BNB", LABEL, retlab, RETRN);
 	label(sloc);
-	outcode("BN", SETSTK, -maxauto+STAUTO);	/* MENLO_OVLY bug fix */
-	branch(sloc+1);
+	outcode("BN", SETSTK, -maxauto + STAUTO); /* MENLO_OVLY bug fix */
+	branch(sloc + 1);
 	if ((char *)cb < maxdecl)
 		cb = (int *)maxdecl;
 	curbase = funcbase = (char *)cb;
@@ -134,7 +139,8 @@ void cfunc(void)
 /*
  * Process the initializers for an external definition.
  */
-int cinit(struct hshtab *anp, int flex, int sclass)
+int
+cinit(struct hshtab *anp, int flex, int sclass)
 {
 	register struct phshtab *np;
 	register int nel, ninit;
@@ -147,7 +153,7 @@ int cinit(struct hshtab *anp, int flex, int sclass)
 	cpysymb(np, (struct phshtab *)anp);
 	realtype = np->htype;
 	isarray = 0;
-	if ((realtype&XTYPE) == ARRAY)
+	if ((realtype & XTYPE) == ARRAY)
 		isarray++;
 	else
 		flex = 0;
@@ -158,64 +164,68 @@ int cinit(struct hshtab *anp, int flex, int sclass)
 	 * temporarily modify to look like kind of thing it's
 	 * an array of.
 	 */
-	if (sclass==AUTO)
-		if (isarray || realtype==STRUCT)
+	if (sclass == AUTO)
+		if (isarray || realtype == STRUCT)
 			error("No auto. aggregate initialization");
 	if (isarray) {
 		np->htype = decref(realtype);
 		np->hsubsp++;
-		if (width==0 && flex==0)
+		if (width == 0 && flex == 0)
 			error("0-length row: %.8s", anp->name);
 		o = length((struct tnode *)np);
 		/* nel = ldiv(0, width, o); */
-		nel = (unsigned)width/o;
+		nel = (unsigned)width / o;
 		width = o;
 	}
 	brace = 0;
-	if ((peeksym=symbol())==LBRACE && (isarray || np->htype!=STRUCT)) {
+	if ((peeksym = symbol()) == LBRACE && (isarray || np->htype != STRUCT)) {
 		peeksym = -1;
 		brace++;
 	}
 	ninit = 0;
 	do {
-		if ((o=symbol())==RBRACE)
+		if ((o = symbol()) == RBRACE)
 			break;
 		peeksym = o;
-		if (o==STRING && realtype==ARRAY+CHAR) {
-			if (sclass==AUTO)
+		if (o == STRING && realtype == ARRAY + CHAR) {
+			if (sclass == AUTO)
 				error("No strings in automatic");
 			peeksym = -1;
-			putstr(0, flex?10000:nel);
+			putstr(0, flex ? 10000 : nel);
 			ninit += nchstr;
 			o = symbol();
 			break;
-		} else if (np->htype==STRUCT) {
+		}
+		else if (np->htype == STRUCT) {
 			strinit((struct tnode *)np, sclass);
-		} else if ((np->htype&ARRAY)==ARRAY || peeksym==LBRACE)
+		}
+		else if ((np->htype & ARRAY) == ARRAY || peeksym == LBRACE)
 			cinit((struct hshtab *)np, 0, sclass);
 		else {
 			initflg++;
 			s = tree();
 			initflg = 0;
-			if (np->hflag&FFIELD)
+			if (np->hflag & FFIELD)
 				error("No field initialization");
 			*cp++ = nblock((struct hshtab *)np);
 			*cp++ = s;
 			build(ASSIGN);
-			if (sclass==AUTO||sclass==REG)
+			if (sclass == AUTO || sclass == REG)
 				rcexpr(*--cp);
-			else if (sclass==ENUMCON) {
-				if (s->op!=CON)
+			else if (sclass == ENUMCON) {
+				if (s->op != CON)
 					error("Illegal enum constant for %.8s", anp->name);
 				anp->hoffset = s->value;
-			} else
-				rcexpr(block(INIT,np->htype,NULL,NULL,(*--cp)->tr2, NULL));
+			}
+			else
+				rcexpr(block(INIT, np->htype, NULL, NULL, (*--cp)->tr2, NULL));
 		}
 		ninit++;
-		if ((ninit&077)==0 && sclass==EXTERN)
+		if ((ninit & 077) == 0 && sclass == EXTERN)
 			outcode("BS", SYMDEF, "");
-	} while ((o=symbol())==COMMA && (ninit<nel || brace || flex));
-	if (brace==0 || o!=RBRACE)
+	}
+	while ((o = symbol()) == COMMA && (ninit < nel || brace || flex));
+	if (brace == 0 || o != RBRACE)
 		peeksym = o;
 	/*
 	 * If there are too few initializers, allocate
@@ -223,29 +233,31 @@ int cinit(struct hshtab *anp, int flex, int sclass)
 	 * If there are too many initializers, extend
 	 * the declared size for benefit of "sizeof"
 	 */
-	if (ninit<nel && sclass!=AUTO)
-		outcode("BN", SSPACE, (nel-ninit)*width);
-	else if (ninit>nel) {
-		if (flex && nel==0) {
+	if (ninit < nel && sclass != AUTO)
+		outcode("BN", SSPACE, (nel - ninit) * width);
+	else if (ninit > nel) {
+		if (flex && nel == 0) {
 			np->hsubsp[-1] = ninit;
-		} else
+		}
+		else
 			error("Too many initializers: %.8s", anp->name);
 		nel = ninit;
 	}
 	curbase = funcbase = (char *)cb;
-	return(nel*width);
+	return (nel * width);
 }
 
 /*
  * Initialize a structure
  */
-void strinit(struct tnode *np, int sclass)
+void
+strinit(struct tnode *np, int sclass)
 {
 	register struct hshtab **mlp;
 	static int zerloc;
 	register int o, brace;
 
-	if ((mlp = np->strp->memlist)==NULL) {
+	if ((mlp = np->strp->memlist) == NULL) {
 		mlp = (struct hshtab **)&zerloc;
 		error("Undefined structure initialization");
 	}
@@ -255,37 +267,40 @@ void strinit(struct tnode *np, int sclass)
 	else
 		peeksym = o;
 	do {
-		if ((o=symbol()) == RBRACE)
+		if ((o = symbol()) == RBRACE)
 			break;
 		peeksym = o;
-		if (*mlp==0) {
+		if (*mlp == 0) {
 			error("Too many structure initializers");
 			cinit((struct hshtab *)&funcblk, 0, sclass);
-		} else
+		}
+		else
 			cinit(*mlp++, 0, sclass);
-		if (*mlp ==  &structhole) {
+		if (*mlp == &structhole) {
 			outcode("B", EVEN);
 			mlp++;
 		}
-	} while ((o=symbol())==COMMA && (*mlp || brace));
-	if (sclass!=AUTO && sclass!=REG) {
+	}
+	while ((o = symbol()) == COMMA && (*mlp || brace));
+	if (sclass != AUTO && sclass != REG) {
 		if (*mlp)
 			outcode("BN", SSPACE, np->strp->ssize - (*mlp)->hoffset);
 		outcode("B", EVEN);
 	}
-	if (o!=RBRACE || brace==0)
+	if (o != RBRACE || brace == 0)
 		peeksym = o;
 }
 
 /*
  * Mark already initialized
  */
-void setinit(struct hshtab *anp)
+void
+setinit(struct hshtab *anp)
 {
 	register struct hshtab *np;
 
 	np = anp;
-	if (np->hflag&FINIT)
+	if (np->hflag & FINIT)
 		error("%s multiply defined", np->name);
 	np->hflag |= FINIT;
 }
@@ -293,16 +308,16 @@ void setinit(struct hshtab *anp)
 /*
  * Process one statement in a function.
  */
-void statement(void)
+void
+statement(void)
 {
-	register int o, o2, o1;		/* o1 holds a label number or token */
+	register int o, o2, o1; /* o1 holds a label number or token */
 	int o3;
 	struct tnode *np;
 	int sauto, sreg;
 
 stmt:
-	switch(o=symbol()) {
-
+	switch (o = symbol()) {
 	case EOFC:
 		error("Unexpected EOF");
 	case SEMI:
@@ -313,9 +328,9 @@ stmt:
 		sreg = regvar;
 		blockhead();
 		while (!eof) {
-			if ((o=symbol())==RBRACE) {
+			if ((o = symbol()) == RBRACE) {
 				autolen = sauto;
-				if (sreg!=regvar)
+				if (sreg != regvar)
 					outcode("BN", SETREG, sreg);
 				regvar = sreg;
 				blkend();
@@ -328,12 +343,11 @@ stmt:
 		return;
 
 	case KEYW:
-		switch(cval) {
-
+		switch (cval) {
 		case GOTO:
 			if (o1 = simplegoto())
 				branch(o1);
-			else 
+			else
 				dogoto();
 			goto semi;
 
@@ -344,47 +358,48 @@ stmt:
 		case IF:
 			np = pexpr();
 			o2 = 0;
-			if ((o1=symbol())==KEYW) switch (cval) {
-			case GOTO:
-				if (o2=simplegoto())
-					goto simpif;
-				cbranch(np, o2=isn++, 0);
-				dogoto();
-				label(o2);
-				goto hardif;
+			if ((o1 = symbol()) == KEYW)
+				switch (cval) {
+				case GOTO:
+					if (o2 = simplegoto())
+						goto simpif;
+					cbranch(np, o2 = isn++, 0);
+					dogoto();
+					label(o2);
+					goto hardif;
 
-			case RETURN:
-				if (nextchar()==';') {
-					o2 = retlab;
+				case RETURN:
+					if (nextchar() == ';') {
+						o2 = retlab;
+						goto simpif;
+					}
+					cbranch(np, o1 = isn++, 0);
+					doret();
+					label(o1);
+					o2++;
+					goto hardif;
+
+				case BREAK:
+					o2 = brklab;
 					goto simpif;
+
+				case CONTIN:
+					o2 = contlab;
+				simpif:
+					chconbrk(o2);
+					cbranch(np, o2, 1);
+				hardif:
+					if ((o = symbol()) != SEMI)
+						goto syntax;
+					if ((o1 = symbol()) == KEYW && cval == ELSE)
+						goto stmt;
+					peeksym = o1;
+					return;
 				}
-				cbranch(np, o1=isn++, 0);
-				doret();
-				label(o1);
-				o2++;
-				goto hardif;
-
-			case BREAK:
-				o2 = brklab;
-				goto simpif;
-
-			case CONTIN:
-				o2 = contlab;
-			simpif:
-				chconbrk(o2);
-				cbranch(np, o2, 1);
-			hardif:
-				if ((o=symbol())!=SEMI)
-					goto syntax;
-				if ((o1=symbol())==KEYW && cval==ELSE)
-					goto stmt;
-				peeksym = o1;
-				return;
-			}
 			peeksym = o1;
-			cbranch(np, o1=isn++, 0);
+			cbranch(np, o1 = isn++, 0);
 			statement();
-			if ((o=symbol())==KEYW && cval==ELSE) {
+			if ((o = symbol()) == KEYW && cval == ELSE) {
 				o2 = isn++;
 				branch(o2);
 				label(o1);
@@ -400,7 +415,7 @@ stmt:
 			o1 = contlab;
 			o2 = brklab;
 			label(contlab = isn++);
-			cbranch(pexpr(), brklab=isn++, 0);
+			cbranch(pexpr(), brklab = isn++, 0);
 			statement();
 			branch(contlab);
 			label(brklab);
@@ -427,7 +442,7 @@ stmt:
 			statement();
 			label(contlab);
 			contlab = o1;
-			if ((o=symbol())==KEYW && cval==WHILE) {
+			if ((o = symbol()) == KEYW && cval == WHILE) {
 				cbranch(tree(), o3, 1);
 				label(brklab);
 				brklab = o2;
@@ -437,15 +452,16 @@ stmt:
 
 		case CASE:
 			o1 = conexp();
-			if ((o=symbol())!=COLON)
+			if ((o = symbol()) != COLON)
 				goto syntax;
-			if (swp==0) {
+			if (swp == 0) {
 				error("Case not in switch");
 				goto stmt;
 			}
-			if(swp>=swtab+SWSIZ) {
+			if (swp >= swtab + SWSIZ) {
 				error("Switch table overflow");
-			} else {
+			}
+			else {
 				swp->swlab = isn;
 				(swp++)->swval = o1;
 				label(isn++);
@@ -457,17 +473,17 @@ stmt:
 			brklab = isn++;
 			np = pexpr();
 			chkw(np, -1);
-			rcexpr(block(RFORCE,0,NULL,NULL,np, NULL));
+			rcexpr(block(RFORCE, 0, NULL, NULL, np, NULL));
 			pswitch();
 			brklab = o1;
 			return;
 
 		case DEFAULT:
-			if (swp==0)
+			if (swp == 0)
 				error("Default not in switch");
 			if (deflab)
 				error("More than 1 'default'");
-			if ((o=symbol())!=COLON)
+			if ((o = symbol()) != COLON)
 				goto syntax;
 			label(deflab = isn++);
 			goto stmt;
@@ -477,7 +493,7 @@ stmt:
 			o2 = brklab;
 			contlab = isn++;
 			brklab = isn++;
-			if (o=forstmt())
+			if (o = forstmt())
 				goto syntax;
 			label(brklab);
 			contlab = o1;
@@ -493,14 +509,15 @@ stmt:
 		goto syntax;
 
 	case NAME:
-		if (nextchar()==':') {
+		if (nextchar() == ':') {
 			struct hshtab *lp = csym;
 			peekc = 0;
-			if (lp->hclass>0) {
-				if (lp->hblklev==0) {
+			if (lp->hclass > 0) {
+				if (lp->hblklev == 0) {
 					pushdecl((struct phshtab *)lp);
 					lp->hoffset = 0;
-				} else {
+				}
+				else {
 					defsym = lp;
 					redec();
 					goto stmt;
@@ -509,7 +526,7 @@ stmt:
 			lp->hclass = STATIC;
 			lp->htype = ARRAY;
 			lp->hflag |= FLABL;
-			if (lp->hoffset==0)
+			if (lp->hoffset == 0)
 				lp->hoffset = isn++;
 			label(lp->hoffset);
 			goto stmt;
@@ -519,7 +536,7 @@ stmt:
 	rcexpr(tree());
 
 semi:
-	if ((o=symbol())==SEMI)
+	if ((o = symbol()) == SEMI)
 		return;
 syntax:
 	error("Statement syntax");
@@ -529,39 +546,40 @@ syntax:
 /*
  * Process a for statement.
  */
-int forstmt(void)
+int
+forstmt(void)
 {
 	register int l, o, sline;
 	int sline1, *ss;
 	struct tnode *st;
 
-	if ((o=symbol()) != LPARN)
-		return(o);
-	if ((o=symbol()) != SEMI) {		/* init part */
+	if ((o = symbol()) != LPARN)
+		return (o);
+	if ((o = symbol()) != SEMI) { /* init part */
 		peeksym = o;
 		rcexpr(tree());
-		if ((o=symbol()) != SEMI)
-			return(o);
+		if ((o = symbol()) != SEMI)
+			return (o);
 	}
 	label(contlab);
-	if ((o=symbol()) != SEMI) {		/* test part */
+	if ((o = symbol()) != SEMI) { /* test part */
 		peeksym = o;
 		cbranch(tree(), brklab, 0);
-		if ((o=symbol()) != SEMI)
-			return(o);
+		if ((o = symbol()) != SEMI)
+			return (o);
 	}
-	if ((peeksym=symbol()) == RPARN) {	/* incr part */
+	if ((peeksym = symbol()) == RPARN) { /* incr part */
 		peeksym = -1;
 		statement();
 		branch(contlab);
-		return(0);
+		return (0);
 	}
 	l = contlab;
 	contlab = isn++;
 	st = tree();
 	sline = line;
-	if ((o=symbol()) != RPARN)
-		return(o);
+	if ((o = symbol()) != RPARN)
+		return (o);
 	ss = (int *)funcbase;
 	funcbase = curbase;
 	statement();
@@ -574,7 +592,7 @@ int forstmt(void)
 		ss = (int *)maxdecl;
 	curbase = funcbase = (char *)ss;
 	branch(l);
-	return(0);
+	return (0);
 }
 
 /*
@@ -585,39 +603,40 @@ struct tnode *
 pexpr(void)
 {
 	register int o;
-	register struct tnode *t;	/* tree() returns a pointer, not int */
+	register struct tnode *t; /* tree() returns a pointer, not int */
 
-	if ((o=symbol())!=LPARN)
+	if ((o = symbol()) != LPARN)
 		goto syntax;
 	t = tree();
-	if ((o=symbol())!=RPARN)
+	if ((o = symbol()) != RPARN)
 		goto syntax;
-	return(t);
+	return (t);
 syntax:
 	error("Statement syntax");
 	errflush(o);
-	return(0);
+	return (0);
 }
 
 /*
  * The switch statement, which involves collecting the
  * constants and labels for the cases.
  */
-void pswitch(void)
+void
+pswitch(void)
 {
 	register struct swtab *cswp, *sswp;
 	int dl, swlab;
 
 	cswp = sswp = swp;
-	if (swp==0)
+	if (swp == 0)
 		cswp = swp = swtab;
-	branch(swlab=isn++);
+	branch(swlab = isn++);
 	dl = deflab;
 	deflab = 0;
 	statement();
 	branch(brklab);
 	label(swlab);
-	if (deflab==0)
+	if (deflab == 0)
 		deflab = brklab;
 	outcode("BNN", SWIT, deflab, line);
 	for (; cswp < swp; cswp++)
@@ -638,28 +657,30 @@ void pswitch(void)
 /*
  * Structure resembling a block for a register variable.
  */
-struct	hshtab	hreg = { REG, 0, 0, NULL, NULL, 0 };
-struct	tnode	areg = { NAME, 0, NULL, NULL, (struct tnode *)&hreg};
-void funchead(void)
+struct hshtab hreg = {REG, 0, 0, NULL, NULL, 0};
+struct tnode areg = {NAME, 0, NULL, NULL, (struct tnode *)&hreg};
+
+void
+funchead(void)
 {
 	register int pl;
 	register struct hshtab *cs;
 	struct tnode *bstack[2];
 
 	pl = STARG;
-	while(paraml) {
+	while (paraml) {
 		parame->hpnext = 0;
 		cs = paraml;
 		paraml = paraml->hpnext;
-		if (cs->htype==FLOAT)
+		if (cs->htype == FLOAT)
 			cs->htype = DOUBLE;
 		cs->hoffset = pl;
-		if ((cs->htype&XTYPE) == ARRAY) {
-			cs->htype -= (ARRAY-PTR);	/* set ptr */
-			cs->hsubsp++;		/* pop dims */
+		if ((cs->htype & XTYPE) == ARRAY) {
+			cs->htype -= (ARRAY - PTR); /* set ptr */
+			cs->hsubsp++;		    /* pop dims */
 		}
 		pl += rlength((struct tnode *)cs);
-		if (cs->hclass==AREG && (hreg.hoffset=goodreg(cs))>=0) {
+		if (cs->hclass == AREG && (hreg.hoffset = goodreg(cs)) >= 0) {
 			bstack[0] = &areg;
 			bstack[1] = nblock(cs);
 			cp = &bstack[2];
@@ -669,20 +690,22 @@ void funchead(void)
 			rcexpr(bstack[0]);
 			cs->hoffset = hreg.hoffset;
 			cs->hclass = REG;
-		} else
+		}
+		else
 			cs->hclass = AUTO;
 		prste(cs);
 	}
-	for (cs=hshtab; cs<hshtab+HSHSIZ; cs++) {
+	for (cs = hshtab; cs < hshtab + HSHSIZ; cs++) {
 		if (cs->name[0] == '\0')
 			continue;
-		if (cs->hclass == ARG || cs->hclass==AREG)
+		if (cs->hclass == ARG || cs->hclass == AREG)
 			error("Not an argument: %.8s", cs->name);
 	}
 	outcode("BN", SETREG, regvar);
 }
 
-void blockhead(void)
+void
+blockhead(void)
 {
 	register int r;
 
@@ -698,50 +721,53 @@ void blockhead(void)
  * symbols; save those that are external.
  * Also complain about undefined labels.
  */
-void blkend(void)
+void
+blkend(void)
 {
 	register struct hshtab *cs, *ncs;
 	struct hshtab *endcs;
 	register int i;
 
 	blklev--;
-	for (cs=hshtab; cs->name[0] && cs<hshtab+HSHSIZ-1; ++cs)
+	for (cs = hshtab; cs->name[0] && cs < hshtab + HSHSIZ - 1; ++cs)
 		;
 	endcs = cs;
-	do  if (cs->name[0]) {
-		if (cs->hblklev <= blklev)
-			continue;
-		if ((cs->hclass!=EXTERN || blklev!=0)
-		 && ((cs->hflag&FLABL)==0 || blklev==0)) {
-			if (cs->hclass==0)
-				error("%.8s undefined", cs->name);
-			if ((ncs = (struct hshtab *)cs->hpdown)==NULL) {
+	do
+		if (cs->name[0]) {
+			if (cs->hblklev <= blklev)
+				continue;
+			if ((cs->hclass != EXTERN || blklev != 0) && ((cs->hflag & FLABL) == 0 || blklev == 0)) {
+				if (cs->hclass == 0)
+					error("%.8s undefined", cs->name);
+				if ((ncs = (struct hshtab *)cs->hpdown) == NULL) {
+					cs->name[0] = '\0';
+					hshused--;
+					cs->hflag &= FKEYW;
+				}
+				else {
+					cpysymb((struct phshtab *)cs, (struct phshtab *)ncs);
+				}
+				continue;
+			}
+			/*
+			 * Retained name; must rehash.
+			 */
+			for (i = 0; i < NCPS; i++)
+				symbuf[i] = cs->name[i];
+			mossym = cs->hflag & FMOS;
+			lookup();
+			if ((ncs = csym) != cs) {
 				cs->name[0] = '\0';
 				hshused--;
+				i = ncs->hflag;
+				cpysymb((struct phshtab *)ncs, (struct phshtab *)cs);
+				ncs->hflag |= i & FKEYW;
 				cs->hflag &= FKEYW;
-			} else {
-				cpysymb((struct phshtab *)cs, (struct phshtab *)ncs);
 			}
-			continue;
+			if (ncs->hblklev > 1 || (ncs->hblklev > 0 && ncs->hclass == EXTERN))
+				ncs->hblklev--;
 		}
-		/*
-		 * Retained name; must rehash.
-		 */
-		for (i=0; i<NCPS; i++)
-			symbuf[i] = cs->name[i];
-		mossym = cs->hflag&FMOS;
-		lookup();
-		if ((ncs=csym) != cs) {
-			cs->name[0] = '\0';
-			hshused--;
-			i = ncs->hflag;
-			cpysymb((struct phshtab *)ncs, (struct phshtab *)cs);
-			ncs->hflag |= i&FKEYW;
-			cs->hflag &= FKEYW;
-		}
-		if (ncs->hblklev>1 || (ncs->hblklev>0 && ncs->hclass==EXTERN))
-			ncs->hblklev--;
-	} while ((cs = (cs<&hshtab[HSHSIZ-1])? ++cs: hshtab) != endcs);
+	while ((cs = (cs < &hshtab[HSHSIZ - 1]) ? ++cs : hshtab) != endcs);
 }
 
 /*
@@ -749,7 +775,8 @@ void blkend(void)
  * benefit of the debugger.  None of these are used
  * by the assembler except to save them.
  */
-void prste(struct hshtab *acs)
+void
+prste(struct hshtab *acs)
 {
 	register struct hshtab *cs;
 	register int nkind;
@@ -770,7 +797,6 @@ void prste(struct hshtab *acs)
 
 	default:
 		return;
-
 	}
 	outcode("BSN", nkind, cs->name, cs->hoffset);
 }
@@ -779,12 +805,13 @@ void prste(struct hshtab *acs)
  * In case of error, skip to the next
  * statement delimiter.
  */
-void errflush(int ao)
+void
+errflush(int ao)
 {
 	register int o;
 
 	o = ao;
-	while(o>RBRACE)	/* ; { } */
+	while (o > RBRACE) /* ; { } */
 		o = symbol();
-	peeksym  = o;
+	peeksym = o;
 }

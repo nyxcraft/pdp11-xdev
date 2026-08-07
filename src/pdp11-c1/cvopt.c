@@ -1,62 +1,62 @@
-static	char	sccsid[] = "@(#)cvopt.c	2.1";	/*	SCCS id keyword	*/
+static char sccsid[] = "@(#)cvopt.c	2.1"; /*	SCCS id keyword	*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-int	tabflg;
-int	labno	= 1;
-FILE	*curbuf;
-FILE	*obuf;
+int tabflg;
+int labno = 1;
+FILE *curbuf;
+FILE *obuf;
 
-void	put(int c);
-int	flag(void);
+void put(int c);
+int flag(void);
 
 int
 main(int argc, char **argv)
 {
-/*
-	A1 -> A
-	A2    B
-	A     O
-	B1    C
-	B2    D
-	BE    L
-	BF    P
-	C1    E
-	C2    F
-	F     G
-	H     H
-	R     I
-	R1    J
-	S     K
-	I     M
-	M     N
+	/*
+		A1 -> A
+		A2    B
+		A     O
+		B1    C
+		B2    D
+		BE    L
+		BF    P
+		C1    E
+		C2    F
+		F     G
+		H     H
+		R     I
+		R1    J
+		S     K
+		I     M
+		M     N
 
-		*	+1
-		S	+2
-		C	+4
-		1	+8
+			*	+1
+			S	+2
+			C	+4
+			1	+8
 
-	z  -> 4
-	c     10
-	a     14
-	e     20
-	n     63
-	*	+0100
-*/
+		z  -> 4
+		c     10
+		a     14
+		e     20
+		n     63
+		*	+0100
+	*/
 
 	int c, snlflg, nlflg, t, smode, m, ssmode, peekc;
 
 	smode = nlflg = snlflg = ssmode = 0;
-	if (argc>1)
+	if (argc > 1)
 		if (freopen(argv[1], "r", stdin) == NULL) {
 			fprintf(stderr, "%s?\n", argv[1]);
-			return(1);
+			return (1);
 		}
-	if (argc>2) 
+	if (argc > 2)
 		if (freopen(argv[2], "w", stdout) == NULL) {
 			fprintf(stderr, "%s?\n", argv[2]);
-			return(1);
+			return (1);
 		}
 	if ((obuf = fopen("cvopt.tmp", "w")) == NULL) {
 		fprintf(stderr, "cvopt.tmp?\n");
@@ -65,15 +65,14 @@ main(int argc, char **argv)
 	curbuf = obuf;
 loop:
 	c = getchar();
-	if (c!='\n' && c!='\t')
+	if (c != '\n' && c != '\t')
 		nlflg = 0;
-	if (ssmode!=0 && c!='%') {
+	if (ssmode != 0 && c != '%') {
 		ssmode = 0;
 		curbuf = stdout;
 		fprintf(curbuf, "L%d:<", labno++);
 	}
-	switch(c) {
-
+	switch (c) {
 	case EOF:
 		fprintf(obuf, "0\n");
 		fclose(obuf);
@@ -85,17 +84,18 @@ loop:
 		while ((c = getchar()) != EOF)
 			putchar(c);
 		unlink("cvopt.tmp");
-		return(0);
+		return (0);
 
 	case ':':
 		if (!smode)
-			fprintf(curbuf, "=.+2; 0"); else
+			fprintf(curbuf, "=.+2; 0");
+		else
 			put(':');
 		goto loop;
 
 	case 'A':
-		if ((c=getchar())=='1' || c=='2') {
-			put(c+'A'-'1');
+		if ((c = getchar()) == '1' || c == '2') {
+			put(c + 'A' - '1');
 			goto loop;
 		}
 		put('O');
@@ -104,7 +104,6 @@ loop:
 
 	case 'B':
 		switch (getchar()) {
-
 		case '1':
 			put('C');
 			goto loop;
@@ -125,7 +124,7 @@ loop:
 		goto loop;
 
 	case 'C':
-		put(getchar()+'E'-'1');
+		put(getchar() + 'E' - '1');
 		goto loop;
 
 	case 'F':
@@ -133,8 +132,9 @@ loop:
 		goto subtre;
 
 	case 'R':
-		if ((c=getchar()) == '1')
-		put('J'); else {
+		if ((c = getchar()) == '1')
+			put('J');
+		else {
 			put('I');
 			ungetc(c, stdin);
 		}
@@ -150,12 +150,11 @@ loop:
 
 	case 'S':
 		put('K');
-subtre:
+	subtre:
 		snlflg = 1;
 		t = 'A';
-l1:
-		switch (c=getchar()) {
-
+	l1:
+		switch (c = getchar()) {
 		case '*':
 			t++;
 			goto l1;
@@ -181,18 +180,19 @@ l1:
 		goto loop;
 
 	case '#':
-		if(getchar()=='1')
-			put('#'); else
+		if (getchar() == '1')
+			put('#');
+		else
 			put('"');
 		goto loop;
 
 	case '%':
 		if (smode)
 			curbuf = obuf;
-		if (ssmode==0) {
-			if ((peekc=getchar())=='[') {
+		if (ssmode == 0) {
+			if ((peekc = getchar()) == '[') {
 				curbuf = stdout;
-				while((c=getchar())!=']')
+				while ((c = getchar()) != ']')
 					put(c);
 				getchar();
 				fprintf(curbuf, ";");
@@ -201,9 +201,8 @@ l1:
 			}
 			ungetc(peekc, stdin);
 		}
-loop1:
-		switch (c=getchar()) {
-
+	loop1:
+		switch (c = getchar()) {
 		case ' ':
 		case '\t':
 			goto loop1;
@@ -248,15 +247,16 @@ loop1:
 		case 'n':
 			t = flag();
 			m = 63;
-pf:
-			if ((c=getchar())=='*')
-				m += 0100; else
+		pf:
+			if ((c = getchar()) == '*')
+				m += 0100;
+			else
 				ungetc(c, stdin);
 			fprintf(curbuf, ".byte %o,%o", m, t);
 			goto loop1;
 		case '[':
 			fprintf(curbuf, "L%d=", labno++);
-			while ((c=getchar())!=']')
+			while ((c = getchar()) != ']')
 				put(c);
 			ssmode = 0;
 			smode = 0;
@@ -285,7 +285,7 @@ pf:
 		goto loop;
 
 	case '\n':
-		if (!smode)  {
+		if (!smode) {
 			put('\n');
 			goto loop;
 		}
@@ -313,13 +313,13 @@ pf:
 }
 
 int
-flag(void) {
+flag(void)
+{
 	register int c, f;
 
 	f = 0;
 l1:
-	switch(c=getchar()) {
-
+	switch (c = getchar()) {
 	case 'w':
 		f = 1;
 		goto l1;
@@ -357,7 +357,7 @@ l1:
 		goto l1;
 	}
 	ungetc(c, stdin);
-	return(f);
+	return (f);
 }
 
 void
@@ -365,7 +365,8 @@ put(int c)
 {
 	if (tabflg) {
 		tabflg = 0;
-		fprintf(curbuf, ">;.byte %o;<", c+0200);
-	} else
+		fprintf(curbuf, ">;.byte %o;<", c + 0200);
+	}
+	else
 		putc(c, curbuf);
 }

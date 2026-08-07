@@ -14,40 +14,38 @@
  * November, 1978
  */
 
-#define	ignore(a)	Ignore((char *)(long) a)
-
+#define ignore(a) Ignore((char *)(long)a)
 
 /* Forward declarations for file-local functions. */
-static void	process(char *name);
-static off_t	yankstr(char **cpp);
-static int	octdigit(char c);
-static void	inithash(void);
-static int	fgetNUL(char *obuf, int rmdr, FILE *file);
-static int	xgetc(FILE *file);
-static off_t	hashit(char *str, int new);
-static void	flushsh(void);
-static void	found(int new, off_t off, char *str);
-static void	prstr(char *cp);
-static void	xsdotc(void);
-static char	*savestr(char *cp);
-static void	Ignore(char *a);
-static void	ignorf(void (*a)(int));
-static int	lastchr(char *cp);
-static int	istail(char *str, char *of);
-static void	onintr(int sig);
+static void process(char *name);
+static off_t yankstr(char **cpp);
+static int octdigit(char c);
+static void inithash(void);
+static int fgetNUL(char *obuf, int rmdr, FILE *file);
+static int xgetc(FILE *file);
+static off_t hashit(char *str, int new);
+static void flushsh(void);
+static void found(int new, off_t off, char *str);
+static void prstr(char *cp);
+static void xsdotc(void);
+static char *savestr(char *cp);
+static void Ignore(char *a);
+static void ignorf(void (*a)(int));
+static int lastchr(char *cp);
+static int istail(char *str, char *of);
+static void onintr(int sig);
 
-off_t	tellpt;
-off_t	mesgpt;
-char	*strings =	"strings";
+off_t tellpt;
+off_t mesgpt;
+char *strings = "strings";
 
-int	cflg;
-int	vflg;
-int	readstd;
+int cflg;
+int vflg;
+int readstd;
 
 int
 main(int argc, char **argv)
 {
-
 	argc--, argv++;
 	while (argc > 0 && argv[0][0] == '-') {
 		register char *cp = &(*argv++)[1];
@@ -57,19 +55,20 @@ main(int argc, char **argv)
 			readstd++;
 			continue;
 		}
-		do switch (*cp++) {
+		do
+			switch (*cp++) {
+			case 'c':
+				cflg++;
+				continue;
 
-		case 'c':
-			cflg++;
-			continue;
+			case 'v':
+				vflg++;
+				continue;
 
-		case 'v':
-			vflg++;
-			continue;
-
-		default:
-			fprintf(stderr, "usage: xstr [ -v ] [ -c ] [ - ] [ name ... ]\n");
-		} while (*cp);
+			default:
+				fprintf(stderr, "usage: xstr [ -v ] [ -c ] [ - ] [ name ... ]\n");
+			}
+		while (*cp);
 	}
 	if (signal(SIGINT, SIG_IGN) == SIG_DFL)
 		signal(SIGINT, onintr);
@@ -77,7 +76,11 @@ main(int argc, char **argv)
 		inithash();
 	else
 		strings = savestr("/tmp/xstrXXXXXX");
-		{ int fd = mkstemp(strings); if (fd >= 0) close(fd); }
+	{
+		int fd = mkstemp(strings);
+		if (fd >= 0)
+			close(fd);
+	}
 	while (readstd || argc > 0) {
 		if (freopen("x.c", "w", stdout) == NULL)
 			perror("x.c"), exit(1);
@@ -121,44 +124,44 @@ process(char *name)
 				printf("%s", linebuf);
 			continue;
 		}
-		for (cp = linebuf; c = *cp++;) switch (c) {
+		for (cp = linebuf; c = *cp++;)
+			switch (c) {
+			case '"':
+				if (incomm)
+					goto def;
+				printf("(&xstr[%d])", (int)yankstr(&cp));
+				break;
 
-		case '"':
-			if (incomm)
-				goto def;
-			printf("(&xstr[%d])", (int) yankstr(&cp));
-			break;
+			case '\'':
+				if (incomm)
+					goto def;
+				putchar(c);
+				if (*cp)
+					putchar(*cp++);
+				break;
 
-		case '\'':
-			if (incomm)
-				goto def;
-			putchar(c);
-			if (*cp)
-				putchar(*cp++);
-			break;
-
-		case '/':
-			if (incomm || *cp != '*')
-				goto def;
-			incomm = 1;
-			cp++;
-			printf("/*");
-			continue;
-
-		case '*':
-			if (incomm && *cp == '/') {
-				incomm = 0;
+			case '/':
+				if (incomm || *cp != '*')
+					goto def;
+				incomm = 1;
 				cp++;
-				printf("*/");
+				printf("/*");
 				continue;
-			}
-			goto def;
 
-def:
-		default:
-			putchar(c);
-			break;
-		}
+			case '*':
+				if (incomm && *cp == '/') {
+					incomm = 0;
+					cp++;
+					printf("*/");
+					continue;
+				}
+				goto def;
+
+			def:
+			default:
+				putchar(c);
+				break;
+			}
 	}
 	if (ferror(stdout))
 		perror("x.c"), onintr(0);
@@ -175,7 +178,6 @@ yankstr(register char **cpp)
 
 	while (c = *cp++) {
 		switch (c) {
-
 		case '"':
 			cp++;
 			goto out;
@@ -204,7 +206,7 @@ yankstr(register char **cpp)
 			c <<= 3, c += *cp++ - '0';
 			break;
 		}
-gotc:
+	gotc:
 		*dp++ = c;
 	}
 out:
@@ -216,7 +218,6 @@ out:
 static int
 octdigit(char c)
 {
-
 	return (isdigit(c) && c != '8' && c != '9');
 }
 
@@ -252,18 +253,17 @@ fgetNUL(char *obuf, register int rmdr, FILE *file)
 static int
 xgetc(FILE *file)
 {
-
 	tellpt++;
 	return (getc(file));
 }
 
-#define	BUCKETS	128
+#define BUCKETS 128
 
-struct	hash {
-	off_t	hpt;
-	char	*hstr;
-	struct	hash *hnext;
-	short	hnew;
+struct hash {
+	off_t hpt;
+	char *hstr;
+	struct hash *hnext;
+	short hnew;
 } bucket[BUCKETS];
 
 static off_t
@@ -279,7 +279,7 @@ hashit(char *str, int new)
 		if (i >= 0)
 			return (hp->hpt + i);
 	}
-	hp = (struct hash *) calloc(1, sizeof (*hp));
+	hp = (struct hash *)calloc(1, sizeof(*hp));
 	hp->hpt = mesgpt;
 	hp->hstr = savestr(str);
 	mesgpt += strlen(hp->hstr) + 1;
@@ -300,7 +300,7 @@ flushsh(void)
 	for (i = 0; i < BUCKETS; i++)
 		for (hp = bucket[i].hnext; hp != NULL; hp = hp->hnext)
 			if (hp->hnew)
-				new++;
+				new ++;
 			else
 				old++;
 	if (new == 0 && old != 0)
@@ -314,7 +314,7 @@ flushsh(void)
 	 * new==0 returns above -- so this affects natural accumulation
 	 * only.) */
 	mesgwrit = fopen(strings, old ? "r+" : "w");
-	if (mesgwrit == (FILE *) NULL) {
+	if (mesgwrit == (FILE *)NULL) {
 		perror(strings);
 		exit(8);
 	}
@@ -339,9 +339,9 @@ found(int new, off_t off, char *str)
 	if (vflg == 0)
 		return;
 	if (!new)
-		fprintf(stderr, "found at %d:", (int) off);
+		fprintf(stderr, "found at %d:", (int)off);
 	else
-		fprintf(stderr, "new at %d:", (int) off);
+		fprintf(stderr, "new at %d:", (int)off);
 	prstr(str);
 	fprintf(stderr, "\n");
 }
@@ -400,7 +400,7 @@ out:
 static char *
 savestr(register char *cp)
 {
-	register char *dp = (char *) calloc(1, strlen(cp) + 1);
+	register char *dp = (char *)calloc(1, strlen(cp) + 1);
 
 	return (strcpy(dp, cp));
 }
@@ -408,21 +408,18 @@ savestr(register char *cp)
 static void
 Ignore(char *a)
 {
-
 	a = a;
 }
 
 static void
 ignorf(void (*a)(int))
 {
-
 	a = a;
 }
 
 static int
 lastchr(register char *cp)
 {
-
 	while (cp[0] && cp[1])
 		cp++;
 	return (*cp);
@@ -441,7 +438,6 @@ istail(register char *str, register char *of)
 static void
 onintr(int sig)
 {
-
 	ignorf(signal(SIGINT, SIG_IGN));
 	if (strings[0] == '/')
 		ignore(unlink(strings));

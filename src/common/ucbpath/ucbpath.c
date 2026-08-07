@@ -1,12 +1,12 @@
 /*	@(#)ucbpath.c	2.2	SCCS id keyword	*/
 #include <stdlib.h>
 #include "ucbpath.h"
-static	char	*searchpath;
+static char *searchpath;
 
 void
 resetfp(void)
 {
-	static	char	*path = NULL;
+	static char *path = NULL;
 	if (path == NULL) {
 		path = getenv("UCBPATH");
 		if (path == NULL) {
@@ -21,8 +21,8 @@ resetfp(void)
 char *
 makefp(char *bestsofar, char *buffer, char **list)
 {
-	char	*retval;
-	register	char	*cp1, *cp2;
+	char *retval;
+	register char *cp1, *cp2;
 
 	cp2 = searchpath;
 
@@ -31,7 +31,7 @@ makefp(char *bestsofar, char *buffer, char **list)
 		if (cp2 == NULL) {
 			if (bestsofar)
 				cp2 = bestsofar;
-			else 
+			else
 				cp2 = "...bin";
 		}
 
@@ -42,15 +42,14 @@ makefp(char *bestsofar, char *buffer, char **list)
 			cp2++;
 		else
 			cp2 = NULL;
-
-	} while (
-		(cp1 - buffer < 3  || cp1[-3] != 'b' ||
-			cp1[-2] != 'i' || cp1[-1] != 'n')
-	);
+	}
+	while (
+		(cp1 - buffer < 3 || cp1[-3] != 'b' ||
+		 cp1[-2] != 'i' || cp1[-1] != 'n'));
 	cp1 -= 3;
 
 	searchpath = cp2;
-	
+
 	_concat(cp1, list);
-	return(retval);
+	return (retval);
 }

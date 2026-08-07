@@ -18,6 +18,6 @@
  * binutils' MENLO paths are aliased to n_type/n_ovly in <a.out.h>.)
  */
 #ifndef PDP11
-#define PDP11	70		/* machine type, as the authentic whoami.h sets */
+#define PDP11 70 /* machine type, as the authentic whoami.h sets */
 #endif
 #include <sys/localopts.h>

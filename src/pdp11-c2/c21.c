@@ -10,24 +10,24 @@
  * Original K&R return/param types are preserved: an implicit-int return
  * that never yields a value becomes void; every declared param keeps its
  * original type (no declarator == int).  abs() comes from <stdlib.h>. */
-int	toofar(struct node *p);
-int	ilen(struct node *p);
-int	adrlen(char *s);
-void	savereg(int ai, char *as);
-void	dest(char *as, int flt);
-void	singop(struct node *ap);
-void	dualop(struct node *ap);
-int	findrand(char *as, int flt);
-int	isreg(char *as);
-void	check(void);
-int	source(char *ap);
-void	repladdr(struct node *p, int f, int flt);
-void	redunbr(struct node *p);
-int	compare(int oper, char *cp1, char *cp2);
-void	setcon(char *ar1, char *ar2);
-int	equstr(char *ap1, char *ap2);
-void	setcc(char *ap);
-int	natural(char *ap);
+int toofar(struct node *p);
+int ilen(struct node *p);
+int adrlen(char *s);
+void savereg(int ai, char *as);
+void dest(char *as, int flt);
+void singop(struct node *ap);
+void dualop(struct node *ap);
+int findrand(char *as, int flt);
+int isreg(char *as);
+void check(void);
+int source(char *ap);
+void repladdr(struct node *p, int f, int flt);
+void redunbr(struct node *p);
+int compare(int oper, char *cp1, char *cp2);
+void setcon(char *ar1, char *ar2);
+int equstr(char *ap1, char *ap2);
+void setcc(char *ap);
+int natural(char *ap);
 
 void
 rmove(void)
@@ -36,232 +36,231 @@ rmove(void)
 	register int r;
 	register int r1, flt;
 
-	for (p=first.forw; p!=0; p = p->forw) {
-	flt = 0;
-	switch (p->op) {
+	for (p = first.forw; p != 0; p = p->forw) {
+		flt = 0;
+		switch (p->op) {
+		case MOVF:
+		case MOVFO:
+		case MOVOF:
+			flt = NREG;
 
-	case MOVF:
-	case MOVFO:
-	case MOVOF:
-		flt = NREG;
-
-	case MOV:
-		if (p->subop==BYTE)
-			goto dble;
-		dualop(p);
-		if ((r = findrand(regs[RT1], flt)) >= 0) {
-			if (r == flt+isreg(regs[RT2]) && p->forw->op!=CBR
-			   && p->forw->op!=SXT
-			   && p->forw->op!=CFCC) {
-				p->forw->back = p->back;
-				p->back->forw = p->forw;
-				redunm++;
-				continue;
-			}
-		}
-		if (equstr(regs[RT1], "$0")) {
-			p->op = CLR;
-			strcpy(regs[RT1], regs[RT2]);
-			regs[RT2][0] = 0;
-			p->code = copy(1, regs[RT1]);
-			goto sngl;
-		}
-		repladdr(p, 0, flt);
-		r = isreg(regs[RT1]);
-		r1 = isreg(regs[RT2]);
-		dest(regs[RT2], flt);
-		if (r >= 0)
-			if (r1 >= 0)
-				savereg(r1+flt, regs[r+flt]);
-			else
-				savereg(r+flt, regs[RT2]);
-		else
-			if (r1 >= 0)
-				savereg(r1+flt, regs[RT1]);
-			else
-				setcon(regs[RT1], regs[RT2]);
-		source(regs[RT1]);
-		setcc(regs[RT2]);
-		continue;
-
-	case ADDF:
-	case SUBF:
-	case DIVF:
-	case MULF:
-		flt = NREG;
-		goto dble;
-
-	case ADD:
-	case SUB:
-	case BIC:
-	case BIS:
-	case MUL:
-	case DIV:
-	case ASH:
-	dble:
-		dualop(p);
-		if (p->op==BIC && (equstr(regs[RT1], "$-1") || equstr(regs[RT1], "$177777"))) {
-			p->op = CLR;
-			strcpy(regs[RT1], regs[RT2]);
-			regs[RT2][0] = 0;
-			p->code = copy(1, regs[RT1]);
-			goto sngl;
-		}
-		if ((p->op==BIC || p->op==BIS) && equstr(regs[RT1], "$0")) {
-			if (p->forw->op!=CBR) {
-				p->back->forw = p->forw;
-				p->forw->back = p->back;
-				continue;
-			}
-		}
-		repladdr(p, 0, flt);
-		source(regs[RT1]);
-		dest(regs[RT2], flt);
-		if (p->op==DIV && (r = isreg(regs[RT2])>=0))
-			regs[r+1][0] = 0;
-		ccloc[0] = 0;
-		continue;
-
-	case CLRF:
-	case NEGF:
-		flt = NREG;
-
-	case CLR:
-	case COM:
-	case INC:
-	case DEC:
-	case NEG:
-	case ASR:
-	case ASL:
-	case SXT:
-		singop(p);
-	sngl:
-		dest(regs[RT1], flt);
-		if (p->op==CLR && flt==0)
-			if ((r = isreg(regs[RT1])) >= 0)
-				savereg(r, "$0");
-			else
-				setcon("$0", regs[RT1]);
-		ccloc[0] = 0;
-		continue;
-
-	case TSTF:
-		flt = NREG;
-
-	case TST:
-		singop(p);
-		repladdr(p, 0, flt);
-		source(regs[RT1]);
-		if (equstr(regs[RT1], ccloc)) {
-			p->back->forw = p->forw;
-			p->forw->back = p->back;
-			p = p->back;
-			nrtst++;
-			nchange++;
-		}
-		continue;
-
-	case CMPF:
-		flt = NREG;
-
-	case CMP:
-	case BIT:
-		dualop(p);
-		source(regs[RT1]);
-		source(regs[RT2]);
-		if(p->op==BIT) {
-			if (equstr(regs[RT1], "$-1") || equstr(regs[RT1], "$177777")) {
-				p->op = TST;
-				strcpy(regs[RT1], regs[RT2]);
-				regs[RT2][0] = 0;
-				p->code = copy(1, regs[RT1]);
-				nchange++;
-				nsaddr++;
-			} else if (equstr(regs[RT2], "$-1") || equstr(regs[RT2], "$177777")) {
-				p->op = TST;
-				regs[RT2][0] = 0;
-				p->code = copy(1, regs[RT1]);
-				nchange++;
-				nsaddr++;
+		case MOV:
+			if (p->subop == BYTE)
+				goto dble;
+			dualop(p);
+			if ((r = findrand(regs[RT1], flt)) >= 0) {
+				if (r == flt + isreg(regs[RT2]) && p->forw->op != CBR && p->forw->op != SXT && p->forw->op != CFCC) {
+					p->forw->back = p->back;
+					p->back->forw = p->forw;
+					redunm++;
+					continue;
+				}
 			}
 			if (equstr(regs[RT1], "$0")) {
-				p->op = TST;
-				regs[RT2][0] = 0;
-				p->code = copy(1, regs[RT1]);
-				nchange++;
-				nsaddr++;
-			} else if (equstr(regs[RT2], "$0")) {
-				p->op = TST;
+				p->op = CLR;
 				strcpy(regs[RT1], regs[RT2]);
 				regs[RT2][0] = 0;
 				p->code = copy(1, regs[RT1]);
-				nchange++;
-				nsaddr++;
+				goto sngl;
 			}
-		}
-		repladdr(p, 1, flt);
-		ccloc[0] = 0;
-		continue;
+			repladdr(p, 0, flt);
+			r = isreg(regs[RT1]);
+			r1 = isreg(regs[RT2]);
+			dest(regs[RT2], flt);
+			if (r >= 0)
+				if (r1 >= 0)
+					savereg(r1 + flt, regs[r + flt]);
+				else
+					savereg(r + flt, regs[RT2]);
+			else if (r1 >= 0)
+				savereg(r1 + flt, regs[RT1]);
+			else
+				setcon(regs[RT1], regs[RT2]);
+			source(regs[RT1]);
+			setcc(regs[RT2]);
+			continue;
 
-	case CBR:
-		if (p->back->op==TST || p->back->op==CMP) {
-			if (p->back->op==TST) {
-				singop(p->back);
-				savereg(RT2, "$0");
-			} else
-				dualop(p->back);
-			r = compare(p->subop, findcon(RT1), findcon(RT2));
-			if (r==0) {
-				/*
-				 * The following is a correction suggested in:
-				 * Addenda to Unix 7th ed, July 30, 1979
-				 * note: dmr should be a little less careless.
-				 */
+		case ADDF:
+		case SUBF:
+		case DIVF:
+		case MULF:
+			flt = NREG;
+			goto dble;
+
+		case ADD:
+		case SUB:
+		case BIC:
+		case BIS:
+		case MUL:
+		case DIV:
+		case ASH:
+		dble:
+			dualop(p);
+			if (p->op == BIC && (equstr(regs[RT1], "$-1") || equstr(regs[RT1], "$177777"))) {
+				p->op = CLR;
+				strcpy(regs[RT1], regs[RT2]);
+				regs[RT2][0] = 0;
+				p->code = copy(1, regs[RT1]);
+				goto sngl;
+			}
+			if ((p->op == BIC || p->op == BIS) && equstr(regs[RT1], "$0")) {
+				if (p->forw->op != CBR) {
+					p->back->forw = p->forw;
+					p->forw->back = p->back;
+					continue;
+				}
+			}
+			repladdr(p, 0, flt);
+			source(regs[RT1]);
+			dest(regs[RT2], flt);
+			if (p->op == DIV && (r = isreg(regs[RT2]) >= 0))
+				regs[r + 1][0] = 0;
+			ccloc[0] = 0;
+			continue;
+
+		case CLRF:
+		case NEGF:
+			flt = NREG;
+
+		case CLR:
+		case COM:
+		case INC:
+		case DEC:
+		case NEG:
+		case ASR:
+		case ASL:
+		case SXT:
+			singop(p);
+		sngl:
+			dest(regs[RT1], flt);
+			if (p->op == CLR && flt == 0)
+				if ((r = isreg(regs[RT1])) >= 0)
+					savereg(r, "$0");
+				else
+					setcon("$0", regs[RT1]);
+			ccloc[0] = 0;
+			continue;
+
+		case TSTF:
+			flt = NREG;
+
+		case TST:
+			singop(p);
+			repladdr(p, 0, flt);
+			source(regs[RT1]);
+			if (equstr(regs[RT1], ccloc)) {
+				p->back->forw = p->forw;
+				p->forw->back = p->back;
+				p = p->back;
+				nrtst++;
+				nchange++;
+			}
+			continue;
+
+		case CMPF:
+			flt = NREG;
+
+		case CMP:
+		case BIT:
+			dualop(p);
+			source(regs[RT1]);
+			source(regs[RT2]);
+			if (p->op == BIT) {
+				if (equstr(regs[RT1], "$-1") || equstr(regs[RT1], "$177777")) {
+					p->op = TST;
+					strcpy(regs[RT1], regs[RT2]);
+					regs[RT2][0] = 0;
+					p->code = copy(1, regs[RT1]);
+					nchange++;
+					nsaddr++;
+				}
+				else if (equstr(regs[RT2], "$-1") || equstr(regs[RT2], "$177777")) {
+					p->op = TST;
+					regs[RT2][0] = 0;
+					p->code = copy(1, regs[RT1]);
+					nchange++;
+					nsaddr++;
+				}
+				if (equstr(regs[RT1], "$0")) {
+					p->op = TST;
+					regs[RT2][0] = 0;
+					p->code = copy(1, regs[RT1]);
+					nchange++;
+					nsaddr++;
+				}
+				else if (equstr(regs[RT2], "$0")) {
+					p->op = TST;
+					strcpy(regs[RT1], regs[RT2]);
+					regs[RT2][0] = 0;
+					p->code = copy(1, regs[RT1]);
+					nchange++;
+					nsaddr++;
+				}
+			}
+			repladdr(p, 1, flt);
+			ccloc[0] = 0;
+			continue;
+
+		case CBR:
+			if (p->back->op == TST || p->back->op == CMP) {
+				if (p->back->op == TST) {
+					singop(p->back);
+					savereg(RT2, "$0");
+				}
+				else
+					dualop(p->back);
+				r = compare(p->subop, findcon(RT1), findcon(RT2));
+				if (r == 0) {
+					/*
+					 * The following is a correction suggested in:
+					 * Addenda to Unix 7th ed, July 30, 1979
+					 * note: dmr should be a little less careless.
+					 */
 #ifdef BUGGYC
-				p->back->back->forw = p->forw;
-				p->forw->back = p->back->back;
+					p->back->back->forw = p->forw;
+					p->forw->back = p->back->back;
 #else
- 				if (p->forw->op==CBR
- 				  || p->forw->op==SXT
- 				  || p->forw->op==CFCC) {
- 					p->back->forw = p->forw;
- 					p->forw->back = p->back;
- 				} else {
- 					p->back->back->forw = p->forw;
- 					p->forw->back = p->back->back;
- 				}
+					if (p->forw->op == CBR || p->forw->op == SXT || p->forw->op == CFCC) {
+						p->back->forw = p->forw;
+						p->forw->back = p->back;
+					}
+					else {
+						p->back->back->forw = p->forw;
+						p->forw->back = p->back->back;
+					}
 #endif
 
-/*
-The old code deleted a test or compare with constant operands
-and a following conditional branch that would always fail.
-The new code only deletes the branch (leaves the test)
-if the combination is followed by another instruction that
-needs the condition codes.  The test and second branch are liable
-to be deleted later.
-*/
-				decref(p->ref);
-				p = p->back->back;
-				nchange++;
-			} else if (r>0) {
-				p->op = JBR;
-				p->subop = 0;
-				p->back->back->forw = p;
-				p->back = p->back->back;
-				p = p->back;
-				nchange++;
+					/*
+					The old code deleted a test or compare with constant operands
+					and a following conditional branch that would always fail.
+					The new code only deletes the branch (leaves the test)
+					if the combination is followed by another instruction that
+					needs the condition codes.  The test and second branch are liable
+					to be deleted later.
+					*/
+					decref(p->ref);
+					p = p->back->back;
+					nchange++;
+				}
+				else if (r > 0) {
+					p->op = JBR;
+					p->subop = 0;
+					p->back->back->forw = p;
+					p->back = p->back->back;
+					p = p->back;
+					nchange++;
+				}
 			}
+		case CFCC:
+			ccloc[0] = 0;
+			continue;
+
+		case JBR:
+			redunbr(p);
+
+		default:
+			clearreg();
 		}
-	case CFCC:
-		ccloc[0] = 0;
-		continue;
-
-	case JBR:
-		redunbr(p);
-
-	default:
-		clearreg();
-	}
 	}
 }
 
@@ -275,13 +274,12 @@ jumpsw(void)
 
 	t = 0;
 	nj = 0;
-	for (p=first.forw; p!=0; p = p->forw)
+	for (p = first.forw; p != 0; p = p->forw)
 		p->refc = ++t;
-	for (p=first.forw; p!=0; p = p1) {
+	for (p = first.forw; p != 0; p = p1) {
 		p1 = p->forw;
-		if (p->op == CBR && p1->op==JBR && p->ref && p1->ref
-		 && abs(p->refc - p->ref->refc) > abs(p1->refc - p1->ref->refc)) {
-			if (p->ref==p1->ref)
+		if (p->op == CBR && p1->op == JBR && p->ref && p1->ref && abs(p->refc - p->ref->refc) > abs(p1->refc - p1->ref->refc)) {
+			if (p->ref == p1->ref)
 				continue;
 			p->subop = revbr[p->subop];
 			tp = p1->ref;
@@ -294,7 +292,7 @@ jumpsw(void)
 			nj++;
 		}
 	}
-	return(nj);
+	return (nj);
 }
 
 void
@@ -302,9 +300,8 @@ addsob(void)
 {
 	register struct node *p, *p1;
 
-	for (p = &first; (p1 = p->forw)!=0; p = p1) {
-		if (p->op==DEC && isreg(p->code)>=0
-		 && p1->op==CBR && p1->subop==JNE) {
+	for (p = &first; (p1 = p->forw) != 0; p = p1) {
+		if (p->op == DEC && isreg(p->code) >= 0 && p1->op == CBR && p1->subop == JNE) {
 			if (p->refc < p1->ref->refc)
 				continue;
 			if (toofar(p1))
@@ -326,11 +323,11 @@ toofar(struct node *p)
 	int len;
 
 	len = 0;
-	for (p1 = p->ref; p1 && p1!=p; p1 = p1->forw)
+	for (p1 = p->ref; p1 && p1 != p; p1 = p1->forw)
 		len += ilen(p1);
 	if (len < 128)
-		return(0);
-	return(1);
+		return (0);
+	return (1);
 }
 
 int
@@ -344,14 +341,14 @@ ilen(register struct node *p)
 	case TEXT:
 	case EROU:
 	case EVEN:
-		return(0);
+		return (0);
 
 	case CBR:
-		return(6);
+		return (6);
 
 	default:
 		dualop(p);
-		return(2 + adrlen(regs[RT1]) + adrlen(regs[RT2]));
+		return (2 + adrlen(regs[RT1]) + adrlen(regs[RT2]));
 	}
 }
 
@@ -359,20 +356,20 @@ int
 adrlen(register char *s)
 {
 	if (*s == 0)
-		return(0);
-	if (*s=='r')
-		return(0);
-	if (*s=='(' && *(s+1)=='r')
-		return(0);
-	if (*s=='-' && *(s+1)=='(')
-		return(0);
-	return(2);
+		return (0);
+	if (*s == 'r')
+		return (0);
+	if (*s == '(' && *(s + 1) == 'r')
+		return (0);
+	if (*s == '-' && *(s + 1) == '(')
+		return (0);
+	return (2);
 }
 
 int
 abs(int x)
 {
-	return(x<0? -x: x);
+	return (x < 0 ? -x : x);
 }
 
 int
@@ -382,20 +379,20 @@ equop(struct node *ap1, struct node *p2)
 	register struct node *p1;
 
 	p1 = ap1;
-	if (p1->op!=p2->op || p1->subop!=p2->subop)
-		return(0);
-	if (p1->op>0 && p1->op<MOV)
-		return(0);
+	if (p1->op != p2->op || p1->subop != p2->subop)
+		return (0);
+	if (p1->op > 0 && p1->op < MOV)
+		return (0);
 	cp1 = p1->code;
 	cp2 = p2->code;
-	if (cp1==0 && cp2==0)
-		return(1);
-	if (cp1==0 || cp2==0)
-		return(0);
+	if (cp1 == 0 && cp2 == 0)
+		return (1);
+	if (cp1 == 0 || cp2 == 0)
+		return (0);
 	while (*cp1 == *cp2++)
 		if (*cp1++ == 0)
-			return(1);
-	return(0);
+			return (1);
+	return (0);
 }
 
 void
@@ -411,9 +408,9 @@ decref(register struct node *p)
 struct node *
 nonlab(struct node *p)
 {
-	while (p && p->op==LABEL)
+	while (p && p->op == LABEL)
 		p = p->forw;
-	return(p);
+	return (p);
 }
 
 char *
@@ -423,7 +420,7 @@ alloc(register int n)
 
 	n++;
 	n &= ~01;
-	if (lasta+n >= lastr) {
+	if (lasta + n >= lastr) {
 		/* current chunk exhausted: grab a fresh malloc chunk (not sbrk,
 		 * which would corrupt the host heap that c2's stdio uses).  Nodes
 		 * point at each other by absolute address, so chunks need not be
@@ -439,7 +436,7 @@ alloc(register int n)
 	}
 	p = lasta;
 	lasta += n;
-	return(p);
+	return (p);
 }
 
 void
@@ -447,7 +444,7 @@ clearreg(void)
 {
 	register int i;
 
-	for (i=0; i<2*NREG; i++)
+	for (i = 0; i < 2 * NREG; i++)
 		regs[i][0] = '\0';
 	conloc[0] = 0;
 	ccloc[0] = 0;
@@ -463,7 +460,7 @@ savereg(int ai, char *as)
 	if (source(s))
 		return;
 	while (*p++ = *s) {
-		if (s[0]=='(' && s[1]=='r' && s[2]<'5') {
+		if (s[0] == '(' && s[1] == 'r' && s[2] < '5') {
 			*sp = 0;
 			return;
 		}
@@ -482,15 +479,15 @@ dest(char *as, int flt)
 	s = as;
 	source(s);
 	if ((i = isreg(s)) >= 0)
-		regs[i+flt][0] = 0;
-	for (i=0; i<NREG+NREG; i++)
-		if (*regs[i]=='*' && equstr(s, regs[i]+1))
+		regs[i + flt][0] = 0;
+	for (i = 0; i < NREG + NREG; i++)
+		if (*regs[i] == '*' && equstr(s, regs[i] + 1))
 			regs[i][0] = 0;
 	while ((i = findrand(s, flt)) >= 0)
 		regs[i][0] = 0;
 	while (*s) {
-		if ((*s=='(' && (*(s+1)!='r' || *(s+2)!='5')) || *s++=='*') {
-			for (i=0; i<NREG+NREG; i++) {
+		if ((*s == '(' && (*(s + 1) != 'r' || *(s + 2) != '5')) || *s++ == '*') {
+			for (i = 0; i < NREG + NREG; i++) {
 				if (regs[i][0] != '$')
 					regs[i][0] = 0;
 				conloc[0] = 0;
@@ -507,10 +504,10 @@ singop(struct node *ap)
 
 	p1 = ap->code;
 	p2 = regs[RT1];
-	while (*p2++ = *p1++);
+	while (*p2++ = *p1++)
+		;
 	regs[RT2][0] = 0;
 }
-
 
 void
 dualop(struct node *ap)
@@ -525,25 +522,26 @@ dualop(struct node *ap)
 	 * code==0 (c20.c).  The PDP-11 read address 0 as an empty string -- no
 	 * operand, ilen 2 -- but *0 faults on the host, so guard it, exactly as
 	 * the output path already guards with `if (t->code)'. */
-	while (p1 && *p1 && *p1!=',')
+	while (p1 && *p1 && *p1 != ',')
 		*p2++ = *p1++;
 	*p2++ = 0;
 	p2 = regs[RT2];
 	*p2 = 0;
-	if (!p1 || *p1++ !=',')
+	if (!p1 || *p1++ != ',')
 		return;
-	while (*p2++ = *p1++);
+	while (*p2++ = *p1++)
+		;
 }
 
 int
 findrand(char *as, int flt)
 {
 	register int i;
-	for (i = flt; i<NREG+flt; i++) {
+	for (i = flt; i < NREG + flt; i++) {
 		if (equstr(regs[i], as))
-			return(i);
+			return (i);
 	}
-	return(-1);
+	return (-1);
 }
 
 int
@@ -552,9 +550,9 @@ isreg(char *as)
 	register char *s;
 
 	s = as;
-	if (s[0]=='r' && s[1]>='0' && s[1]<='4' && s[2]==0)
-		return(s[1]-'0');
-	return(-1);
+	if (s[0] == 'r' && s[1] >= '0' && s[1] <= '4' && s[2] == 0)
+		return (s[1] - '0');
+	return (-1);
 }
 
 void
@@ -563,7 +561,7 @@ check(void)
 	register struct node *p, *lp;
 
 	lp = &first;
-	for (p=first.forw; p!=0; p = p->forw) {
+	for (p = first.forw; p != 0; p = p->forw) {
 		if (p->back != lp)
 			abort();
 		lp = p;
@@ -577,18 +575,18 @@ source(char *ap)
 
 	p1 = ap;
 	p2 = p1;
-	if (*p1==0)
-		return(0);
-	while (*p2++);
-	if (*p1=='-' && *(p1+1)=='('
-	 || *p1=='*' && *(p1+1)=='-' && *(p1+2)=='('
-	 || *(p2-2)=='+') {
-		while (*p1 && *p1++!='r');
-		if (*p1>='0' && *p1<='4')
+	if (*p1 == 0)
+		return (0);
+	while (*p2++)
+		;
+	if (*p1 == '-' && *(p1 + 1) == '(' || *p1 == '*' && *(p1 + 1) == '-' && *(p1 + 2) == '(' || *(p2 - 2) == '+') {
+		while (*p1 && *p1++ != 'r')
+			;
+		if (*p1 >= '0' && *p1 <= '4')
 			regs[*p1 - '0'][0] = 0;
-		return(1);
+		return (1);
 	}
-	return(0);
+	return (0);
 }
 
 void
@@ -608,22 +606,25 @@ repladdr(struct node *p, int f, int flt)
 		r1 -= NREG;
 	if (r >= NREG)
 		r -= NREG;
-	if (r>=0 || r1>=0) {
+	if (r >= 0 || r1 >= 0) {
 		p2 = regs[RT1];
-		for (p1 = rt1; *p1++ = *p2++;);
+		for (p1 = rt1; *p1++ = *p2++;)
+			;
 		if (regs[RT2][0]) {
 			p1 = rt2;
 			*p1++ = ',';
-			for (p2 = regs[RT2]; *p1++ = *p2++;);
-		} else
+			for (p2 = regs[RT2]; *p1++ = *p2++;)
+				;
+		}
+		else
 			rt2[0] = 0;
-		if (r>=0) {
+		if (r >= 0) {
 			rt1[0] = 'r';
 			rt1[1] = r + '0';
 			rt1[2] = 0;
 			nsaddr++;
 		}
-		if (r1>=0) {
+		if (r1 >= 0) {
 			rt2[1] = 'r';
 			rt2[2] = r1 + '0';
 			rt2[3] = 0;
@@ -642,9 +643,9 @@ movedat(void)
 	struct node data;
 	struct node *datp;
 
-	data.forw = 0;		/* must be cleared: it is read below when no
-				 * DATA segment is found (the PDP-11 stack
-				 * happened to be zero there) */
+	data.forw = 0; /* must be cleared: it is read below when no
+			* DATA segment is found (the PDP-11 stack
+			* happened to be zero there) */
 	if (first.forw == 0)
 		return;
 	if (lastseg != TEXT && lastseg != -1) {
@@ -658,12 +659,12 @@ movedat(void)
 		first.forw = p1;
 	}
 	datp = &data;
-	for (p1 = first.forw; p1!=0; p1 = p1->forw) {
+	for (p1 = first.forw; p1 != 0; p1 = p1->forw) {
 		if (p1->op == DATA) {
 			p2 = p1->forw;
-			while (p2 && p2->op!=TEXT)
+			while (p2 && p2->op != TEXT)
 				p2 = p2->forw;
-			if (p2==0)
+			if (p2 == 0)
 				break;
 			p3 = p1->back;
 			p1->back->forw = p2->forw;
@@ -682,13 +683,13 @@ movedat(void)
 		first.forw = data.forw;
 	}
 	seg = lastseg;
-	for (p1 = first.forw; p1!=0; p1 = p1->forw) {
-		if (p1->op==TEXT||p1->op==DATA||p1->op==BSS) {
+	for (p1 = first.forw; p1 != 0; p1 = p1->forw) {
+		if (p1->op == TEXT || p1->op == DATA || p1->op == BSS) {
 			if (p2 = p1->forw) {
-				if (p2->op==TEXT||p2->op==DATA||p2->op==BSS)
-					p1->op  = p2->op;
+				if (p2->op == TEXT || p2->op == DATA || p2->op == BSS)
+					p1->op = p2->op;
 			}
-			if (p1->op == seg || p1->forw&&p1->forw->op==seg) {
+			if (p1->op == seg || p1->forw && p1->forw->op == seg) {
 				p1->back->forw = p1->forw;
 				p1->forw->back = p1->back;
 				p1 = p1->back;
@@ -709,19 +710,20 @@ redunbr(register struct node *p)
 	if ((p1 = p->ref) == 0)
 		return;
 	p1 = nonlab(p1);
-	if (p1->op==TST) {
+	if (p1->op == TST) {
 		singop(p1);
 		savereg(RT2, "$0");
-	} else if (p1->op==CMP)
+	}
+	else if (p1->op == CMP)
 		dualop(p1);
 	else
 		return;
-	if (p1->forw->op!=CBR)
+	if (p1->forw->op != CBR)
 		return;
 	ap1 = findcon(RT1);
 	ap2 = findcon(RT2);
 	p1 = p1->forw;
-	if (compare(p1->subop, ap1, ap2)>0) {
+	if (compare(p1->subop, ap1, ap2) > 0) {
 		nredunj++;
 		nchange++;
 		decref(p->ref);
@@ -738,13 +740,13 @@ findcon(int i)
 	register int r;
 
 	p = regs[i];
-	if (*p=='$')
-		return(p);
+	if (*p == '$')
+		return (p);
 	if ((r = isreg(p)) >= 0)
-		return(regs[r]);
+		return (regs[r]);
 	if (equstr(p, conloc))
-		return(conval);
-	return(p);
+		return (conval);
+	return (p);
 }
 
 int
@@ -753,7 +755,7 @@ compare(int oper, register char *cp1, register char *cp2)
 	register unsigned n1, n2;
 
 	if (*cp1++ != '$' || *cp2++ != '$')
-		return(-1);
+		return (-1);
 	n1 = 0;
 	while (*cp2 >= '0' && *cp2 <= '7') {
 		n1 <<= 3;
@@ -765,38 +767,38 @@ compare(int oper, register char *cp1, register char *cp2)
 		n1 <<= 3;
 		n1 += *cp1++ - '0';
 	}
-	if (*cp1=='+')
+	if (*cp1 == '+')
 		cp1++;
-	if (*cp2=='+')
+	if (*cp2 == '+')
 		cp2++;
 	do {
 		if (*cp1++ != *cp2)
-			return(-1);
-	} while (*cp2++);
-	switch(oper) {
-
-	case JEQ:
-		return(n1 == n2);
-	case JNE:
-		return(n1 != n2);
-	case JLE:
-		return((int)n1 <= (int)n2);
-	case JGE:
-		return((int)n1 >= (int)n2);
-	case JLT:
-		return((int)n1 < (int)n2);
-	case JGT:
-		return((int)n1 > (int)n2);
-	case JLO:
-		return(n1 < n2);
-	case JHI:
-		return(n1 > n2);
-	case JLOS:
-		return(n1 <= n2);
-	case JHIS:
-		return(n1 >= n2);
+			return (-1);
 	}
-	return(-1);
+	while (*cp2++);
+	switch (oper) {
+	case JEQ:
+		return (n1 == n2);
+	case JNE:
+		return (n1 != n2);
+	case JLE:
+		return ((int)n1 <= (int)n2);
+	case JGE:
+		return ((int)n1 >= (int)n2);
+	case JLT:
+		return ((int)n1 < (int)n2);
+	case JGT:
+		return ((int)n1 > (int)n2);
+	case JLO:
+		return (n1 < n2);
+	case JHI:
+		return (n1 > n2);
+	case JLOS:
+		return (n1 <= n2);
+	case JHIS:
+		return (n1 >= n2);
+	}
+	return (-1);
 }
 
 void
@@ -811,9 +813,11 @@ setcon(char *ar1, char *ar2)
 	if (!natural(cl))
 		return;
 	p = conloc;
-	while (*p++ = *cl++);
+	while (*p++ = *cl++)
+		;
 	p = conval;
-	while (*p++ = *cv++);
+	while (*p++ = *cv++)
+		;
 }
 
 int
@@ -825,9 +829,10 @@ equstr(char *ap1, char *ap2)
 	p2 = ap2;
 	do {
 		if (*p1++ != *p2)
-			return(0);
-	} while (*p2++);
-	return(1);
+			return (0);
+	}
+	while (*p2++);
+	return (1);
 }
 
 void
@@ -841,7 +846,8 @@ setcc(char *ap)
 		return;
 	}
 	p1 = ccloc;
-	while (*p1++ = *p++);
+	while (*p1++ = *p++)
+		;
 }
 
 int
@@ -850,11 +856,12 @@ natural(char *ap)
 	register char *p;
 
 	p = ap;
-	if (*p=='*' || *p=='(' || *p=='-'&&*(p+1)=='(')
-		return(0);
-	while (*p++);
+	if (*p == '*' || *p == '(' || *p == '-' && *(p + 1) == '(')
+		return (0);
+	while (*p++)
+		;
 	p--;
-	if (*--p == '+' || *p ==')' && *--p != '5')
-		return(0);
-	return(1);
+	if (*--p == '+' || *p == ')' && *--p != '5')
+		return (0);
+	return (1);
 }

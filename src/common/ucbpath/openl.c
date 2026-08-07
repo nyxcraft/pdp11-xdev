@@ -29,5 +29,5 @@ openl(char *buffer, int mode, ...)
 	argv[i] = 0;
 
 	_concat(buffer, argv);
-	return(open(buffer, mode));
+	return (open(buffer, mode));
 }

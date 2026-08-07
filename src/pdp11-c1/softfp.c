@@ -23,7 +23,7 @@
 
 #include <ctype.h>
 
-#define LOGHUGE 39	/* 2.8 math.h */
+#define LOGHUGE 39 /* 2.8 math.h */
 
 typedef unsigned long long u64;
 typedef unsigned __int128 u128;
@@ -31,16 +31,20 @@ typedef unsigned __int128 u128;
 /* internal form: value = frac * 2^(exp-56), frac normalized to bit 55
  * (so 1.0 is frac=1<<55, exp=1); frac==0 means zero. */
 struct sd {
-	int sign;	/* 0 or 1 */
-	int exp;	/* binary exponent, D-format excess-128 semantics:
-			 * value = 0.frac * 2^exp with frac's MSB at bit 55 */
-	u64 frac;	/* 56 significant bits, MSB at bit 55 when nonzero */
+	int sign; /* 0 or 1 */
+	int exp;  /* binary exponent, D-format excess-128 semantics:
+		   * value = 0.frac * 2^exp with frac's MSB at bit 55 */
+	u64 frac; /* 56 significant bits, MSB at bit 55 when nonzero */
 };
 
 static struct sd
 sd_zero(void)
 {
-	struct sd z; z.sign = 0; z.exp = 0; z.frac = 0; return z;
+	struct sd z;
+	z.sign = 0;
+	z.exp = 0;
+	z.frac = 0;
+	return z;
 }
 
 /* normalize a 128-bit intermediate whose value is v * 2^(exp-120)
@@ -55,21 +59,29 @@ sd_norm128(int sign, int exp, u128 v)
 	if (v == 0)
 		return sd_zero();
 	/* bring MSB to bit 119 */
-	while (v >> 120) { v >>= 1; exp++; }
-	while ((v >> 119) == 0) { v <<= 1; exp--; }
+	while (v >> 120) {
+		v >>= 1;
+		exp++;
+	}
+	while ((v >> 119) == 0) {
+		v <<= 1;
+		exp--;
+	}
 	/* keep bits 119..64 (56 bits); round on bit 63 */
 	sh = 64;
 	{
 		u64 frac = (u64)(v >> sh);
-		u64 guard = (u64)(v >> (sh-1)) & 1;
+		u64 guard = (u64)(v >> (sh - 1)) & 1;
 		if (guard) {
 			frac++;
-			if (frac >> 56) {	/* rounding overflowed */
+			if (frac >> 56) { /* rounding overflowed */
 				frac >>= 1;
 				exp++;
 			}
 		}
-		r.sign = sign; r.exp = exp; r.frac = frac;
+		r.sign = sign;
+		r.exp = exp;
+		r.frac = frac;
 	}
 	return r;
 }
@@ -83,8 +95,11 @@ sd_fromint(long v)
 
 	if (v == 0)
 		return sd_zero();
-	if (v < 0) { sign = 1; v = -v; }
-	m = (u128)(u64)v << 64;		/* value = m * 2^(exp-120) with exp=56 */
+	if (v < 0) {
+		sign = 1;
+		v = -v;
+	}
+	m = (u128)(u64)v << 64; /* value = m * 2^(exp-120) with exp=56 */
 	r = sd_norm128(sign, 56, m);
 	return r;
 }
@@ -125,10 +140,14 @@ sd_add(struct sd a, struct sd b)
 	u128 ma, mb;
 	int exp, d;
 
-	if (a.frac == 0) return b;
-	if (b.frac == 0) return a;
+	if (a.frac == 0)
+		return b;
+	if (b.frac == 0)
+		return a;
 	if (a.exp < b.exp || (a.exp == b.exp && a.frac < b.frac)) {
-		struct sd t = a; a = b; b = t;
+		struct sd t = a;
+		a = b;
+		b = t;
 	}
 	/* a now has the larger magnitude; align b to a's exponent inside a
 	 * 120-bit frame (64 guard bits -- beyond FP11's alignment but only
@@ -143,7 +162,8 @@ sd_add(struct sd a, struct sd b)
 		mb = ((u128)b.frac << 64) >> d;
 	if (a.sign == b.sign) {
 		ma += mb;
-	} else {
+	}
+	else {
 		ma -= mb;
 		if (ma == 0)
 			return sd_zero();
@@ -152,11 +172,14 @@ sd_add(struct sd a, struct sd b)
 }
 
 static int
-sd_lt(struct sd a, struct sd b)	/* a < b, both nonnegative here */
+sd_lt(struct sd a, struct sd b) /* a < b, both nonnegative here */
 {
-	if (a.frac == 0) return b.frac != 0;
-	if (b.frac == 0) return 0;
-	if (a.exp != b.exp) return a.exp < b.exp;
+	if (a.frac == 0)
+		return b.frac != 0;
+	if (b.frac == 0)
+		return 0;
+	if (a.exp != b.exp)
+		return a.exp < b.exp;
 	return a.frac < b.frac;
 }
 
@@ -171,13 +194,14 @@ sd_towords(struct sd a, unsigned short w[4])
 		w[0] = w[1] = w[2] = w[3] = 0;
 		return;
 	}
-	e = a.exp + 128;		/* excess-128 */
-	if (e <= 0) {			/* underflow -> 0 */
+	e = a.exp + 128; /* excess-128 */
+	if (e <= 0) {	 /* underflow -> 0 */
 		w[0] = w[1] = w[2] = w[3] = 0;
 		return;
 	}
-	if (e > 255) e = 255;		/* overflow -> clamp */
-	f = a.frac & ~(1ULL << 55);	/* drop hidden bit: 55 stored bits */
+	if (e > 255)
+		e = 255;	    /* overflow -> clamp */
+	f = a.frac & ~(1ULL << 55); /* drop hidden bit: 55 stored bits */
 	w[0] = (a.sign << 15) | (e << 7) | (unsigned short)(f >> 48);
 	w[1] = (unsigned short)(f >> 32);
 	w[2] = (unsigned short)(f >> 16);
@@ -199,7 +223,7 @@ softfp_atof(char *p, unsigned short w[4])
 
 	ten = sd_fromint(10L);
 	big = sd_fromint(1L);
-	big.exp += 56;			/* 2^56 */
+	big.exp += 56; /* 2^56 */
 
 	neg = 1;
 	while ((c = *p++) == ' ')
@@ -216,7 +240,7 @@ softfp_atof(char *p, unsigned short w[4])
 	nd = 0;
 	while ((c = *p++), isdigit(c)) {
 		if (sd_lt(fl, big))
-			fl = sd_add(sd_mul(ten, fl), sd_fromint((long)(c-'0')));
+			fl = sd_add(sd_mul(ten, fl), sd_fromint((long)(c - '0')));
 		else
 			exp++;
 		nd++;
@@ -225,7 +249,7 @@ softfp_atof(char *p, unsigned short w[4])
 	if (c == '.') {
 		while ((c = *p++), isdigit(c)) {
 			if (sd_lt(fl, big)) {
-				fl = sd_add(sd_mul(ten, fl), sd_fromint((long)(c-'0')));
+				fl = sd_add(sd_mul(ten, fl), sd_fromint((long)(c - '0')));
 				exp--;
 			}
 			nd++;
@@ -242,7 +266,7 @@ softfp_atof(char *p, unsigned short w[4])
 		else
 			--p;
 		while ((c = *p++), isdigit(c)) {
-			eexp = 10*eexp + (c-'0');
+			eexp = 10 * eexp + (c - '0');
 		}
 		if (negexp < 0)
 			eexp = -eexp;
@@ -255,7 +279,7 @@ softfp_atof(char *p, unsigned short w[4])
 		exp = -exp;
 	}
 
-	if ((nd + exp*negexp) < -LOGHUGE) {
+	if ((nd + exp * negexp) < -LOGHUGE) {
 		fl = sd_zero();
 		exp = 0;
 	}
@@ -275,7 +299,7 @@ softfp_atof(char *p, unsigned short w[4])
 	else
 		fl = sd_mul(fl, flexp);
 	if (fl.frac != 0)
-		fl.exp += negexp*bexp;	/* ldexp: exact exponent adjust */
+		fl.exp += negexp * bexp; /* ldexp: exact exponent adjust */
 	if (neg < 0)
 		fl.sign ^= 1;
 	sd_towords(fl, w);
@@ -297,21 +321,21 @@ softfp_dtof(unsigned short d[4], unsigned short f[2])
 	u64 frac;
 	int e, sign;
 
-	if ((d[0] & 077600) == 0) {	/* zero/underflow (exp 0) */
+	if ((d[0] & 077600) == 0) { /* zero/underflow (exp 0) */
 		f[0] = f[1] = 0;
 		return;
 	}
 	sign = (d[0] >> 15) & 1;
 	e = (d[0] >> 7) & 0377;
-	frac = (1ULL << 55) | ((u64)(d[0] & 0177) << 48)
-	     | ((u64)d[1] << 32) | ((u64)d[2] << 16) | d[3];
+	frac = (1ULL << 55) | ((u64)(d[0] & 0177) << 48) | ((u64)d[1] << 32) | ((u64)d[2] << 16) | d[3];
 	/* keep 24 bits (MSB at bit 55): round on bit 31 */
 	if ((frac >> 31) & 1) {
 		frac += 1ULL << 32;
-		if (frac >> 56) {	/* carry out of the hidden bit */
+		if (frac >> 56) { /* carry out of the hidden bit */
 			frac >>= 1;
 			e++;
-			if (e > 255) e = 255;
+			if (e > 255)
+				e = 255;
 		}
 	}
 	frac &= ~(1ULL << 55);

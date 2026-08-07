@@ -5,13 +5,13 @@
  * <sys/param.h> does not define.  Pull in the host header first (so tools that
  * rely on host param.h contents keep working), then add the 2.9BSD BSIZE.
  */
-#ifndef	_CROSS_SYS_PARAM_H_
-#define	_CROSS_SYS_PARAM_H_
+#ifndef _CROSS_SYS_PARAM_H_
+#define _CROSS_SYS_PARAM_H_
 
 #include_next <sys/param.h>
 
-#ifndef	BSIZE
-#define	BSIZE	512		/* 2.9BSD secondary block size (bytes) */
+#ifndef BSIZE
+#define BSIZE 512 /* 2.9BSD secondary block size (bytes) */
 #endif
 
-#endif	/* _CROSS_SYS_PARAM_H_ */
+#endif /* _CROSS_SYS_PARAM_H_ */

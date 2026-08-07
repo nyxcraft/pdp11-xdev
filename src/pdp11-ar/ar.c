@@ -8,18 +8,18 @@
 #include <sys/stat.h>
 #include <ar.h>
 #include <signal.h>
-struct	stat	stbuf;
-struct	ar_hdr	arbuf;
+struct stat stbuf;
+struct ar_hdr arbuf;
 
-#define	SKIP	1
-#define	IODD	2
-#define	OODD	4
-#define	HEAD	8
+#define SKIP 1
+#define IODD 2
+#define OODD 4
+#define HEAD 8
 
-char	*man	=	{ "mrxtdpq" };
-char	*opt	=	{ "uvnbail" };
+char *man = {"mrxtdpq"};
+char *opt = {"uvnbail"};
 
-int	signum[] = {SIGHUP, SIGINT, SIGQUIT, 0};
+int signum[] = {SIGHUP, SIGINT, SIGQUIT, 0};
 static void sigdone(int);
 static int rcmd(void);
 static int dcmd(void);
@@ -28,30 +28,30 @@ static int tcmd(void);
 static int pcmd(void);
 static int mcmd(void);
 static int qcmd(void);
-int	(*comfun)(void);
-char	flg[26];
-char	**namv;
-int	namc;
-char	*arnam;
-char	*ponam;
+int (*comfun)(void);
+char flg[26];
+char **namv;
+int namc;
+char *arnam;
+char *ponam;
 /* writable, 6 trailing X (glibc mktemp); tmpnam renamed to avoid the
  * <stdio.h> tmpnam() clash */
-char	tmpfnam[]	=	"/tmp/arXXXXXX";
-char	tmp1nam[]	=	"/tmp/ar1XXXXXX";
-char	tmp2nam[]	=	"/tmp/ar2XXXXXX";
-char	*tfnam;
-char	*tf1nam;
-char	*tf2nam;
-char	*file;
-char	name[16];
-int	af;
-int	tf;
-int	tf1;
-int	tf2;
-int	qf;
-int	bastate;
-int	oldfmt;		/* archive is First Edition (0177555): read-only */
-char	buf[512];
+char tmpfnam[] = "/tmp/arXXXXXX";
+char tmp1nam[] = "/tmp/ar1XXXXXX";
+char tmp2nam[] = "/tmp/ar2XXXXXX";
+char *tfnam;
+char *tf1nam;
+char *tf2nam;
+char *file;
+char name[16];
+int af;
+int tf;
+int tf1;
+int tf2;
+int qf;
+int bastate;
+int oldfmt; /* archive is First Edition (0177555): read-only */
+char buf[512];
 
 static char *trim(char *);
 
@@ -86,77 +86,77 @@ main(int argc, char **argv)
 	register int i;
 	register char *cp;
 
-	for(i=0; signum[i]; i++)
-		if(signal(signum[i], SIG_IGN) != SIG_IGN)
+	for (i = 0; signum[i]; i++)
+		if (signal(signum[i], SIG_IGN) != SIG_IGN)
 			signal(signum[i], sigdone);
-	if(argc < 3)
+	if (argc < 3)
 		usage();
 	cp = argv[1];
-	for(cp = argv[1]; *cp; cp++)
-	switch(*cp) {
-	case 'l':
-	case 'v':
-	case 'u':
-	case 'n':
-	case 'a':
-	case 'b':
-	case 'c':
-	case 'i':
-		flg[*cp - 'a']++;
-		continue;
+	for (cp = argv[1]; *cp; cp++)
+		switch (*cp) {
+		case 'l':
+		case 'v':
+		case 'u':
+		case 'n':
+		case 'a':
+		case 'b':
+		case 'c':
+		case 'i':
+			flg[*cp - 'a']++;
+			continue;
 
-	case 'r':
-		setcom(rcmd);
-		continue;
+		case 'r':
+			setcom(rcmd);
+			continue;
 
-	case 'd':
-		setcom(dcmd);
-		continue;
+		case 'd':
+			setcom(dcmd);
+			continue;
 
-	case 'x':
-		setcom(xcmd);
-		continue;
+		case 'x':
+			setcom(xcmd);
+			continue;
 
-	case 't':
-		setcom(tcmd);
-		continue;
+		case 't':
+			setcom(tcmd);
+			continue;
 
-	case 'p':
-		setcom(pcmd);
-		continue;
+		case 'p':
+			setcom(pcmd);
+			continue;
 
-	case 'm':
-		setcom(mcmd);
-		continue;
+		case 'm':
+			setcom(mcmd);
+			continue;
 
-	case 'q':
-		setcom(qcmd);
-		continue;
+		case 'q':
+			setcom(qcmd);
+			continue;
 
-	default:
-		fprintf(stderr, "ar: bad option `%c'\n", *cp);
-		done(1);
-	}
-	if(flg['l'-'a']) {
+		default:
+			fprintf(stderr, "ar: bad option `%c'\n", *cp);
+			done(1);
+		}
+	if (flg['l' - 'a']) {
 		strcpy(tmpfnam, "arXXXXXX");
 		strcpy(tmp1nam, "ar1XXXXXX");
 		strcpy(tmp2nam, "ar2XXXXXX");
-		}
-	if(flg['i'-'a'])
-		flg['b'-'a']++;
-	if(flg['a'-'a'] || flg['b'-'a']) {
+	}
+	if (flg['i' - 'a'])
+		flg['b' - 'a']++;
+	if (flg['a' - 'a'] || flg['b' - 'a']) {
 		bastate = 1;
 		ponam = trim(argv[2]);
 		argv++;
 		argc--;
-		if(argc < 3)
+		if (argc < 3)
 			usage();
 	}
 	arnam = argv[2];
-	namv = argv+3;
-	namc = argc-3;
-	if(comfun == 0) {
-		if(flg['u'-'a'] == 0) {
+	namv = argv + 3;
+	namc = argc - 3;
+	if (comfun == 0) {
+		if (flg['u' - 'a'] == 0) {
 			fprintf(stderr, "ar: one of [%s] must be specified\n", man);
 			done(1);
 		}
@@ -169,8 +169,7 @@ main(int argc, char **argv)
 static int
 setcom(int (*fun)(void))
 {
-
-	if(comfun != 0) {
+	if (comfun != 0) {
 		fprintf(stderr, "ar: only one of [%s] allowed\n", man);
 		done(1);
 	}
@@ -184,30 +183,30 @@ rcmd(void)
 
 	init();
 	getaf();
-	if(oldfmt)
+	if (oldfmt)
 		cantmod();
-	while(!getdir()) {
+	while (!getdir()) {
 		bamatch();
-		if(namc == 0 || match()) {
+		if (namc == 0 || match()) {
 			f = stats();
-			if(f < 0) {
-				if(namc)
+			if (f < 0) {
+				if (namc)
 					fprintf(stderr, "ar: cannot open %s\n", file);
 				goto cp;
 			}
-			if(flg['u'-'a'])
-				if(stbuf.st_mtime <= arbuf.ar_date) {
+			if (flg['u' - 'a'])
+				if (stbuf.st_mtime <= arbuf.ar_date) {
 					close(f);
 					goto cp;
 				}
 			mesg('r');
-			copyfil(af, -1, IODD+SKIP);
+			copyfil(af, -1, IODD + SKIP);
 			movefil(f);
 			continue;
 		}
 	cp:
 		mesg('c');
-		copyfil(af, tf, IODD+OODD+HEAD);
+		copyfil(af, tf, IODD + OODD + HEAD);
 	}
 	cleanup();
 }
@@ -215,20 +214,19 @@ rcmd(void)
 static int
 dcmd(void)
 {
-
 	init();
-	if(getaf())
+	if (getaf())
 		noar();
-	if(oldfmt)
+	if (oldfmt)
 		cantmod();
-	while(!getdir()) {
-		if(match()) {
+	while (!getdir()) {
+		if (match()) {
 			mesg('d');
-			copyfil(af, -1, IODD+SKIP);
+			copyfil(af, -1, IODD + SKIP);
 			continue;
 		}
 		mesg('c');
-		copyfil(af, tf, IODD+OODD+HEAD);
+		copyfil(af, tf, IODD + OODD + HEAD);
 	}
 	install();
 }
@@ -238,12 +236,12 @@ xcmd(void)
 {
 	register int f;
 
-	if(getaf())
+	if (getaf())
 		noar();
-	while(!getdir()) {
-		if(namc == 0 || match()) {
+	while (!getdir()) {
+		if (namc == 0 || match()) {
 			f = creat(file, arbuf.ar_mode & 0777);
-			if(f < 0) {
+			if (f < 0) {
 				fprintf(stderr, "ar: %s cannot create\n", file);
 				goto sk;
 			}
@@ -254,8 +252,8 @@ xcmd(void)
 		}
 	sk:
 		mesg('c');
-		copyfil(af, -1, IODD+SKIP);
-		if (namc > 0  &&  !morefil())
+		copyfil(af, -1, IODD + SKIP);
+		if (namc > 0 && !morefil())
 			done(0);
 	}
 }
@@ -263,46 +261,44 @@ xcmd(void)
 static int
 pcmd(void)
 {
-
-	if(getaf())
+	if (getaf())
 		noar();
-	while(!getdir()) {
-		if(namc == 0 || match()) {
-			if(flg['v'-'a']) {
+	while (!getdir()) {
+		if (namc == 0 || match()) {
+			if (flg['v' - 'a']) {
 				printf("\n<%s>\n\n", file);
 				fflush(stdout);
 			}
 			copyfil(af, 1, IODD);
 			continue;
 		}
-		copyfil(af, -1, IODD+SKIP);
+		copyfil(af, -1, IODD + SKIP);
 	}
 }
 
 static int
 mcmd(void)
 {
-
 	init();
-	if(getaf())
+	if (getaf())
 		noar();
-	if(oldfmt)
+	if (oldfmt)
 		cantmod();
-	tf2 = mkstemp(tmp2nam);	/* creates the 0600 file, returns O_RDWR fd */
+	tf2 = mkstemp(tmp2nam); /* creates the 0600 file, returns O_RDWR fd */
 	tf2nam = tmp2nam;
-	if(tf2 < 0) {
+	if (tf2 < 0) {
 		fprintf(stderr, "ar: cannot create third temp\n");
 		done(1);
 	}
-	while(!getdir()) {
+	while (!getdir()) {
 		bamatch();
-		if(match()) {
+		if (match()) {
 			mesg('m');
-			copyfil(af, tf2, IODD+OODD+HEAD);
+			copyfil(af, tf2, IODD + OODD + HEAD);
 			continue;
 		}
 		mesg('c');
-		copyfil(af, tf, IODD+OODD+HEAD);
+		copyfil(af, tf, IODD + OODD + HEAD);
 	}
 	install();
 }
@@ -310,16 +306,15 @@ mcmd(void)
 static int
 tcmd(void)
 {
-
-	if(getaf())
+	if (getaf())
 		noar();
-	while(!getdir()) {
-		if(namc == 0 || match()) {
-			if(flg['v'-'a'])
+	while (!getdir()) {
+		if (namc == 0 || match()) {
+			if (flg['v' - 'a'])
 				longt();
 			printf("%s\n", trim(file));
 		}
-		copyfil(af, -1, IODD+SKIP);
+		copyfil(af, -1, IODD + SKIP);
 	}
 }
 
@@ -328,22 +323,22 @@ qcmd(void)
 {
 	register int i, f;
 
-	if (flg['a'-'a'] || flg['b'-'a']) {
+	if (flg['a' - 'a'] || flg['b' - 'a']) {
 		fprintf(stderr, "ar: abi not allowed with q\n");
 		done(1);
 	}
 	getqf();
-	for(i=0; signum[i]; i++)
+	for (i = 0; signum[i]; i++)
 		signal(signum[i], SIG_IGN);
 	lseek(qf, 0l, 2);
-	for(i=0; i<namc; i++) {
+	for (i = 0; i < namc; i++) {
 		file = namv[i];
-		if(file == 0)
+		if (file == 0)
 			continue;
 		namv[i] = 0;
 		mesg('q');
 		f = stats();
-		if(f < 0) {
+		if (f < 0) {
 			fprintf(stderr, "ar: %s cannot open\n", file);
 			continue;
 		}
@@ -360,7 +355,7 @@ init(void)
 
 	tf = mkstemp(tmpfnam);
 	tfnam = tmpfnam;
-	if(tf < 0) {
+	if (tf < 0) {
 		fprintf(stderr, "ar: cannot create temp file\n");
 		done(1);
 	}
@@ -374,15 +369,14 @@ getaf(void)
 	unsigned short mbuf;
 
 	af = open(arnam, 0);
-	if(af < 0)
-		return(1);
-	if (read(af, (char *)&mbuf, 2) != 2
-		|| (mbuf!=ARMAG && mbuf!=OARMAG)) {
+	if (af < 0)
+		return (1);
+	if (read(af, (char *)&mbuf, 2) != 2 || (mbuf != ARMAG && mbuf != OARMAG)) {
 		fprintf(stderr, "ar: %s not in archive format\n", arnam);
 		done(1);
 	}
 	oldfmt = (mbuf == OARMAG);
-	return(0);
+	return (0);
 }
 
 static int
@@ -391,7 +385,7 @@ getqf(void)
 	unsigned short mbuf;
 
 	if ((qf = open(arnam, 2)) < 0) {
-		if(!flg['c'-'a'])
+		if (!flg['c' - 'a'])
 			fprintf(stderr, "ar: creating %s\n", arnam);
 		close(creat(arnam, 0666));
 		if ((qf = open(arnam, 2)) < 0) {
@@ -402,8 +396,7 @@ getqf(void)
 		if (write(qf, (char *)&mbuf, 2) != 2)
 			wrerr();
 	}
-	else if (read(qf, (char *)&mbuf, 2) != 2
-		|| (mbuf!=ARMAG && mbuf!=OARMAG)) {
+	else if (read(qf, (char *)&mbuf, 2) != 2 || (mbuf != ARMAG && mbuf != OARMAG)) {
 		fprintf(stderr, "ar: %s not in archive format\n", arnam);
 		done(1);
 	}
@@ -421,7 +414,6 @@ usage(void)
 static int
 noar(void)
 {
-
 	fprintf(stderr, "ar: %s does not exist\n", arnam);
 	done(1);
 }
@@ -446,12 +438,11 @@ sigdone(int sig)
 static int
 done(int c)
 {
-
-	if(tfnam)
+	if (tfnam)
 		unlink(tfnam);
-	if(tf1nam)
+	if (tf1nam)
 		unlink(tf1nam);
-	if(tf2nam)
+	if (tf2nam)
 		unlink(tf2nam);
 	exit(c);
 }
@@ -462,12 +453,12 @@ notfound(void)
 	register int i, n;
 
 	n = 0;
-	for(i=0; i<namc; i++)
-		if(namv[i]) {
+	for (i = 0; i < namc; i++)
+		if (namv[i]) {
 			fprintf(stderr, "ar: %s not found\n", namv[i]);
 			n++;
 		}
-	return(n);
+	return (n);
 }
 
 static int
@@ -476,10 +467,10 @@ morefil(void)
 	register int i, n;
 
 	n = 0;
-	for(i=0; i<namc; i++)
-		if(namv[i])
+	for (i = 0; i < namc; i++)
+		if (namv[i])
 			n++;
-	return(n);
+	return (n);
 }
 
 static int
@@ -487,14 +478,14 @@ cleanup(void)
 {
 	register int i, f;
 
-	for(i=0; i<namc; i++) {
+	for (i = 0; i < namc; i++) {
 		file = namv[i];
-		if(file == 0)
+		if (file == 0)
 			continue;
 		namv[i] = 0;
 		mesg('a');
 		f = stats();
-		if(f < 0) {
+		if (f < 0) {
 			fprintf(stderr, "ar: %s cannot open\n", file);
 			continue;
 		}
@@ -508,32 +499,32 @@ install(void)
 {
 	register int i;
 
-	for(i=0; signum[i]; i++)
+	for (i = 0; signum[i]; i++)
 		signal(signum[i], SIG_IGN);
-	if(af < 0)
-		if(!flg['c'-'a'])
+	if (af < 0)
+		if (!flg['c' - 'a'])
 			fprintf(stderr, "ar: creating %s\n", arnam);
 	close(af);
 	af = creat(arnam, 0666);
-	if(af < 0) {
+	if (af < 0) {
 		fprintf(stderr, "ar: cannot create %s\n", arnam);
 		done(1);
 	}
-	if(tfnam) {
+	if (tfnam) {
 		lseek(tf, 0l, 0);
-		while((i = read(tf, buf, 512)) > 0)
+		while ((i = read(tf, buf, 512)) > 0)
 			if (write(af, buf, i) != i)
 				wrerr();
 	}
-	if(tf2nam) {
+	if (tf2nam) {
 		lseek(tf2, 0l, 0);
-		while((i = read(tf2, buf, 512)) > 0)
+		while ((i = read(tf2, buf, 512)) > 0)
 			if (write(af, buf, i) != i)
 				wrerr();
 	}
-	if(tf1nam) {
+	if (tf1nam) {
 		lseek(tf1, 0l, 0);
-		while((i = read(tf1, buf, 512)) > 0)
+		while ((i = read(tf1, buf, 512)) > 0)
 			if (write(af, buf, i) != i)
 				wrerr();
 	}
@@ -550,15 +541,15 @@ movefil(int f)
 	register int i;
 
 	cp = trim(file);
-	for(i=0; i<14; i++)
-		if(arbuf.ar_name[i] = *cp)
+	for (i = 0; i < 14; i++)
+		if (arbuf.ar_name[i] = *cp)
 			cp++;
 	arbuf.ar_size = stbuf.st_size;
 	arbuf.ar_date = stbuf.st_mtime;
 	arbuf.ar_uid = stbuf.st_uid;
 	arbuf.ar_gid = stbuf.st_gid;
 	arbuf.ar_mode = stbuf.st_mode;
-	copyfil(f, tf, OODD+HEAD);
+	copyfil(f, tf, OODD + HEAD);
 	close(f);
 }
 
@@ -568,13 +559,13 @@ stats(void)
 	register int f;
 
 	f = open(file, 0);
-	if(f < 0)
-		return(f);
-	if(fstat(f, &stbuf) < 0) {
+	if (f < 0)
+		return (f);
+	if (fstat(f, &stbuf) < 0) {
 		close(f);
-		return(-1);
+		return (-1);
 	}
-	return(f);
+	return (f);
 }
 
 /*
@@ -587,7 +578,7 @@ copyfil(int fi, int fo, int flag)
 	register int i, o;
 	int pe;
 
-	if(flag & HEAD) {
+	if (flag & HEAD) {
 		/* write the header with PDP-11 middle-endian longs (authentic 2BSD
 		 * on-disk order); keep arbuf host-order for the copy loop below,
 		 * which reads arbuf.ar_size. */
@@ -598,25 +589,25 @@ copyfil(int fi, int fo, int flag)
 			wrerr();
 	}
 	pe = 0;
-	while(arbuf.ar_size > 0) {
+	while (arbuf.ar_size > 0) {
 		i = o = 512;
-		if(arbuf.ar_size < i) {
+		if (arbuf.ar_size < i) {
 			i = o = arbuf.ar_size;
-			if(i&1) {
-				if(flag & IODD)
+			if (i & 1) {
+				if (flag & IODD)
 					i++;
-				if(flag & OODD)
+				if (flag & OODD)
 					o++;
 			}
 		}
-		if(read(fi, buf, i) != i)
+		if (read(fi, buf, i) != i)
 			pe++;
-		if((flag & SKIP) == 0)
+		if ((flag & SKIP) == 0)
 			if (write(fo, buf, o) != o)
 				wrerr();
 		arbuf.ar_size -= 512;
 	}
-	if(pe)
+	if (pe)
 		phserr();
 }
 
@@ -625,7 +616,7 @@ getdir(void)
 {
 	register int i;
 
-	if(oldfmt) {
+	if (oldfmt) {
 		/* First Edition (0177555): 16-byte header, 8-char name, a
 		 * middle-endian long date, uid+mode bytes, then the member size
 		 * as a little-endian WORD (members are even-padded on disk).
@@ -634,20 +625,19 @@ getdir(void)
 		long d;
 
 		i = read(af, (char *)oh, sizeof oh);
-		if(i != sizeof oh) {
-			if(tf1nam) {
+		if (i != sizeof oh) {
+			if (tf1nam) {
 				i = tf;
 				tf = tf1;
 				tf1 = i;
 			}
-			return(1);
+			return (1);
 		}
-		for(i=0; i<8; i++)
+		for (i = 0; i < 8; i++)
 			arbuf.ar_name[i] = oh[i];
-		for(; i<14; i++)
+		for (; i < 14; i++)
 			arbuf.ar_name[i] = 0;
-		d = (long)oh[8] | ((long)oh[9]<<8)
-		  | ((long)oh[10]<<16) | ((long)oh[11]<<24);
+		d = (long)oh[8] | ((long)oh[9] << 8) | ((long)oh[10] << 16) | ((long)oh[11] << 24);
 		arbuf.ar_date = PDPL(d);
 		arbuf.ar_uid = oh[12];
 		arbuf.ar_gid = 0;
@@ -655,29 +645,29 @@ getdir(void)
 		 * POSIX rwxrwxrwx; extracting it verbatim yields unreadable
 		 * files.  These members are objects -- give them a sane 0644. */
 		arbuf.ar_mode = 0644;
-		arbuf.ar_size = oh[14] | (oh[15]<<8);
-		for(i=0; i<14; i++)
+		arbuf.ar_size = oh[14] | (oh[15] << 8);
+		for (i = 0; i < 14; i++)
 			name[i] = arbuf.ar_name[i];
 		file = name;
-		return(0);
+		return (0);
 	}
 	i = read(af, (char *)&arbuf, sizeof arbuf);
-	if(i == sizeof arbuf) {	/* PDP-11 middle-endian longs -> host order */
+	if (i == sizeof arbuf) { /* PDP-11 middle-endian longs -> host order */
 		arbuf.ar_date = PDPL(arbuf.ar_date);
 		arbuf.ar_size = PDPL(arbuf.ar_size);
 	}
-	if(i != sizeof arbuf) {
-		if(tf1nam) {
+	if (i != sizeof arbuf) {
+		if (tf1nam) {
 			i = tf;
 			tf = tf1;
 			tf1 = i;
 		}
-		return(1);
+		return (1);
 	}
-	for(i=0; i<14; i++)
+	for (i = 0; i < 14; i++)
 		name[i] = arbuf.ar_name[i];
 	file = name;
-	return(0);
+	return (0);
 }
 
 static int
@@ -685,16 +675,16 @@ match(void)
 {
 	register int i;
 
-	for(i=0; i<namc; i++) {
-		if(namv[i] == 0)
+	for (i = 0; i < namc; i++) {
+		if (namv[i] == 0)
 			continue;
-		if(strcmp(trim(namv[i]), file) == 0) {
+		if (strcmp(trim(namv[i]), file) == 0) {
 			file = namv[i];
 			namv[i] = 0;
-			return(1);
+			return (1);
 		}
 	}
-	return(0);
+	return (0);
 }
 
 static void
@@ -702,20 +692,19 @@ bamatch(void)
 {
 	register int f;
 
-	switch(bastate) {
-
+	switch (bastate) {
 	case 1:
-		if(strcmp(file, ponam) != 0)
+		if (strcmp(file, ponam) != 0)
 			return;
 		bastate = 2;
-		if(flg['a'-'a'])
+		if (flg['a' - 'a'])
 			return;
 
 	case 2:
 		bastate = 0;
 		f = mkstemp(tmp1nam);
 		tf1nam = tmp1nam;
-		if(f < 0) {
+		if (f < 0) {
 			fprintf(stderr, "ar: cannot create second temp\n");
 			return;
 		}
@@ -727,16 +716,14 @@ bamatch(void)
 static int
 phserr(void)
 {
-
 	fprintf(stderr, "ar: phase error on %s\n", file);
 }
 
 static int
 mesg(int c)
 {
-
-	if(flg['v'-'a'])
-		if(c != 'c' || flg['v'-'a'] > 1)
+	if (flg['v' - 'a'])
+		if (c != 'c' || flg['v' - 'a'] > 1)
 			printf("%c - %s\n", c, file);
 }
 
@@ -745,35 +732,35 @@ trim(char *s)
 {
 	register char *p1, *p2;
 
-	for(p1 = s; *p1; p1++)
+	for (p1 = s; *p1; p1++)
 		;
-	while(p1 > s) {
-		if(*--p1 != '/')
+	while (p1 > s) {
+		if (*--p1 != '/')
 			break;
 		*p1 = 0;
 	}
 	p2 = s;
-	for(p1 = s; *p1; p1++)
-		if(*p1 == '/')
-			p2 = p1+1;
-	return(p2);
+	for (p1 = s; *p1; p1++)
+		if (*p1 == '/')
+			p2 = p1 + 1;
+	return (p2);
 }
 
-#define	IFMT	060000
-#define	ISARG	01000
-#define	LARGE	010000
-#define	SUID	04000
-#define	SGID	02000
-#define	ROWN	0400
-#define	WOWN	0200
-#define	XOWN	0100
-#define	RGRP	040
-#define	WGRP	020
-#define	XGRP	010
-#define	ROTH	04
-#define	WOTH	02
-#define	XOTH	01
-#define	STXT	01000
+#define IFMT 060000
+#define ISARG 01000
+#define LARGE 010000
+#define SUID 04000
+#define SGID 02000
+#define ROWN 0400
+#define WOWN 0200
+#define XOWN 0100
+#define RGRP 040
+#define WGRP 020
+#define XGRP 010
+#define ROTH 04
+#define WOTH 02
+#define XOTH 01
+#define STXT 01000
 
 static int
 longt(void)
@@ -783,25 +770,25 @@ longt(void)
 
 	pmode();
 	printf("%3d/%1d", arbuf.ar_uid, arbuf.ar_gid);
-	printf("%7ld", (long)arbuf.ar_size);	/* was %D (old BSD long spec) */
+	printf("%7ld", (long)arbuf.ar_size); /* was %D (old BSD long spec) */
 	/* ar_date is a 32-bit on-disk field; ctime() dereferences a 64-bit
 	 * time_t on an LP64 host, so widen through a real time_t first. */
 	t = (time_t)(int32_t)arbuf.ar_date;
 	cp = ctime(&t);
-	printf(" %-12.12s %-4.4s ", cp+4, cp+20);
+	printf(" %-12.12s %-4.4s ", cp + 4, cp + 20);
 }
 
-int	m1[] = { 1, ROWN, 'r', '-' };
-int	m2[] = { 1, WOWN, 'w', '-' };
-int	m3[] = { 2, SUID, 's', XOWN, 'x', '-' };
-int	m4[] = { 1, RGRP, 'r', '-' };
-int	m5[] = { 1, WGRP, 'w', '-' };
-int	m6[] = { 2, SGID, 's', XGRP, 'x', '-' };
-int	m7[] = { 1, ROTH, 'r', '-' };
-int	m8[] = { 1, WOTH, 'w', '-' };
-int	m9[] = { 2, STXT, 't', XOTH, 'x', '-' };
+int m1[] = {1, ROWN, 'r', '-'};
+int m2[] = {1, WOWN, 'w', '-'};
+int m3[] = {2, SUID, 's', XOWN, 'x', '-'};
+int m4[] = {1, RGRP, 'r', '-'};
+int m5[] = {1, WGRP, 'w', '-'};
+int m6[] = {2, SGID, 's', XGRP, 'x', '-'};
+int m7[] = {1, ROTH, 'r', '-'};
+int m8[] = {1, WOTH, 'w', '-'};
+int m9[] = {2, STXT, 't', XOTH, 'x', '-'};
 
-int	*m[] = { m1, m2, m3, m4, m5, m6, m7, m8, m9};
+int *m[] = {m1, m2, m3, m4, m5, m6, m7, m8, m9};
 
 static int
 pmode(void)
@@ -819,7 +806,7 @@ arselect(int *pairp)
 
 	ap = pairp;
 	n = *ap++;
-	while (--n>=0 && (arbuf.ar_mode&*ap++)==0)
+	while (--n >= 0 && (arbuf.ar_mode & *ap++) == 0)
 		ap++;
 	putchar(*ap);
 }

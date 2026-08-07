@@ -4,7 +4,7 @@
 void
 _concat(register char *out, register char **list)
 {
-	register	char	*cp;
+	register char *cp;
 
 	while (cp = *list++)
 		while (*cp)
