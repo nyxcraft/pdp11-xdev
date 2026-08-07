@@ -1399,8 +1399,17 @@ sockaddr_g2h(int gaddr, int glen, struct sockaddr_storage *hs)
 	if (fam == AF_INET) {
 		struct sockaddr_in *si = (struct sockaddr_in *)hs;
 		si->sin_family = AF_INET;
-		memcpy(&si->sin_port, M + ((gaddr + 2) & 0xffff), 2); /* net order, raw */
-		memcpy(&si->sin_addr, M + ((gaddr + 4) & 0xffff), 4); /* net order, raw */
+		/* byte-wise via ld1 (masks/wraps) so a gaddr near the top of core
+		 * wraps like the PDP-11 instead of reading past M; net order, raw */
+		{
+			unsigned char *pp = (unsigned char *)&si->sin_port;
+			unsigned char *ap = (unsigned char *)&si->sin_addr;
+			int i;
+			for (i = 0; i < 2; i++)
+				pp[i] = ld1(gaddr + 2 + i);
+			for (i = 0; i < 4; i++)
+				ap[i] = ld1(gaddr + 4 + i);
+		}
 		return sizeof *si;
 	}
 	if (fam == AF_UNIX) {
@@ -1429,8 +1438,16 @@ sockaddr_h2g(struct sockaddr *ha, int gaddr, int glenaddr)
 		for (k = 0; k < 16; k++)
 			st1((gaddr + k) & 0xffff, 0);
 		st2(gaddr, AF_INET);
-		memcpy(M + ((gaddr + 2) & 0xffff), &si->sin_port, 2);
-		memcpy(M + ((gaddr + 4) & 0xffff), &si->sin_addr, 4);
+		/* byte-wise via st1 (which masks/wraps each address) so a gaddr near
+		 * the top of core wraps like the PDP-11 instead of writing past M */
+		{
+			unsigned char *pp = (unsigned char *)&si->sin_port;
+			unsigned char *ap = (unsigned char *)&si->sin_addr;
+			st1(gaddr + 2, pp[0]);
+			st1(gaddr + 3, pp[1]);
+			for (k = 0; k < 4; k++)
+				st1(gaddr + 4 + k, ap[k]);
+		}
 		glen = 16;
 	}
 	else if (ha->sa_family == AF_UNIX) {
@@ -2996,8 +3013,8 @@ do_syscall(int num, int argaddr)
 		r = 0;
 		for (k = 0; k < cnt; k++) {
 			int base = ld2(iov + 4 * k) & 0xffff, len = ld2(iov + 4 * k + 2) & 0xffff;
-			long n = (num == C_READV) ? read(fd0, M + base, len)
-						  : write(fd0, M + base, len);
+			long n = (num == C_READV) ? read(fd0, M + base, gclamp(base, len))
+						  : write(fd0, M + base, gclamp(base, len));
 			if (n < 0) {
 				r = -1;
 				break;
@@ -3192,10 +3209,10 @@ do_syscall(int num, int argaddr)
 		break;
 	}
 	case C_SEND: /* send(fd0, a1=buf, a2=len, a3=flags) */
-		r = send(fd0, M + (a1 & 0xffff), a2 & 0xffff, 0);
+		r = send(fd0, M + (a1 & 0xffff), gclamp(a1, a2 & 0xffff), 0);
 		break;
 	case C_RECV: /* recv(fd0, a1=buf, a2=len, a3=flags) */
-		r = recv(fd0, M + (a1 & 0xffff), a2 & 0xffff, 0);
+		r = recv(fd0, M + (a1 & 0xffff), gclamp(a1, a2 & 0xffff), 0);
 		break;
 	case C_SENDTO: { /* sendto(fd0, buf, len, flags, *to, tolen) */
 		struct sockaddr_storage ss;
@@ -3204,10 +3221,10 @@ do_syscall(int num, int argaddr)
 		int tolen = stackargs ? ld2((SP + 12) & 0xffff) : ld2(argaddr + 10);
 		if (toaddr) {
 			hl = sockaddr_g2h(toaddr, tolen, &ss);
-			r = sendto(fd0, M + (a1 & 0xffff), a2 & 0xffff, 0, (struct sockaddr *)&ss, hl);
+			r = sendto(fd0, M + (a1 & 0xffff), gclamp(a1, a2 & 0xffff), 0, (struct sockaddr *)&ss, hl);
 		}
 		else
-			r = send(fd0, M + (a1 & 0xffff), a2 & 0xffff, 0);
+			r = send(fd0, M + (a1 & 0xffff), gclamp(a1, a2 & 0xffff), 0);
 		break;
 	}
 	case C_RECVFROM: { /* recvfrom(fd0, buf, len, flags, *from, *fromlen) */
@@ -3215,7 +3232,7 @@ do_syscall(int num, int argaddr)
 		socklen_t hl = sizeof ss;
 		int fr = (stackargs ? ld2((SP + 10) & 0xffff) : ld2(argaddr + 8)) & 0xffff;
 		int frl = (stackargs ? ld2((SP + 12) & 0xffff) : ld2(argaddr + 10)) & 0xffff;
-		r = recvfrom(fd0, M + (a1 & 0xffff), a2 & 0xffff, 0, (struct sockaddr *)&ss, &hl);
+		r = recvfrom(fd0, M + (a1 & 0xffff), gclamp(a1, a2 & 0xffff), 0, (struct sockaddr *)&ss, &hl);
 		if (r >= 0 && fr)
 			sockaddr_h2g((struct sockaddr *)&ss, fr, frl);
 		break;
@@ -3319,6 +3336,7 @@ do_syscall(int num, int argaddr)
 				int b = ld2((iov + 4 * k) & 0xffff), l = ld2((iov + 4 * k + 2) & 0xffff);
 				if (off + l > tot)
 					l = tot - off;
+				l = (int)gclamp(b, (unsigned)l); /* keep the M read in core */
 				memcpy(mbuf + off, M + (b & 0xffff), l);
 				off += l;
 			}
@@ -3332,6 +3350,7 @@ do_syscall(int num, int argaddr)
 					int b = ld2((iov + 4 * k) & 0xffff), l = ld2((iov + 4 * k + 2) & 0xffff);
 					if (l > left)
 						l = left;
+					l = (int)gclamp(b, (unsigned)l); /* keep the M write in core */
 					memcpy(M + (b & 0xffff), mbuf + off, l);
 					off += l;
 					left -= l;
@@ -3673,7 +3692,7 @@ do_v1syscall(int num, int argaddr)
 		return;
 	}
 	case 3: /* read(fd=r0; buf, count) */
-		r = read(R[0], (char *)M + (a1 & 0xffff), a2 & 0xffff);
+		r = read(R[0], (char *)M + (a1 & 0xffff), gclamp(a1, a2 & 0xffff));
 		if (r < 0) {
 			FC = 1;
 			return;
@@ -3682,7 +3701,7 @@ do_v1syscall(int num, int argaddr)
 		FC = 0;
 		return;
 	case 4: /* write(fd=r0; buf, count) */
-		r = write(R[0], (char *)M + (a1 & 0xffff), a2 & 0xffff);
+		r = write(R[0], (char *)M + (a1 & 0xffff), gclamp(a1, a2 & 0xffff));
 		if (r < 0) {
 			FC = 1;
 			return;
