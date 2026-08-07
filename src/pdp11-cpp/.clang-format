@@ -1,5 +1,5 @@
 # BSD KNF / style(9) with extra vertical breathing room -- the house style of
-# the sibling vax11-unix-xdev tree:
+# the sibling vax11-xdev tree:
 #  - function return type and opening brace each on their own line
 #  - if/while/for keep the brace on the same line (KNF), but else/while break
 #    so every closing brace sits on its own line
