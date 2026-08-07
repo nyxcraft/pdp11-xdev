@@ -894,7 +894,7 @@ doincl(register char *p)
 			if (*inp == '.' && !intss())
 				*inp = '#';
 #endif
-			while (inp < p)
+			while (inp < p && cp < &filname[BUFSIZ - 1])
 				*cp++ = *inp++;
 		}
 		--flslvl; /* reenable macro expansion */
@@ -908,7 +908,7 @@ doincl(register char *p)
 			*cp++ = *inp++;
 		}
 #else
-		while (inp < p)
+		while (inp < p && cp < &filname[BUFSIZ - 1])
 			*cp++ = *inp++;
 #endif
 		if (*--cp == '"')
